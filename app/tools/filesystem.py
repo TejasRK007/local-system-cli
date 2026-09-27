@@ -6,43 +6,65 @@ from langchain_core.tools import tool
 KNOWN_DIRECTORIES = {
     "downloads": Path.home() / "Downloads",
     "documents": Path.home() / "Documents",
-    "desktop": Path.home() / "Desktop",
+    "desktop":   Path.home() / "Desktop",
 }
 
+# -------------------------------------------------------------
+# SEARCH EXCLUSIONS
+# -------------------------------------------------------------
+# Directory names that are always skipped during rglob.
+# This prevents noise from version-control internals,
+# Python virtual environments, macOS app bundles, etc.
 
-def _get_file_creation_time(file: Path) -> datetime:
-    """Return file creation time cross-platform.
+EXCLUDED_DIR_NAMES: frozenset[str] = frozenset({
+    ".git",
+    ".venv",
+    ".env",
+    "__pycache__",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    "node_modules",
+})
 
-    macOS exposes st_birthtime (true creation time).
-    Linux only has st_ctime (inode change time) as the closest equivalent.
+
+def _should_skip_path(path: Path) -> bool:
     """
-    stat = file.stat()
-    try:
-        # st_birthtime is macOS-only; raises AttributeError on Linux/Windows.
-        timestamp: float = stat.st_birthtime  # type: ignore[attr-defined]
-    except AttributeError:
-        timestamp = stat.st_ctime
-    return datetime.fromtimestamp(timestamp)  # noqa: DTZ006
+    Return True if a file path falls inside a directory that
+    should be excluded from search results.
+
+    Excluded:
+    - Directories listed in EXCLUDED_DIR_NAMES.
+    - macOS application bundles (any directory ending in '.app').
+    """
+    for part in path.parts:
+        if part in EXCLUDED_DIR_NAMES:
+            return True
+        if part.endswith(".app"):
+            return True
+    return False
 
 
 @tool
 def search_files(
     directory: str,
-    extension: str,
+    extension: str = "",
+    filename: str = "",
     start_date: str = "",
     end_date: str = "",
 ) -> dict:
-    """Search files by extension and creation date.
+    """Search files by filename, extension, and creation date.
 
-directory can be Downloads, Documents, Desktop, or a full path.
+    directory can be Downloads, Documents, Desktop, or a full path.
 
-If the user does not specify a directory for a file-search request,
-use Downloads.
+    filename is optional. If provided, search for that specific filename.
 
-start_date and end_date use YYYY-MM-DD format.
+    extension is optional. Examples: .pdf, .txt, .docx.
 
-If both dates are empty, search all matching files.
-"""
+    start_date and end_date use YYYY-MM-DD format.
+
+    If both dates are empty, search all matching files.
+    """
 
     directory_key = directory.strip().lower()
 
@@ -55,6 +77,12 @@ If both dates are empty, search all matching files.
         return {
             "found": False,
             "files": [],
+            "count": 0,
+            "directory": str(folder),
+            "filename": filename,
+            "extension": extension,
+            "start_date": start_date,
+            "end_date": end_date,
             "message": f"Directory does not exist: {folder}",
         }
 
@@ -62,10 +90,16 @@ If both dates are empty, search all matching files.
     end = None
 
     if start_date:
-        start = datetime.strptime(start_date, "%Y-%m-%d")  # noqa: DTZ007
+        start = datetime.strptime(
+            start_date,
+            "%Y-%m-%d",
+        )
 
     if end_date:
-        end = datetime.strptime(end_date, "%Y-%m-%d").replace(  # noqa: DTZ007
+        end = datetime.strptime(
+            end_date,
+            "%Y-%m-%d",
+        ).replace(
             hour=23,
             minute=59,
             second=59,
@@ -74,11 +108,44 @@ If both dates are empty, search all matching files.
 
     results = []
 
-    for file in folder.rglob(f"*{extension}"):
+    requested_filename = filename.strip().lower()
+    requested_extension = extension.strip().lower()
+
+    for file in folder.rglob("*"):
+
         if not file.is_file():
             continue
 
-        created_time = _get_file_creation_time(file)
+        # -------------------------------------------------
+        # EXCLUSION FILTER
+        # -------------------------------------------------
+
+        if _should_skip_path(file):
+            continue
+
+        # -----------------------------------------------------
+        # FILENAME FILTER
+        # -----------------------------------------------------
+
+        if requested_filename:
+            if file.name.lower() != requested_filename:
+                continue
+
+        # -----------------------------------------------------
+        # EXTENSION FILTER
+        # -----------------------------------------------------
+
+        if requested_extension:
+            if file.suffix.lower() != requested_extension:
+                continue
+
+        # -----------------------------------------------------
+        # DATE FILTER
+        # -----------------------------------------------------
+
+        created_time = datetime.fromtimestamp(
+            file.stat().st_birthtime
+        )
 
         if start and created_time < start:
             continue
@@ -86,15 +153,20 @@ If both dates are empty, search all matching files.
         if end and created_time > end:
             continue
 
-        results.append({
-            "path": str(file),
-            "created": created_time.strftime("%Y-%m-%d %H:%M:%S"),
-        })
+        results.append(
+            {
+                "path": str(file),
+                "created": created_time.strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                ),
+            }
+        )
 
     return {
         "found": len(results) > 0,
         "count": len(results),
         "directory": str(folder),
+        "filename": filename,
         "extension": extension,
         "start_date": start_date,
         "end_date": end_date,

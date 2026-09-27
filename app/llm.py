@@ -1,54 +1,18 @@
-import json
-import os
-
-from dotenv import load_dotenv
-from groq import Groq
-
-load_dotenv()
-
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-
-
-def choose_tool(request: str) -> dict:
-    prompt = f"""
-You are the reasoning component of a local automation agent.
-
-Available tool:
-- filesystem.search: searches for files inside a directory.
-  Arguments:
-  - directory: directory to search
-  - extension: file extension such as .pdf or .txt
-
-User request:
-{request}
-
-Decide whether the filesystem.search tool should be used.
-
-Return ONLY valid JSON in this format:
-
-{{
-    "tool": "filesystem.search",
-    "directory": "~/Downloads",
-    "extension": ".pdf"
-}}
-
-If the request does not require the filesystem tool, return:
-
-{{
-    "tool": "none"
-}}
-"""
-
-    response = client.chat.completions.create(
-        model="openai/gpt-oss-20b",
-        messages=[
-            {
-                "role": "user",
-                "content": prompt,
-            }
-        ],
-    )
-
-    content = response.choices[0].message.content or "{}"
-
-    return json.loads(content)
+# -------------------------------------------------------------
+# DEPRECATED MODULE
+# -------------------------------------------------------------
+#
+# This file contained choose_tool(), a prototype that used the
+# raw Groq API to select a filesystem tool from a description.
+#
+# It was replaced by agent.py, which uses LangChain's ChatGroq
+# with bound tools and structured intent extraction functions
+# (extract_rename_request, extract_move_request, run_agent).
+#
+# choose_tool() was never imported or called anywhere in the
+# application. It has been removed to avoid confusion.
+#
+# If a new low-level Groq client is ever needed, add it here
+# and import it explicitly where used.
+#
+# -------------------------------------------------------------
