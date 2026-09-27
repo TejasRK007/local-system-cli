@@ -36,7 +36,7 @@ jobs:
 
       - name: Run Flake8 Linter
         run: |
-          flake8 app tests
+          flake8 --max-line-length=100 app tests
 
       - name: Run Ruff Linter & Format Check
         run: |
