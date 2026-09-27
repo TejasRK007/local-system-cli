@@ -17,9 +17,11 @@ def _get_file_creation_time(file: Path) -> datetime:
     Linux only has st_ctime (inode change time) as the closest equivalent.
     """
     stat = file.stat()
-    # st_birthtime is macOS-only; not in Linux os.stat_result stubs.
-    birthtime = getattr(stat, "st_birthtime", None)  # type: ignore[attr-defined]  # noqa: E501
-    timestamp: float = birthtime or stat.st_ctime
+    try:
+        # st_birthtime is macOS-only; raises AttributeError on Linux/Windows.
+        timestamp: float = stat.st_birthtime  # type: ignore[attr-defined]
+    except AttributeError:
+        timestamp = stat.st_ctime
     return datetime.fromtimestamp(timestamp)  # noqa: DTZ006
 
 
