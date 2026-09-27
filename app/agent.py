@@ -2,8 +2,8 @@ import os
 from datetime import datetime
 
 from dotenv import load_dotenv
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_groq import ChatGroq
-from langchain_core.messages import SystemMessage, HumanMessage
 
 from app.tools.filesystem import search_files
 
@@ -11,9 +11,10 @@ load_dotenv()
 
 llm = ChatGroq(
     model="openai/gpt-oss-20b",
-    api_key=os.getenv("GROQ_API_KEY"),
+    api_key=os.getenv("GROQ_API_KEY"),  # type: ignore[arg-type]
     temperature=0,
 )
+
 
 tools = [search_files]
 llm_with_tools = llm.bind_tools(tools)

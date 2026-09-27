@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 ALLOWED_DIRECTORIES = [
     Path.home() / "Downloads",
     Path.home() / "Documents",

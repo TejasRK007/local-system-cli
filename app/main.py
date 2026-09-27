@@ -1,5 +1,4 @@
 import typer
-
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -7,7 +6,6 @@ from rich.text import Text
 
 from app.agent import run_agent
 from app.tools.file_actions import delete_file
-
 
 console = Console()
 
@@ -274,7 +272,8 @@ def agent(request: str):
         if not result["found"]:
             console.print(
                 Panel(
-                    "[yellow]No files matched the deletion request.[/yellow]\n\n"
+                    "[yellow]No files matched the deletion request."
+                    "[/yellow]\n\n"
                     "[dim]Try describing the files differently, "
                     "or use another date.[/dim]\n\n"
                     "[bold white]Need help?[/bold white]\n"

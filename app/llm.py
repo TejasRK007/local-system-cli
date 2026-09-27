@@ -1,5 +1,5 @@
-import os
 import json
+import os
 
 from dotenv import load_dotenv
 from groq import Groq
@@ -49,6 +49,6 @@ If the request does not require the filesystem tool, return:
         ],
     )
 
-    content = response.choices[0].message.content
+    content = response.choices[0].message.content or "{}"
 
     return json.loads(content)

@@ -13,6 +13,13 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Testing & Type Checking
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.ruff_cache/
+
 # IDE & OS files
 .DS_Store
 .vscode/
