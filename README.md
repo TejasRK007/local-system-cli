@@ -1,6 +1,9 @@
 # 🤖 Local Agentic Automation System
 
+[![Python CI Pipeline](https://github.com/TejasRK007/local-system-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/TejasRK007/local-system-cli/actions/workflows/ci.yml)
+
 An AI-powered local computer automation CLI built with Python, LangChain, Groq, Typer, and Rich. It translates natural language requests into intelligent, secure local file system operations.
+
 
 ---
 
