@@ -143,9 +143,10 @@ def search_files(
         # DATE FILTER
         # -----------------------------------------------------
 
-        created_time = datetime.fromtimestamp(
-            file.stat().st_birthtime
-        )
+        stat = file.stat()
+        birthtime = getattr(stat, "st_birthtime", None)
+        timestamp = birthtime if birthtime is not None else stat.st_ctime
+        created_time = datetime.fromtimestamp(timestamp)
 
         if start and created_time < start:
             continue
