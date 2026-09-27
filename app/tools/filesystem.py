@@ -10,6 +10,17 @@ KNOWN_DIRECTORIES = {
 }
 
 
+def _get_file_creation_time(file: Path) -> datetime:
+    """Return file creation time cross-platform.
+
+    macOS exposes st_birthtime (true creation time).
+    Linux only has st_ctime (inode change time) as the closest equivalent.
+    """
+    stat = file.stat()
+    timestamp = getattr(stat, "st_birthtime", None) or stat.st_ctime
+    return datetime.fromtimestamp(timestamp)  # noqa: DTZ006
+
+
 @tool
 def search_files(
     directory: str,
@@ -47,10 +58,10 @@ If both dates are empty, search all matching files.
     end = None
 
     if start_date:
-        start = datetime.strptime(start_date, "%Y-%m-%d")
+        start = datetime.strptime(start_date, "%Y-%m-%d")  # noqa: DTZ007
 
     if end_date:
-        end = datetime.strptime(end_date, "%Y-%m-%d").replace(
+        end = datetime.strptime(end_date, "%Y-%m-%d").replace(  # noqa: DTZ007
             hour=23,
             minute=59,
             second=59,
@@ -63,7 +74,7 @@ If both dates are empty, search all matching files.
         if not file.is_file():
             continue
 
-        created_time = datetime.fromtimestamp(file.stat().st_birthtime)
+        created_time = _get_file_creation_time(file)
 
         if start and created_time < start:
             continue
