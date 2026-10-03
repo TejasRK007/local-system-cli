@@ -1,3 +1,17 @@
+import os
+import sys
+from pathlib import Path
+from typing import Any, Optional
+
+if sys.platform == "win32":
+    try:
+        if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")
+        if sys.stderr and hasattr(sys.stderr, "reconfigure"):
+            sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 import typer
 from rich.console import Console
 from rich.panel import Panel
@@ -7,18 +21,53 @@ from rich.text import Text
 from app.agent import run_agent
 from app.database import get_recent_logs, log_event
 from app.policy import RISK_COLORS, get_action_risk, requires_approval
+from app.recovery import FailureCategory, execute_action_with_recovery
+from app.tasks.executor import StepExecutor
+from app.tasks.goal_planner import GoalPlanner
+from app.tasks.manager import TaskManager
+from app.tasks.models import StepStatus, TaskStatus
+from app.tasks.planner import plan_task_steps
+from app.tasks.validator import PlanValidator
 from app.tools.file_actions import (
     delete_file,
     move_file,
     rename_file,
 )
+from app.workspaces import WorkspaceManager
 
 console = Console()
 
 
-app = typer.Typer(
-    help="Local Agentic Automation System - AI-powered task automation."
-)
+def check_workspace_requirement(operation_name: str = "tasks") -> bool:
+    """
+    Ensure at least one workspace is configured.
+    Returns True if workspaces exist or legacy test mode is active.
+    Returns False (and prints notification) if real CLI has no workspaces configured.
+    """
+    if WorkspaceManager.count_workspaces() > 0:
+        return True
+
+    # Real CLI or enforced mode: require explicit workspace
+    if not os.getenv("PYTEST_CURRENT_TEST") or os.getenv("AGENT_ENFORCE_WORKSPACES"):
+        console.print(
+            Panel(
+                "[yellow]No workspaces configured.[/yellow]\n\n"
+                f"You must explicitly add at least one authorized workspace before executing "
+                f"{operation_name}.\n\n"
+                "[bold white]Add a workspace:[/bold white]\n"
+                '  py -m app.main workspace-add "<path>" [--name "<label>"]\n\n'
+                "[dim]Example:[/dim]\n"
+                '  py -m app.main workspace-add "manual_test" --name "manual_test"',
+                title="[bold yellow]Workspace Required[/bold yellow]",
+                border_style="yellow",
+            )
+        )
+        return False
+
+    return True
+
+
+app = typer.Typer(help="Local Agentic Automation System - AI-powered task automation.")
 
 
 def show_header():
@@ -84,7 +133,6 @@ def show_file_table(files):
     )
 
     for index, item in enumerate(files, start=1):
-
         table.add_row(
             str(index),
             item["path"],
@@ -121,7 +169,7 @@ def show_action_summary(
     console.print(
         Panel(
             "\n".join(lines),
-            title="[bold yellow]⚠ Action Summary[/bold yellow]",
+            title="[bold yellow]Action Summary[/bold yellow]",
             border_style=color,
         )
     )
@@ -143,12 +191,10 @@ def show_capabilities():
         "  • Move files with approval\n"
         "  • Rename files with approval\n"
         "  • Verify file operations\n\n"
-
         "[bold cyan]🤖 Natural Language[/bold cyan]\n"
         "  • Understand normal human instructions\n"
         "  • Convert requests into tool actions\n"
         "  • Understand different ways of asking for the same task\n\n"
-
         "[bold yellow]🔐 Safety[/bold yellow]\n"
         "  • Destructive actions require approval\n"
         "  • Move operations require approval\n"
@@ -156,7 +202,6 @@ def show_capabilities():
         "  • Exact files are shown before deletion, moving, or renaming\n"
         "  • File paths are checked before operations\n"
         "  • Existing files are never overwritten during moves or renames\n\n"
-
         "[bold green]💡 Example requests[/bold green]\n"
         '  • "Show me PDFs from yesterday"\n'
         '  • "Find Word documents in Downloads"\n'
@@ -187,15 +232,15 @@ def show_help_hint():
         Panel(
             "[yellow]I couldn't understand that request.[/yellow]\n\n"
             "[bold white]Try:[/bold white]\n\n"
-            '[cyan]python -m app.main agent '
+            "[cyan]python -m app.main agent "
             '"Show me PDFs from yesterday"[/cyan]\n'
-            '[cyan]python -m app.main agent '
+            "[cyan]python -m app.main agent "
             '"Find Word documents in Downloads"[/cyan]\n'
-            '[cyan]python -m app.main agent '
+            "[cyan]python -m app.main agent "
             '"Find Internship Offer Letter - Tejas RK.pdf"[/cyan]\n'
-            '[cyan]python -m app.main agent '
+            "[cyan]python -m app.main agent "
             '"Move agent_move_test.txt to Documents"[/cyan]\n'
-            '[cyan]python -m app.main agent '
+            "[cyan]python -m app.main agent "
             '"Rename agent_renamed_test.txt to final_test.txt"[/cyan]\n\n'
             "[bold white]For more examples:[/bold white]\n"
             "[green]python -m app.main --help[/green]",
@@ -210,29 +255,51 @@ def show_help_screen():
 
     show_header()
 
-    console.print(
-        "[bold white]AI-powered local task automation.[/bold white]"
-    )
+    console.print("[bold white]AI-powered local task automation.[/bold white]")
 
     console.print()
 
-    console.print(
-        "[bold cyan]Commands[/bold cyan]"
-    )
+    console.print("[bold cyan]Commands[/bold cyan]")
+
+    console.print("  [cyan]agent[/cyan]    Give the agent a natural-language task.")
+
+    console.print("  [cyan]delete[/cyan]   Delete one exact file after user approval.")
+
+    console.print("  [cyan]logs[/cyan]                 Show recent persistent audit log entries.")
 
     console.print(
-        "  [cyan]agent[/cyan]    "
-        "Give the agent a natural-language task."
+        "  [cyan]goal[/cyan]                 "
+        "Plan and execute a high-level goal using intelligent reasoning."
     )
 
-    console.print(
-        "  [cyan]delete[/cyan]   "
-        "Delete one exact file after user approval."
-    )
+    console.print("  [cyan]task[/cyan]                 Execute a stateful multi-step task.")
 
     console.print(
-        "  [cyan]logs[/cyan]     "
-        "Show recent persistent audit log entries."
+        "  [cyan]task-resume[/cyan]          "
+        "Safely resume an incomplete task from first failed step."
+    )
+
+    console.print("  [cyan]tasks[/cyan]                List recent multi-step tasks.")
+
+    console.print(
+        "  [cyan]task-status[/cyan]          View detailed status of a task and its steps."
+    )
+
+    console.print("  [cyan]workspace[/cyan]            List configured workspaces and permissions.")
+
+    console.print(
+        "  [cyan]workspace-add[/cyan]        "
+        "Add and authorize a new local directory as a workspace."
+    )
+
+    console.print("  [cyan]workspace-remove[/cyan]     Remove a workspace configuration.")
+
+    console.print("  [cyan]workspace-enable[/cyan]     Enable an existing workspace.")
+
+    console.print("  [cyan]workspace-disable[/cyan]    Disable an existing workspace.")
+
+    console.print(
+        "  [cyan]workspace-permissions[/cyan]Update permissions for an existing workspace."
     )
 
     console.print()
@@ -244,31 +311,22 @@ def show_help_screen():
     console.print(
         Panel(
             "[bold cyan]Natural language examples[/bold cyan]\n\n"
-
-            '  python -m app.main agent '
+            "  python -m app.main agent "
             '"Show me PDFs from yesterday"\n\n'
-
-            '  python -m app.main agent '
+            "  python -m app.main agent "
             '"Find Word documents in Downloads"\n\n'
-
-            '  python -m app.main agent '
+            "  python -m app.main agent "
             '"Find Internship Offer Letter - Tejas RK.pdf"\n\n'
-
-            '  python -m app.main agent '
+            "  python -m app.main agent "
             '"Show me PDFs from the day before yesterday"\n\n'
-
-            '  python -m app.main agent '
+            "  python -m app.main agent "
             '"Delete the PDFs I downloaded yesterday"\n\n'
-
-            '  python -m app.main agent '
+            "  python -m app.main agent "
             '"Move Internship Offer Letter - Tejas RK.pdf to Documents"\n\n'
-
-            '  python -m app.main agent '
+            "  python -m app.main agent "
             '"Rename agent_renamed_test.txt to final_test.txt"\n\n'
-
-            '  python -m app.main agent '
+            "  python -m app.main agent "
             '"What can you do for me?"',
-
             title="[bold white]Examples[/bold white]",
             border_style="blue",
             padding=(1, 2),
@@ -289,6 +347,7 @@ def show_help_screen():
 # FRIENDLY HELP COMMAND
 # -------------------------------------------------------------
 
+
 @app.command(
     name="help",
     help="Show examples and learn what the agent can do.",
@@ -300,6 +359,7 @@ def help_command():
 # -------------------------------------------------------------
 # AGENT COMMAND
 # -------------------------------------------------------------
+
 
 @app.command(
     help="Give the agent a natural-language task.",
@@ -326,11 +386,7 @@ def agent(request: str):
         "what are your capabilities",
     ]
 
-    if any(
-        phrase in request_lower
-        for phrase in capability_phrases
-    ):
-
+    if any(phrase in request_lower for phrase in capability_phrases):
         show_capabilities()
 
         log_event(
@@ -345,19 +401,27 @@ def agent(request: str):
 
         return
 
+    if not check_workspace_requirement("agent operations"):
+        log_event(
+            user_request=request,
+            action="workspace",
+            risk_level="low",
+            approval_required=False,
+            approval_result="NOT_APPLICABLE",
+            execution_status="BLOCKED",
+            result_summary="Operation blocked: No workspaces configured",
+        )
+        return
+
     # ---------------------------------------------------------
     # AGENT PROCESSING
     # ---------------------------------------------------------
 
-    console.print(
-        "[bold blue]● Understanding request...[/bold blue]"
-    )
+    console.print("[bold blue]● Understanding request...[/bold blue]")
 
     result = run_agent(request)
 
-    console.print(
-        "[bold blue]● Processing tools...[/bold blue]"
-    )
+    console.print("[bold blue]● Processing tools...[/bold blue]")
 
     console.print()
 
@@ -366,7 +430,6 @@ def agent(request: str):
     # ---------------------------------------------------------
 
     if result == "UNSUPPORTED_REQUEST":
-
         show_help_hint()
 
         log_event(
@@ -385,11 +448,7 @@ def agent(request: str):
     # RENAME REQUEST
     # ---------------------------------------------------------
 
-    if (
-        isinstance(result, dict)
-        and result.get("action") == "rename"
-    ):
-
+    if isinstance(result, dict) and result.get("action") == "rename":
         source_files = result.get(
             "source_files",
             [],
@@ -407,7 +466,6 @@ def agent(request: str):
         # -----------------------------------------------------
 
         if not source_files:
-
             scope = "the specified directory" if directory_specified else "all allowed directories"
 
             console.print(
@@ -417,7 +475,6 @@ def agent(request: str):
                     f"[bold white]Searched:[/bold white] {scope}\n"
                     "[bold white]New name:[/bold white] "
                     f"{new_name}",
-
                     title="[bold yellow]File Not Found[/bold yellow]",
                     border_style="yellow",
                 )
@@ -440,11 +497,10 @@ def agent(request: str):
         # -----------------------------------------------------
 
         if len(source_files) > 1:
-
             scope_hint = (
                 "[dim]Please specify the exact directory.\n"
-                "Example: \"Rename file.txt [bold]in Downloads[/bold] "
-                "to new.txt\"[/dim]"
+                'Example: "Rename file.txt [bold]in Downloads[/bold] '
+                'to new.txt"[/dim]'
                 if not directory_specified
                 else "[dim]Multiple files with the same name exist in that directory.[/dim]"
             )
@@ -453,9 +509,7 @@ def agent(request: str):
                 Panel(
                     f"[bold yellow]Ambiguous request:[/bold yellow] "
                     f"{len(source_files)} matching files were found.\n\n"
-                    "I will not rename multiple files automatically.\n\n"
-                    + scope_hint,
-
+                    "I will not rename multiple files automatically.\n\n" + scope_hint,
                     title="[bold yellow]⚠ Ambiguous Request[/bold yellow]",
                     border_style="yellow",
                 )
@@ -497,18 +551,14 @@ def agent(request: str):
 
         # ------ APPROVAL ------
         if requires_approval(risk):
-            approval = typer.confirm(
-                f"Do you want to rename this file to {new_name}?"
-            )
+            approval = typer.confirm(f"Do you want to rename this file to {new_name}?")
 
             if not approval:
-
                 console.print()
 
                 console.print(
                     Panel(
                         "[bold red]The file was not renamed.[/bold red]",
-
                         title="[bold red]✗ Action Cancelled[/bold red]",
                         border_style="red",
                     )
@@ -527,71 +577,69 @@ def agent(request: str):
                 return
 
         # -----------------------------------------------------
-        # EXECUTE RENAME
+        # EXECUTE RENAME WITH RECOVERY & OBSERVATION
         # -----------------------------------------------------
 
         console.print()
 
-        console.print(
-            "[bold yellow]● Renaming approved file...[/bold yellow]"
-        )
+        console.print("[bold yellow]● Renaming approved file...[/bold yellow]")
 
         console.print()
 
-        rename_result = rename_file(
-            source_file,
-            new_name,
+        target_path = Path(source_file).parent / new_name
+
+        exec_res = execute_action_with_recovery(
+            action="rename",
+            action_func=rename_file,
+            func_args=(source_file, new_name),
+            source_path=source_file,
+            destination_path=target_path,
+            on_retry=lambda attempt, desc: console.print(
+                f"[bold yellow]● Retrying rename (Attempt {attempt + 1})... "
+                f"Reason: {desc}[/bold yellow]"
+            ),
         )
 
-        # -----------------------------------------------------
-        # RENAME SUCCESS
-        # -----------------------------------------------------
+        status = exec_res["status"]
+        summary = exec_res["result_summary"]
 
-        if "Verified:" in rename_result:
-
+        if status == "SUCCESS":
             console.print(
                 Panel(
-                    f"[bold green]{rename_result}[/bold green]",
-
+                    f"[bold green]{summary}[/bold green]",
                     title="[bold green]✓ Task Completed[/bold green]",
                     border_style="green",
                 )
             )
-
-            log_event(
-                user_request=request,
-                action="rename",
-                risk_level=risk,
-                approval_required=True,
-                approval_result="APPROVED",
-                execution_status="SUCCESS",
-                result_summary=rename_result,
-            )
-
-        # -----------------------------------------------------
-        # RENAME FAILURE
-        # -----------------------------------------------------
-
-        else:
-
+        elif status == FailureCategory.CONFLICT.value:
             console.print(
                 Panel(
-                    f"[bold red]{rename_result}[/bold red]",
-
+                    f"[bold yellow]Conflict Detected:[/bold yellow] Destination already contains a "
+                    f"file named '{new_name}'.\n\n"
+                    f"[dim]Existing file at {target_path} was NOT overwritten. Original file "
+                    f"remains intact at {source_file}.[/dim]",
+                    title="[bold yellow]⚠ Destination Conflict[/bold yellow]",
+                    border_style="yellow",
+                )
+            )
+        else:
+            console.print(
+                Panel(
+                    f"[bold red]{summary}[/bold red]",
                     title="[bold red]✗ Rename Failed[/bold red]",
                     border_style="red",
                 )
             )
 
-            log_event(
-                user_request=request,
-                action="rename",
-                risk_level=risk,
-                approval_required=True,
-                approval_result="APPROVED",
-                execution_status="FAILED",
-                result_summary=rename_result,
-            )
+        log_event(
+            user_request=request,
+            action="rename",
+            risk_level=risk,
+            approval_required=True,
+            approval_result="APPROVED",
+            execution_status=status,
+            result_summary=summary,
+        )
 
         return
 
@@ -599,11 +647,7 @@ def agent(request: str):
     # MOVE REQUEST
     # ---------------------------------------------------------
 
-    if (
-        isinstance(result, dict)
-        and result.get("action") == "move"
-    ):
-
+    if isinstance(result, dict) and result.get("action") == "move":
         source_files = result.get(
             "source_files",
             [],
@@ -624,14 +668,12 @@ def agent(request: str):
         # -----------------------------------------------------
 
         if not source_files:
-
             console.print(
                 Panel(
                     "[yellow]The requested file could not "
                     "be found.[/yellow]\n\n"
                     "[bold white]Need help?[/bold white]\n"
                     "[green]python -m app.main --help[/green]",
-
                     title="[bold yellow]File Not Found[/bold yellow]",
                     border_style="yellow",
                 )
@@ -654,7 +696,6 @@ def agent(request: str):
         # -----------------------------------------------------
 
         if len(source_files) > 1:
-
             console.print(
                 Panel(
                     "[yellow]Multiple files matched "
@@ -662,7 +703,6 @@ def agent(request: str):
                     "I will not move multiple files automatically.\n\n"
                     "[dim]Please specify the exact file or "
                     "directory.[/dim]",
-
                     title="[bold yellow]Multiple Matches[/bold yellow]",
                     border_style="yellow",
                 )
@@ -704,12 +744,9 @@ def agent(request: str):
 
         # ------ APPROVAL ------
         if requires_approval(risk):
-            approval = typer.confirm(
-                f"Do you want to move this file to {destination_name}?"
-            )
+            approval = typer.confirm(f"Do you want to move this file to {destination_name}?")
 
             if not approval:
-
                 console.print()
 
                 console.print(
@@ -733,71 +770,69 @@ def agent(request: str):
                 return
 
         # -----------------------------------------------------
-        # EXECUTE MOVE
+        # EXECUTE MOVE WITH RECOVERY & OBSERVATION
         # -----------------------------------------------------
 
         console.print()
 
-        console.print(
-            "[bold yellow]● Moving approved file...[/bold yellow]"
-        )
+        console.print("[bold yellow]● Moving approved file...[/bold yellow]")
 
         console.print()
 
-        move_result = move_file(
-            source_file,
-            destination,
+        target_file = Path(destination) / Path(source_file).name
+
+        exec_res = execute_action_with_recovery(
+            action="move",
+            action_func=move_file,
+            func_args=(source_file, destination),
+            source_path=source_file,
+            destination_path=target_file,
+            on_retry=lambda attempt, desc: console.print(
+                f"[bold yellow]● Retrying move (Attempt {attempt + 1})... "
+                f"Reason: {desc}[/bold yellow]"
+            ),
         )
 
-        # -----------------------------------------------------
-        # MOVE SUCCESS
-        # -----------------------------------------------------
+        status = exec_res["status"]
+        summary = exec_res["result_summary"]
 
-        if "Verified:" in move_result:
-
+        if status == "SUCCESS":
             console.print(
                 Panel(
-                    f"[bold green]{move_result}[/bold green]",
-
+                    f"[bold green]{summary}[/bold green]",
                     title="[bold green]✓ Task Completed[/bold green]",
                     border_style="green",
                 )
             )
-
-            log_event(
-                user_request=request,
-                action="move",
-                risk_level=risk,
-                approval_required=True,
-                approval_result="APPROVED",
-                execution_status="SUCCESS",
-                result_summary=move_result,
-            )
-
-        # -----------------------------------------------------
-        # MOVE FAILURE
-        # -----------------------------------------------------
-
-        else:
-
+        elif status == FailureCategory.CONFLICT.value:
             console.print(
                 Panel(
-                    f"[bold red]{move_result}[/bold red]",
-
+                    f"[bold yellow]Conflict Detected:[/bold yellow] Destination directory already "
+                    f"contains a file named '{Path(source_file).name}'.\n\n"
+                    f"[dim]The existing file at {target_file} was NOT overwritten. Source file "
+                    f"remains intact at {source_file}.[/dim]",
+                    title="[bold yellow]⚠ Destination Conflict[/bold yellow]",
+                    border_style="yellow",
+                )
+            )
+        else:
+            console.print(
+                Panel(
+                    f"[bold red]{summary}[/bold red]",
                     title="[bold red]✗ Move Failed[/bold red]",
                     border_style="red",
                 )
             )
 
-            log_event(
-                user_request=request,
-                action="move",
-                risk_level=risk,
-                approval_required=True,
-                approval_result="APPROVED",
-                execution_status="FAILED",
-                result_summary=move_result,
-            )
+        log_event(
+            user_request=request,
+            action="move",
+            risk_level=risk,
+            approval_required=True,
+            approval_result="APPROVED",
+            execution_status=status,
+            result_summary=summary,
+        )
 
         return
 
@@ -815,13 +850,11 @@ def agent(request: str):
     )
 
     if (
-        delete_request
-        and isinstance(result, dict)
+        isinstance(result, dict)
+        and (result.get("action") == "delete" or (delete_request and "files" in result))
         and "files" in result
     ):
-
         if not result["found"]:
-
             console.print(
                 Panel(
                     "[yellow]No files matched the deletion request."
@@ -830,7 +863,6 @@ def agent(request: str):
                     "or use another date.[/dim]\n\n"
                     "[bold white]Need help?[/bold white]\n"
                     "[green]python -m app.main --help[/green]",
-
                     title="[bold yellow]No Matches[/bold yellow]",
                     border_style="yellow",
                 )
@@ -859,34 +891,26 @@ def agent(request: str):
             },
         )
 
-        show_file_table(
-            result["files"]
-        )
+        show_file_table(result["files"])
 
         console.print()
 
-        console.print(
-            f"[bold white]Total files:[/bold white] "
-            f"[cyan]{result['count']}[/cyan]"
-        )
+        console.print(f"[bold white]Total files:[/bold white] [cyan]{result['count']}[/cyan]")
 
         console.print()
 
         # ------ APPROVAL ------
         if requires_approval(risk):
             approval = typer.confirm(
-                "⚠ This action is permanent. "
-                "Do you want to delete ALL of these files?"
+                "⚠ This action is permanent. Do you want to delete ALL of these files?"
             )
 
             if not approval:
-
                 console.print()
 
                 console.print(
                     Panel(
                         "[bold red]No files were deleted.[/bold red]",
-
                         title="[bold red]✗ Action Cancelled[/bold red]",
                         border_style="red",
                     )
@@ -906,39 +930,34 @@ def agent(request: str):
 
         console.print()
 
-        console.print(
-            "[bold yellow]● Deleting approved files...[/bold yellow]"
-        )
+        console.print("[bold yellow]● Deleting approved files...[/bold yellow]")
 
         console.print()
 
         all_verified = True
         for item in result["files"]:
-
-            deletion_result = delete_file(
-                item["path"]
+            exec_res = execute_action_with_recovery(
+                action="delete",
+                action_func=delete_file,
+                func_args=(item["path"],),
+                source_path=item["path"],
+                on_retry=lambda attempt, desc: console.print(
+                    f"[bold yellow]● Retrying deletion of {item['path']} "
+                    f"(Attempt {attempt + 1})... Reason: {desc}[/bold yellow]"
+                ),
             )
 
-            if "Verified" in deletion_result:
-
-                console.print(
-                    f"[green]✓[/green] "
-                    f"{deletion_result}"
-                )
-
+            if exec_res["status"] == "SUCCESS":
+                console.print(f"[green]✓[/green] {exec_res['result_summary']}")
             else:
                 all_verified = False
-                console.print(
-                    f"[red]✗[/red] "
-                    f"{deletion_result}"
-                )
+                console.print(f"[red]✗[/red] {exec_res['result_summary']}")
 
         console.print()
 
         console.print(
             Panel(
                 "[bold green]Deletion process completed.[/bold green]",
-
                 title="[bold green]✓ Task Completed[/bold green]",
                 border_style="green",
             )
@@ -961,34 +980,29 @@ def agent(request: str):
     # NORMAL FILE SEARCH
     # ---------------------------------------------------------
 
-    if (
-        isinstance(result, dict)
-        and "files" in result
-    ):
-
+    if isinstance(result, dict) and "files" in result:
         if not result["found"]:
+            _search_msg = result.get("message", "")
+            _search_body = (
+                f"[bold red]{_search_msg}[/bold red]\n\n"
+                if _search_msg
+                else "[yellow]No matching files were found.[/yellow]\n\n"
+            )
 
             console.print(
                 Panel(
-                    "[yellow]No matching files were found.[/yellow]\n\n"
-
-                    f"[dim]Searched:[/dim] "
+                    _search_body + f"[dim]Searched:[/dim] "
                     f"{result.get('directory')}\n"
-
                     f"[dim]Filename:[/dim] "
                     f"{result.get('filename') or 'any'}\n"
-
                     f"[dim]Extension:[/dim] "
                     f"{result.get('extension') or 'any'}\n"
-
                     f"[dim]Date:[/dim] "
                     f"{result.get('start_date') or 'any'}"
                     f" to "
                     f"{result.get('end_date') or 'any'}\n\n"
-
                     "[bold white]Need help?[/bold white]\n"
                     "[green]python -m app.main --help[/green]",
-
                     title="[bold yellow]No Matches[/bold yellow]",
                     border_style="yellow",
                 )
@@ -1006,9 +1020,7 @@ def agent(request: str):
 
             return
 
-        console.print(
-            "[bold green]✓ Search completed[/bold green]"
-        )
+        console.print("[bold green]✓ Search completed[/bold green]")
 
         console.print()
 
@@ -1020,9 +1032,7 @@ def agent(request: str):
 
         console.print()
 
-        show_file_table(
-            result["files"]
-        )
+        show_file_table(result["files"])
 
         console.print()
 
@@ -1050,7 +1060,6 @@ def agent(request: str):
     # ---------------------------------------------------------
 
     if isinstance(result, str):
-
         console.print(
             Panel(
                 result,
@@ -1092,6 +1101,7 @@ def agent(request: str):
 # DIRECT FILE DELETION COMMAND
 # -------------------------------------------------------------
 
+
 @app.command(
     help="Delete one exact file after user approval.",
 )
@@ -1100,15 +1110,23 @@ def delete(file_path: str):
 
     show_header()
 
-    console.print(
-        "[bold yellow]⚠ High-risk action[/bold yellow]"
-    )
+    if not check_workspace_requirement("file deletion"):
+        log_event(
+            user_request=f"delete {file_path}",
+            action="delete",
+            risk_level="high",
+            approval_required=False,
+            approval_result="NOT_APPLICABLE",
+            execution_status="BLOCKED",
+            result_summary="Operation blocked: No workspaces configured",
+        )
+        return
+
+    console.print("[bold yellow]⚠ High-risk action[/bold yellow]")
 
     console.print()
 
-    console.print(
-        "[bold white]File scheduled for deletion:[/bold white]"
-    )
+    console.print("[bold white]File scheduled for deletion:[/bold white]")
 
     console.print()
 
@@ -1121,18 +1139,14 @@ def delete(file_path: str):
 
     console.print()
 
-    approval = typer.confirm(
-        "Do you want to permanently delete this file?"
-    )
+    approval = typer.confirm("Do you want to permanently delete this file?")
 
     if not approval:
-
         console.print()
 
         console.print(
             Panel(
                 "[bold red]No file was deleted.[/bold red]",
-
                 title="[bold red]✗ Action Cancelled[/bold red]",
                 border_style="red",
             )
@@ -1152,62 +1166,56 @@ def delete(file_path: str):
 
     console.print()
 
-    console.print(
-        "[bold yellow]● Deleting file...[/bold yellow]"
+    console.print("[bold yellow]● Deleting file...[/bold yellow]")
+
+    exec_res = execute_action_with_recovery(
+        action="delete",
+        action_func=delete_file,
+        func_args=(file_path,),
+        source_path=file_path,
+        on_retry=lambda attempt, desc: console.print(
+            f"[bold yellow]● Retrying deletion (Attempt {attempt + 1})... "
+            f"Reason: {desc}[/bold yellow]"
+        ),
     )
 
-    result = delete_file(
-        file_path
-    )
+    result = exec_res["result_summary"]
+    status = exec_res["status"]
 
     console.print()
 
-    if "Verified" in result:
-
+    if status == "SUCCESS":
         console.print(
             Panel(
                 f"[bold green]{result}[/bold green]",
-
                 title="[bold green]✓ Task Completed[/bold green]",
                 border_style="green",
             )
         )
-
-        log_event(
-            user_request=f"delete {file_path}",
-            action="delete",
-            risk_level="high",
-            approval_required=True,
-            approval_result="APPROVED",
-            execution_status="SUCCESS",
-            result_summary=result,
-        )
-
     else:
-
         console.print(
             Panel(
                 f"[bold red]{result}[/bold red]",
-
                 title="[bold red]✗ Operation Failed[/bold red]",
                 border_style="red",
             )
         )
 
-        log_event(
-            user_request=f"delete {file_path}",
-            action="delete",
-            risk_level="high",
-            approval_required=True,
-            approval_result="APPROVED",
-            execution_status="FAILED",
-            result_summary=result,
-        )
+    log_event(
+        user_request=f"delete {file_path}",
+        action="delete",
+        risk_level="high",
+        approval_required=True,
+        approval_result="APPROVED",
+        execution_status=status,
+        result_summary=result,
+    )
 
 
 # -------------------------------------------------------------
 # AUDIT LOGS COMMAND
 # -------------------------------------------------------------
+
 
 @app.command(
     help="Show recent persistent audit log entries.",
@@ -1217,7 +1225,7 @@ def logs(
         10,
         "--limit",
         help="Number of recent audit entries to display.",
-    )
+    ),
 ):
     """Display recent audit entries in a clean Rich table."""
 
@@ -1265,6 +1273,12 @@ def logs(
         "FAILED": "bold red",
         "AMBIGUOUS": "bold yellow",
         "NOT_SUPPORTED": "dim red",
+        "CONFLICT": "bold yellow",
+        "POLICY_VIOLATION": "bold red",
+        "VERIFICATION_FAILURE": "bold red",
+        "EXECUTION_FAILURE": "bold red",
+        "RETRY_EXHAUSTED": "bold red",
+        "NEEDS_USER_INPUT": "bold yellow",
     }
 
     for row in entries:
@@ -1296,6 +1310,995 @@ def logs(
 
     console.print(table)
     console.print()
+
+
+# -------------------------------------------------------------
+# TASK COMMANDS (MILESTONE 3)
+# -------------------------------------------------------------
+
+
+@app.command(
+    name="task",
+    help="Execute a stateful multi-step task.",
+)
+def task_command(
+    request: str,
+    compensate: bool = typer.Option(
+        False,
+        "--compensate",
+        help="Enable safe rollback / compensation on step failure.",
+    ),
+):
+    """Execute a multi-step task with dependency enforcement and per-step approval."""
+    show_header()
+    show_user_request(request)
+
+    if not check_workspace_requirement("multi-step tasks"):
+        log_event(
+            user_request=request,
+            action="task",
+            risk_level="low",
+            approval_required=False,
+            approval_result="NOT_APPLICABLE",
+            execution_status="BLOCKED",
+            result_summary="Operation blocked: No workspaces configured",
+        )
+        return
+
+    console.print("[bold blue]* Planning task steps...[/bold blue]")
+    steps_spec = plan_task_steps(request)
+
+    if not steps_spec:
+        console.print(
+            Panel(
+                "[yellow]Could not determine steps for this task request.[/yellow]\n\n"
+                "[dim]Try describing the task with clear actions (e.g. 'Move file.pdf to Documents "
+                "and then rename it to final.pdf').[/dim]",
+                title="[bold yellow]Task Planning Failed[/bold yellow]",
+                border_style="yellow",
+            )
+        )
+        return
+
+    task = TaskManager.create_task(request, steps_spec)
+
+    console.print()
+    console.print(f"[bold cyan]Task Created:[/bold cyan] [white]{task.task_id}[/white]")
+    console.print()
+
+    plan_table = Table(
+        title="Planned Steps",
+        title_style="bold cyan",
+        border_style="blue",
+        show_lines=False,
+    )
+    plan_table.add_column("#", style="bold cyan", justify="right")
+    plan_table.add_column("Action", style="white")
+    plan_table.add_column("Arguments", style="dim")
+    plan_table.add_column("Depends On", style="yellow", justify="center")
+
+    for s in task.steps:
+        dep_label = s.depends_on_step_id or "None"
+        args_str = ", ".join(f"{k}={v}" for k, v in s.arguments.items())
+        plan_table.add_row(str(s.step_order), s.action.upper(), args_str, dep_label)
+
+    console.print(plan_table)
+    console.print()
+
+    def confirm_step(action: str, prompt_text: str, details: dict[str, Any]) -> bool:
+        show_action_summary(
+            action=action.capitalize(),
+            risk=get_action_risk(action),
+            details={k: str(v) for k, v in details.items()},
+        )
+        return typer.confirm(prompt_text)
+
+    executed_task = StepExecutor.execute_task(
+        task=task,
+        confirm_callback=confirm_step,
+        compensate_on_failure=compensate,
+    )
+
+    console.print()
+    summary_table = Table(
+        title=f"Task Execution Summary ({executed_task.task_id})",
+        title_style="bold cyan",
+        border_style="blue",
+        show_lines=False,
+    )
+    summary_table.add_column("#", style="bold cyan", justify="right")
+    summary_table.add_column("Action", style="white")
+    summary_table.add_column("Status", justify="center")
+    summary_table.add_column("Output / Result", style="white")
+
+    step_status_colors = {
+        StepStatus.SUCCESS: "bold green",
+        StepStatus.FAILED: "bold red",
+        StepStatus.SKIPPED: "dim yellow",
+        StepStatus.WAITING_FOR_APPROVAL: "bold yellow",
+        StepStatus.RUNNING: "bold cyan",
+        StepStatus.PENDING: "white",
+    }
+
+    for s in executed_task.steps:
+        st_color = step_status_colors.get(s.status, "white")
+        st_text = f"[{st_color}]{s.status.value}[/{st_color}]"
+        out_text = str(s.output) if s.output else (s.error_info or "")
+        if len(out_text) > 50:
+            out_text = out_text[:47] + "..."
+        summary_table.add_row(str(s.step_order), s.action.upper(), st_text, out_text)
+
+    console.print(summary_table)
+    console.print()
+
+    if executed_task.status == TaskStatus.COMPLETED:
+        console.print(
+            Panel(
+                f"[bold green]Task {executed_task.task_id} completed successfully.[/bold green]",
+                title="[bold green]Task Completed[/bold green]",
+                border_style="green",
+            )
+        )
+    elif executed_task.status == TaskStatus.PARTIAL_FAILURE:
+        console.print(
+            Panel(
+                f"[bold yellow]Task {executed_task.task_id} partially failed.[/bold yellow]\n\n"
+                f"[dim]{executed_task.error_summary or 'Some steps failed or were skipped.'}[/dim]",
+                title="[bold yellow]Partial Failure[/bold yellow]",
+                border_style="yellow",
+            )
+        )
+    elif executed_task.status == TaskStatus.CANCELLED:
+        console.print(
+            Panel(
+                f"[bold red]Task {executed_task.task_id} was cancelled by user.[/bold red]",
+                title="[bold red]Task Cancelled[/bold red]",
+                border_style="red",
+            )
+        )
+    else:
+        console.print(
+            Panel(
+                f"[bold red]Task {executed_task.task_id} failed.[/bold red]\n\n"
+                f"[dim]{executed_task.error_summary or 'Execution failed.'}[/dim]",
+                title="[bold red]Task Failed[/bold red]",
+                border_style="red",
+            )
+        )
+
+
+# -------------------------------------------------------------
+# GOAL COMMAND (MILESTONE 5)
+# -------------------------------------------------------------
+
+
+@app.command(
+    name="goal",
+    help="Plan and execute a high-level goal using intelligent reasoning.",
+)
+def goal_command(
+    goal: str,
+    compensate: bool = typer.Option(
+        True,
+        "--compensate",
+        help="Enable safe rollback / compensation on step failure.",
+    ),
+    auto_approve: bool = typer.Option(
+        False,
+        "--yes",
+        "-y",
+        help="Automatically approve the synthesized plan.",
+    ),
+):
+    """
+    Intelligent Goal-to-Plan execution:
+    1. Inspects authorized workspaces for real matching files.
+    2. Synthesizes a structured TaskStep sequence.
+    3. Validates the plan with PlanValidator (actions, paths, permissions, DAG).
+    4. Shows a plan preview with cumulative risk.
+    5. Asks for user approval before modifying files.
+    6. Executes through the existing StepExecutor.
+    """
+    show_header()
+    show_user_request(goal)
+
+    if not check_workspace_requirement("goal planning"):
+        log_event(
+            user_request=goal,
+            action="goal",
+            risk_level="low",
+            approval_required=False,
+            approval_result="NOT_APPLICABLE",
+            execution_status="BLOCKED",
+            result_summary="Operation blocked: No workspaces configured",
+        )
+        return
+
+    console.print("[bold blue]* Analyzing goal and inspecting authorized workspaces...[/bold blue]")
+    plan = GoalPlanner.plan_goal(goal)
+
+    # If zero files discovered or planning stopped safely
+    if not plan.steps:
+        console.print(
+            Panel(
+                f"[yellow]{plan.summary}[/yellow]\n\n"
+                "[dim]Ensure files exist inside enabled workspaces with READ permission.[/dim]",
+                title="[bold yellow]Goal Planning[/bold yellow]",
+                border_style="yellow",
+            )
+        )
+        log_event(
+            user_request=goal,
+            action="goal",
+            risk_level="low",
+            approval_required=False,
+            approval_result="NOT_APPLICABLE",
+            execution_status="NO_MATCH",
+            result_summary=plan.summary,
+        )
+        return
+
+    # Validate plan before showing preview
+    valid, val_reason = PlanValidator.validate_plan(plan.steps)
+    if not valid:
+        console.print(
+            Panel(
+                f"[bold red]Plan rejected by policy validation:[/bold red]\n\n"
+                f"[white]{val_reason}[/white]",
+                title="[bold red]Policy Violation[/bold red]",
+                border_style="red",
+            )
+        )
+        log_event(
+            user_request=goal,
+            action="goal",
+            risk_level=plan.cumulative_risk,
+            approval_required=True,
+            approval_result="NOT_APPLICABLE",
+            execution_status="POLICY_VIOLATION",
+            result_summary=val_reason,
+        )
+        return
+
+    # Display Plan Preview
+    console.print()
+    if plan.target_workspace:
+        console.print(
+            f"[bold cyan]Target Workspace:[/bold cyan] [white]{plan.target_workspace.name}[/white] "
+            f"([dim]{plan.target_workspace.canonical_path}[/dim])"
+        )
+
+    if plan.discovered_files:
+        files_table = Table(
+            title=f"Discovered Files ({len(plan.discovered_files)})",
+            title_style="bold cyan",
+            border_style="blue",
+            show_lines=False,
+        )
+        files_table.add_column("#", style="bold cyan", justify="right")
+        files_table.add_column("File Name", style="white")
+        files_table.add_column("Path", style="dim")
+        for idx, f in enumerate(plan.discovered_files, start=1):
+            f_path = Path(f["path"])
+            files_table.add_row(str(idx), f_path.name, str(f_path))
+        console.print(files_table)
+        console.print()
+
+    # Steps preview table
+    plan_table = Table(
+        title="Proposed Execution Plan",
+        title_style="bold cyan",
+        border_style="blue",
+        show_lines=False,
+    )
+    plan_table.add_column("#", style="bold cyan", justify="right")
+    plan_table.add_column("Action", style="white")
+    plan_table.add_column("Arguments", style="dim")
+    plan_table.add_column("Depends On", style="yellow", justify="center")
+
+    for s in plan.steps:
+        dep_label = str(s.get("depends_on_order")) if s.get("depends_on_order") else "None"
+        args_str = ", ".join(f"{k}={v}" for k, v in s.get("arguments", {}).items())
+        plan_table.add_row(str(s["step_order"]), s["action"].upper(), args_str, dep_label)
+
+    console.print(plan_table)
+    console.print()
+
+    # Risk badge
+    risk_color = RISK_COLORS.get(plan.cumulative_risk, "white")
+    console.print(
+        f"[bold white]Cumulative Plan Risk:[/bold white] "
+        f"[{risk_color}]{plan.cumulative_risk.upper()}[/{risk_color}]"
+    )
+    console.print()
+
+    # Plan-level approval gate
+    if plan.requires_approval and not auto_approve:
+        approved = typer.confirm(f"Execute this plan? ({len(plan.steps)} steps)")
+        if not approved:
+            console.print(
+                Panel(
+                    "[bold yellow]Plan execution cancelled by user.[/bold yellow]\n\n"
+                    "[dim]No directories were created, and no files were moved or deleted.[/dim]",
+                    title="[bold yellow]Cancelled[/bold yellow]",
+                    border_style="yellow",
+                )
+            )
+            log_event(
+                user_request=goal,
+                action="goal",
+                risk_level=plan.cumulative_risk,
+                approval_required=True,
+                approval_result="DENIED",
+                execution_status="CANCELLED",
+                result_summary="Plan approval denied by user",
+            )
+            return
+
+    # Task instantiation & persistence
+    task = TaskManager.create_task(goal, plan.steps)
+    log_event(
+        user_request=goal,
+        action="goal",
+        risk_level=plan.cumulative_risk,
+        approval_required=plan.requires_approval,
+        approval_result="APPROVED" if plan.requires_approval else "NOT_REQUIRED",
+        execution_status="RUNNING",
+        result_summary=f"Task {task.task_id} instantiated with {len(plan.steps)} steps",
+    )
+
+    console.print(f"[bold cyan]Task Created:[/bold cyan] [white]{task.task_id}[/white]")
+    console.print()
+
+    # Execute through existing StepExecutor
+    def confirm_step(action: str, prompt_text: str, details: dict[str, Any]) -> bool:
+        return True
+
+    executed_task = StepExecutor.execute_task(
+        task=task,
+        confirm_callback=confirm_step,
+        compensate_on_failure=compensate,
+    )
+
+    console.print()
+    summary_table = Table(
+        title=f"Task Execution Summary ({executed_task.task_id})",
+        title_style="bold cyan",
+        border_style="blue",
+        show_lines=False,
+    )
+    summary_table.add_column("#", style="bold cyan", justify="right")
+    summary_table.add_column("Action", style="white")
+    summary_table.add_column("Status", justify="center")
+    summary_table.add_column("Output / Result", style="white")
+
+    step_status_colors = {
+        StepStatus.SUCCESS: "bold green",
+        StepStatus.FAILED: "bold red",
+        StepStatus.SKIPPED: "dim yellow",
+        StepStatus.WAITING_FOR_APPROVAL: "bold yellow",
+        StepStatus.RUNNING: "bold cyan",
+        StepStatus.PENDING: "white",
+    }
+
+    for step_item in executed_task.steps:
+        st_color = step_status_colors.get(step_item.status, "white")
+        st_text = f"[{st_color}]{step_item.status.value}[/{st_color}]"
+        out_text = str(step_item.output) if step_item.output else (step_item.error_info or "")
+        if len(out_text) > 50:
+            out_text = out_text[:47] + "..."
+        summary_table.add_row(
+            str(step_item.step_order), step_item.action.upper(), st_text, out_text
+        )
+
+    console.print(summary_table)
+    console.print()
+
+    if executed_task.status == TaskStatus.COMPLETED:
+        console.print(
+            Panel(
+                f"[bold green]Task {executed_task.task_id} completed successfully.[/bold green]",
+                title="[bold green]Goal Completed[/bold green]",
+                border_style="green",
+            )
+        )
+    elif executed_task.status == TaskStatus.PARTIAL_FAILURE:
+        console.print(
+            Panel(
+                f"[bold yellow]Task {executed_task.task_id} partially failed.[/bold yellow]\n\n"
+                f"[dim]{executed_task.error_summary or 'Some steps failed or were skipped.'}[/dim]",
+                title="[bold yellow]Partial Failure[/bold yellow]",
+                border_style="yellow",
+            )
+        )
+    elif executed_task.status == TaskStatus.CANCELLED:
+        console.print(
+            Panel(
+                f"[bold red]Task {executed_task.task_id} was cancelled by user.[/bold red]",
+                title="[bold red]Task Cancelled[/bold red]",
+                border_style="red",
+            )
+        )
+    else:
+        console.print(
+            Panel(
+                f"[bold red]Task {executed_task.task_id} failed.[/bold red]\n\n"
+                f"[dim]{executed_task.error_summary or 'Execution failed.'}[/dim]",
+                title="[bold red]Task Failed[/bold red]",
+                border_style="red",
+            )
+        )
+
+
+@app.command(
+    name="tasks",
+    help="List recent multi-step tasks.",
+)
+def tasks_command(
+    limit: int = typer.Option(
+        10,
+        "--limit",
+        help="Number of recent tasks to display.",
+    ),
+):
+    """Display recent multi-step tasks in a clean Rich table."""
+    show_header()
+    tasks = TaskManager.list_tasks(limit=limit)
+
+    if not tasks:
+        console.print(
+            Panel(
+                "[yellow]No tasks found.[/yellow]\n\n"
+                '[dim]Run multi-step tasks with: python -m app.main task "..."[/dim]',
+                title="[bold cyan]Task History[/bold cyan]",
+                border_style="cyan",
+            )
+        )
+        return
+
+    table = Table(
+        title=f"Task History (Showing latest {len(tasks)})",
+        title_style="bold cyan",
+        border_style="blue",
+        show_lines=False,
+    )
+    table.add_column("Task ID", style="bold cyan")
+    table.add_column("Status", justify="center")
+    table.add_column("Steps", justify="center")
+    table.add_column("Created", style="green")
+    table.add_column("Request", style="white")
+
+    status_styles = {
+        TaskStatus.COMPLETED: "bold green",
+        TaskStatus.PARTIAL_FAILURE: "bold yellow",
+        TaskStatus.FAILED: "bold red",
+        TaskStatus.CANCELLED: "bold red",
+        TaskStatus.RUNNING: "bold cyan",
+        TaskStatus.PENDING: "white",
+        TaskStatus.WAITING_FOR_APPROVAL: "bold yellow",
+    }
+
+    for t in tasks:
+        st_color = status_styles.get(t.status, "white")
+        st_text = f"[{st_color}]{t.status.value}[/{st_color}]"
+        req = t.user_request
+        if len(req) > 40:
+            req = req[:37] + "..."
+        table.add_row(t.task_id, st_text, str(len(t.steps)), t.created_at, req)
+
+    console.print(table)
+    console.print()
+
+
+@app.command(
+    name="task-status",
+    help="View detailed status of a task and its steps.",
+)
+def task_status_command(task_id: str):
+    """Display detailed execution state and steps for a specific task."""
+    show_header()
+    task = TaskManager.get_task(task_id)
+
+    if not task:
+        console.print(
+            Panel(
+                f"[yellow]Task not found: {task_id}[/yellow]",
+                title="[bold yellow]Not Found[/bold yellow]",
+                border_style="yellow",
+            )
+        )
+        return
+
+    status_styles = {
+        TaskStatus.COMPLETED: "bold green",
+        TaskStatus.PARTIAL_FAILURE: "bold yellow",
+        TaskStatus.FAILED: "bold red",
+        TaskStatus.CANCELLED: "bold red",
+        TaskStatus.RUNNING: "bold cyan",
+        TaskStatus.PENDING: "white",
+        TaskStatus.WAITING_FOR_APPROVAL: "bold yellow",
+    }
+    st_color = status_styles.get(task.status, "white")
+    st_text = f"[{st_color}]{task.status.value}[/{st_color}]"
+
+    info_lines = [
+        f"[bold white]Task ID :[/bold white] {task.task_id}",
+        f"[bold white]Status  :[/bold white] {st_text}",
+        f"[bold white]Created :[/bold white] {task.created_at}",
+        f"[bold white]Updated :[/bold white] {task.updated_at}",
+        f"[bold white]Request :[/bold white] {task.user_request}",
+    ]
+    if task.error_summary:
+        info_lines.append(f"[bold red]Error   :[/bold red] {task.error_summary}")
+
+    console.print(
+        Panel(
+            "\n".join(info_lines),
+            title="[bold cyan]Task Details[/bold cyan]",
+            border_style="cyan",
+        )
+    )
+    console.print()
+
+    table = Table(
+        title=f"Steps ({len(task.steps)})",
+        title_style="bold cyan",
+        border_style="blue",
+        show_lines=False,
+    )
+    table.add_column("#", style="bold cyan", justify="right")
+    table.add_column("Step ID", style="white")
+    table.add_column("Action", style="white")
+    table.add_column("Status", justify="center")
+    table.add_column("Attempts", justify="center")
+    table.add_column("Output / Details", style="white")
+
+    step_status_colors = {
+        StepStatus.SUCCESS: "bold green",
+        StepStatus.FAILED: "bold red",
+        StepStatus.SKIPPED: "dim yellow",
+        StepStatus.WAITING_FOR_APPROVAL: "bold yellow",
+        StepStatus.RUNNING: "bold cyan",
+        StepStatus.PENDING: "white",
+    }
+
+    for s in task.steps:
+        st_c = step_status_colors.get(s.status, "white")
+        st_badge = f"[{st_c}]{s.status.value}[/{st_c}]"
+        detail = str(s.output) if s.output else (s.error_info or "")
+        table.add_row(
+            str(s.step_order), s.step_id, s.action.upper(), st_badge, str(s.attempts), detail
+        )
+
+    console.print(table)
+    console.print()
+
+
+# -------------------------------------------------------------
+# TASK RESUME COMMAND (MILESTONE 4)
+# -------------------------------------------------------------
+
+
+@app.command(
+    name="task-resume",
+    help="Safely resume an interrupted or failed task from the first incomplete step.",
+)
+def task_resume_command(
+    task_id: str = typer.Argument(..., help="Task ID to resume."),
+    compensate: bool = typer.Option(
+        False,
+        "--compensate",
+        help="Enable safe rollback / compensation on step failure.",
+    ),
+):
+    """Safely resume an incomplete persistent task."""
+    show_header()
+
+    if not check_workspace_requirement("task resumption"):
+        return
+
+    task = TaskManager.get_task(task_id)
+    if not task:
+        console.print(
+            Panel(
+                f"[yellow]Task not found: {task_id}[/yellow]",
+                title="[bold yellow]Not Found[/bold yellow]",
+                border_style="yellow",
+            )
+        )
+        return
+
+    if task.status == TaskStatus.COMPLETED:
+        console.print(
+            Panel(
+                f"[bold green]Task {task.task_id} is already completed.[/bold green]\n\n"
+                "[dim]All steps were previously verified successfully. No resumption needed.[/dim]",
+                title="[bold green]Already Completed[/bold green]",
+                border_style="green",
+            )
+        )
+        return
+
+    completed_steps = [s for s in task.steps if s.status == StepStatus.SUCCESS]
+    incomplete_steps = [s for s in task.steps if s.status != StepStatus.SUCCESS]
+
+    if not incomplete_steps:
+        console.print(
+            Panel(
+                f"[bold green]All steps in task {task.task_id} are already successful."
+                f"[/bold green]",
+                title="[bold green]Nothing to Resume[/bold green]",
+                border_style="green",
+            )
+        )
+        return
+
+    first_incomplete = incomplete_steps[0]
+
+    console.print(
+        Panel(
+            f"[bold white]Task ID            :[/bold white] {task.task_id}\n"
+            f"[bold white]Current Status     :[/bold white] {task.status.value}\n"
+            f"[bold white]Completed Steps    :[/bold white] {len(completed_steps)} of "
+            f"{len(task.steps)}\n"
+            f"[bold white]Resuming From Step :[/bold white] #{first_incomplete.step_order} "
+            f"({first_incomplete.action.upper()})\n"
+            f"[bold white]Original Request   :[/bold white] {task.user_request}",
+            title="[bold cyan]Task Resume Details[/bold cyan]",
+            border_style="cyan",
+        )
+    )
+    console.print()
+
+    # Reset incomplete steps to PENDING for fresh evaluation
+    for s in incomplete_steps:
+        TaskManager.update_step_state(s, StepStatus.PENDING, attempts=0, error_info=None)
+
+    def confirm_step(action: str, prompt_text: str, details: dict[str, Any]) -> bool:
+        show_action_summary(
+            action=action.capitalize(),
+            risk=get_action_risk(action),
+            details={k: str(v) for k, v in details.items()},
+        )
+        return typer.confirm(prompt_text)
+
+    executed_task = StepExecutor.execute_task(
+        task=task,
+        confirm_callback=confirm_step,
+        compensate_on_failure=compensate,
+    )
+
+    console.print()
+    summary_table = Table(
+        title=f"Task Execution Summary ({executed_task.task_id})",
+        title_style="bold cyan",
+        border_style="blue",
+        show_lines=False,
+    )
+    summary_table.add_column("#", style="bold cyan", justify="right")
+    summary_table.add_column("Action", style="white")
+    summary_table.add_column("Status", justify="center")
+    summary_table.add_column("Output / Result", style="white")
+
+    step_status_colors = {
+        StepStatus.SUCCESS: "bold green",
+        StepStatus.FAILED: "bold red",
+        StepStatus.SKIPPED: "dim yellow",
+        StepStatus.WAITING_FOR_APPROVAL: "bold yellow",
+        StepStatus.RUNNING: "bold cyan",
+        StepStatus.PENDING: "white",
+    }
+
+    for s in executed_task.steps:
+        st_color = step_status_colors.get(s.status, "white")
+        st_text = f"[{st_color}]{s.status.value}[/{st_color}]"
+        out_text = str(s.output) if s.output else (s.error_info or "")
+        if len(out_text) > 50:
+            out_text = out_text[:47] + "..."
+        summary_table.add_row(str(s.step_order), s.action.upper(), st_text, out_text)
+
+    console.print(summary_table)
+    console.print()
+
+    if executed_task.status == TaskStatus.COMPLETED:
+        console.print(
+            Panel(
+                f"[bold green]Task {executed_task.task_id} resumed and completed "
+                f"successfully.[/bold green]",
+                title="[bold green]Task Completed[/bold green]",
+                border_style="green",
+            )
+        )
+    elif executed_task.status == TaskStatus.PARTIAL_FAILURE:
+        console.print(
+            Panel(
+                f"[bold yellow]Task {executed_task.task_id} partially failed on resumption."
+                f"[/bold yellow]\n\n"
+                f"[dim]{executed_task.error_summary or 'Some steps failed or were skipped.'}[/dim]",
+                title="[bold yellow]Partial Failure[/bold yellow]",
+                border_style="yellow",
+            )
+        )
+    elif executed_task.status == TaskStatus.CANCELLED:
+        console.print(
+            Panel(
+                f"[bold red]Task {executed_task.task_id} was cancelled by user on "
+                f"resumption.[/bold red]",
+                title="[bold red]Task Cancelled[/bold red]",
+                border_style="red",
+            )
+        )
+    else:
+        console.print(
+            Panel(
+                f"[bold red]Task {executed_task.task_id} failed on resumption.[/bold red]\n\n"
+                f"[dim]{executed_task.error_summary or 'Execution failed.'}[/dim]",
+                title="[bold red]Task Failed[/bold red]",
+                border_style="red",
+            )
+        )
+
+
+# -------------------------------------------------------------
+# WORKSPACE COMMANDS (MILESTONE 4)
+# -------------------------------------------------------------
+
+
+@app.command(
+    name="workspace",
+    help="Display configured workspaces and their permissions.",
+)
+def workspace_command():
+    """Display configured workspaces and their permissions."""
+    show_header()
+    workspaces = WorkspaceManager.list_workspaces()
+
+    if not workspaces:
+        console.print(
+            Panel(
+                "[yellow]No workspaces configured.[/yellow]\n\n"
+                "The agent requires at least one explicitly configured workspace to operate "
+                "safely.\n\n"
+                "[bold white]To add a workspace:[/bold white]\n"
+                '  py -m app.main workspace-add "<path>" [--name "<label>"]\n\n'
+                "[dim]Example:[/dim]\n"
+                '  py -m app.main workspace-add "manual_test" --name "manual_test"',
+                title="[bold yellow]No Configured Workspaces[/bold yellow]",
+                border_style="yellow",
+            )
+        )
+        return
+
+    table = Table(
+        title=f"Configured Workspaces ({len(workspaces)})",
+        title_style="bold cyan",
+        border_style="blue",
+        show_lines=False,
+    )
+    table.add_column("Workspace ID", style="bold cyan")
+    table.add_column("Name", style="white")
+    table.add_column("Canonical Path", style="dim")
+    table.add_column("Status", justify="center")
+    table.add_column("Permissions", style="green")
+
+    for ws in workspaces:
+        status_text = (
+            "[bold green]ENABLED[/bold green]" if ws.enabled else "[bold red]DISABLED[/bold red]"
+        )
+        perms_text = ", ".join(sorted(list(ws.permissions)))
+        table.add_row(ws.workspace_id, ws.name, str(ws.canonical_path), status_text, perms_text)
+
+    console.print(table)
+    console.print()
+
+
+@app.command(
+    name="workspace-add",
+    help="Add and authorize a new local directory as a persistent workspace.",
+)
+def workspace_add_command(
+    path: str = typer.Argument(..., help="Path to local directory to authorize as workspace."),
+    name: Optional[str] = typer.Option(None, "--name", "-n", help="Optional human-readable label."),
+    permissions: str = typer.Option(
+        "READ,WRITE,DELETE",
+        "--permissions",
+        "-p",
+        help="Comma-separated permissions (READ, WRITE, DELETE).",
+    ),
+):
+    """Add and persist a new workspace."""
+    show_header()
+    perm_list = [p.strip().upper() for p in permissions.split(",") if p.strip()]
+    invalid_perms = [p for p in perm_list if p not in ("READ", "WRITE", "DELETE")]
+    if invalid_perms:
+        console.print(
+            Panel(
+                f"[bold red]Invalid permission(s): {', '.join(invalid_perms)}[/bold red]\n\n"
+                "Allowed permissions are: READ, WRITE, DELETE",
+                title="[bold red]Error[/bold red]",
+                border_style="red",
+            )
+        )
+        return
+
+    try:
+        ws = WorkspaceManager.add_workspace(
+            path=path,
+            name=name,
+            permissions=perm_list,
+        )
+        perms_str = ", ".join(sorted(list(ws.permissions)))
+        console.print(
+            Panel(
+                f"[bold green]Workspace authorized successfully![/bold green]\n\n"
+                f"[bold white]ID          :[/bold white] {ws.workspace_id}\n"
+                f"[bold white]Name        :[/bold white] {ws.name}\n"
+                f"[bold white]Canonical   :[/bold white] {ws.canonical_path}\n"
+                f"[bold white]Status      :[/bold white] ENABLED\n"
+                f"[bold white]Permissions :[/bold white] {perms_str}",
+                title="[bold green]Workspace Added[/bold green]",
+                border_style="green",
+            )
+        )
+    except Exception as e:
+        console.print(
+            Panel(
+                f"[bold red]Failed to add workspace:[/bold red] {e}",
+                title="[bold red]Error[/bold red]",
+                border_style="red",
+            )
+        )
+
+
+@app.command(
+    name="workspace-remove",
+    help="Remove a workspace from configuration without affecting task history.",
+)
+def workspace_remove_command(
+    workspace_id: str = typer.Argument(..., help="Workspace ID to remove."),
+):
+    """Remove a workspace."""
+    show_header()
+    ws = WorkspaceManager.get_workspace(workspace_id)
+    if not ws:
+        console.print(
+            Panel(
+                f"[yellow]Workspace not found: {workspace_id}[/yellow]",
+                title="[bold yellow]Not Found[/bold yellow]",
+                border_style="yellow",
+            )
+        )
+        return
+
+    success = WorkspaceManager.remove_workspace(workspace_id)
+    if success:
+        console.print(
+            Panel(
+                f"[bold green]Workspace '{ws.name}' ({workspace_id}) removed "
+                f"successfully.[/bold green]\n\n"
+                "[dim]Historical tasks and audit logs remain preserved.[/dim]",
+                title="[bold green]Workspace Removed[/bold green]",
+                border_style="green",
+            )
+        )
+    else:
+        console.print(
+            Panel(
+                f"[bold red]Failed to remove workspace: {workspace_id}[/bold red]",
+                title="[bold red]Error[/bold red]",
+                border_style="red",
+            )
+        )
+
+
+@app.command(
+    name="workspace-enable",
+    help="Enable an existing workspace.",
+)
+def workspace_enable_command(
+    workspace_id: str = typer.Argument(..., help="Workspace ID to enable."),
+):
+    """Enable a workspace."""
+    show_header()
+    ws = WorkspaceManager.get_workspace(workspace_id)
+    if not ws:
+        console.print(
+            Panel(
+                f"[yellow]Workspace not found: {workspace_id}[/yellow]",
+                title="[bold yellow]Not Found[/bold yellow]",
+                border_style="yellow",
+            )
+        )
+        return
+
+    WorkspaceManager.enable_workspace(workspace_id)
+    console.print(
+        Panel(
+            f"[bold green]Workspace '{ws.name}' ({workspace_id}) is now ENABLED.[/bold green]",
+            title="[bold green]Workspace Enabled[/bold green]",
+            border_style="green",
+        )
+    )
+
+
+@app.command(
+    name="workspace-disable",
+    help="Disable an existing workspace.",
+)
+def workspace_disable_command(
+    workspace_id: str = typer.Argument(..., help="Workspace ID to disable."),
+):
+    """Disable a workspace."""
+    show_header()
+    ws = WorkspaceManager.get_workspace(workspace_id)
+    if not ws:
+        console.print(
+            Panel(
+                f"[yellow]Workspace not found: {workspace_id}[/yellow]",
+                title="[bold yellow]Not Found[/bold yellow]",
+                border_style="yellow",
+            )
+        )
+        return
+
+    WorkspaceManager.disable_workspace(workspace_id)
+    console.print(
+        Panel(
+            f"[bold yellow]Workspace '{ws.name}' ({workspace_id}) is now "
+            f"DISABLED.[/bold yellow]\n\n"
+            "[dim]Agent operations inside this workspace will be blocked until re-enabled.[/dim]",
+            title="[bold yellow]Workspace Disabled[/bold yellow]",
+            border_style="yellow",
+        )
+    )
+
+
+@app.command(
+    name="workspace-permissions",
+    help="Update permissions for an existing workspace (e.g. READ or READ,WRITE).",
+)
+def workspace_permissions_command(
+    workspace_id: str = typer.Argument(..., help="Workspace ID to modify."),
+    permissions: str = typer.Argument(
+        ..., help="Comma-separated permissions (READ, WRITE, DELETE)."
+    ),
+):
+    """Update permissions for a workspace."""
+    show_header()
+    ws = WorkspaceManager.get_workspace(workspace_id)
+    if not ws:
+        console.print(
+            Panel(
+                f"[yellow]Workspace not found: {workspace_id}[/yellow]",
+                title="[bold yellow]Not Found[/bold yellow]",
+                border_style="yellow",
+            )
+        )
+        return
+
+    perm_list = [p.strip().upper() for p in permissions.split(",") if p.strip()]
+    invalid_perms = [p for p in perm_list if p not in ("READ", "WRITE", "DELETE")]
+    if invalid_perms:
+        console.print(
+            Panel(
+                f"[bold red]Invalid permission(s): {', '.join(invalid_perms)}[/bold red]\n\n"
+                "Allowed permissions are: READ, WRITE, DELETE",
+                title="[bold red]Error[/bold red]",
+                border_style="red",
+            )
+        )
+        return
+
+    WorkspaceManager.set_permissions(workspace_id, perm_list)
+    perms_str = ", ".join(sorted(perm_list))
+    console.print(
+        Panel(
+            f"[bold green]Updated permissions for '{ws.name}' ({workspace_id}):[/bold green]\n\n"
+            f"[bold white]New Permissions:[/bold white] {perms_str}",
+            title="[bold green]Permissions Updated[/bold green]",
+            border_style="green",
+        )
+    )
 
 
 if __name__ == "__main__":

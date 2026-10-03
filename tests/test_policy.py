@@ -32,6 +32,7 @@ def test_check_risk_low():
 # get_action_risk  — structured action classification
 # ------------------------------------------------------------------
 
+
 def test_get_action_risk_low():
     """Read-only actions must return low risk."""
     assert get_action_risk("search") == "low"
@@ -66,6 +67,7 @@ def test_get_action_risk_unknown_defaults_low():
 # ------------------------------------------------------------------
 # requires_approval  — approval gate
 # ------------------------------------------------------------------
+
 
 def test_requires_approval():
     """Low risk must not require approval; medium and high must."""

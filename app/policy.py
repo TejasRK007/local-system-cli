@@ -18,10 +18,12 @@ RISK_COLORS: dict[str, str] = {
 # Authoritative mapping: structured action name → risk tier
 _ACTION_RISK_MAP: dict[str, str] = {
     "search": "low",
-    "find":   "low",
-    "list":   "low",
+    "find": "low",
+    "list": "low",
+    "create_directory": "medium",
+    "mkdir": "medium",
     "rename": "medium",
-    "move":   "medium",
+    "move": "medium",
     "delete": "high",
 }
 

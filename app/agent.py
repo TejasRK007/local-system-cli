@@ -8,6 +8,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_groq import ChatGroq
 
 from app.tools.filesystem import search_files
+from app.workspaces import Permission, WorkspaceManager
 
 load_dotenv()
 
@@ -31,251 +32,404 @@ KNOWN_DIRECTORIES = {
 }
 
 
-def extract_move_request(request: str):
+def extract_intent(request: str) -> dict:
     """
-    Understand a natural-language file move request.
+    Understand natural-language task intent using LLM extraction.
 
-    This function only extracts information.
-    It does not move any files.
+    Returns structured dict with action type and extracted parameter strings.
+    This function ONLY extracts intent/strings; application code performs validation and execution.
     """
-
     prompt = f"""
 You are an intent extraction component for a local file automation system.
 
-Determine whether the user's request is a file MOVE request.
+Determine the user's intent and extract relevant fields.
 
 User request:
 {request}
 
-Supported directories:
+Analyze if the request is one of:
+- "move": Moving a file from a source location/directory to a destination directory.
+- "rename": Renaming a file to a new filename.
+- "delete": Deleting or removing a file.
+- "search": Searching, finding, or listing files.
+- "none": None of the above or unsupported request.
 
-- Downloads
-- Documents
-- Desktop
+Return ONLY valid JSON matching ONE of the schemas below:
 
-If this is a move request, return ONLY valid JSON:
-
+For MOVE requests:
 {{
     "action": "move",
-    "filename": "exact filename",
-    "source_directory": "Downloads or Documents or Desktop or null",
-    "destination_directory": "Downloads or Documents or Desktop"
+    "source": "exact source file path or filename provided in request",
+    "destination": "exact destination directory or path provided in request"
 }}
 
-Rules:
+For RENAME requests:
+{{
+    "action": "rename",
+    "source": "exact current file path or filename provided in request",
+    "new_name": "exact new filename provided in request",
+    "directory": "explicit directory if specified, otherwise null"
+}}
 
-1. Preserve the filename exactly as provided.
-2. Do not invent a filename.
-3. If the source directory is not specified, use null.
-4. The destination directory must be Downloads, Documents, or Desktop.
-5. Do not perform the move.
-6. Return JSON only.
+For DELETE requests:
+{{
+    "action": "delete",
+    "target": "exact file path or filename to delete",
+    "directory": "explicit directory if specified, otherwise null"
+}}
 
-If this is NOT a move request, return:
+For SEARCH requests:
+{{
+    "action": "search",
+    "filename": "filename if specified, otherwise null",
+    "extension": "file extension if specified (e.g. .pdf), otherwise null",
+    "directory": "directory if specified, otherwise null"
+}}
 
+For NONE (unrecognized / general question):
 {{
     "action": "none"
 }}
+
+Rules:
+1. Extract exact filenames, file paths, and directory paths as written in the user request.
+2. Do NOT restrict directory names to predefined lists.
+3. Do NOT invent filenames or directories.
+4. Return valid JSON only with no markdown formatting.
 """
 
-    response = llm.invoke(prompt)
-
-    content = str(response.content).strip()
-
     try:
+        response = llm.invoke(prompt)
+        content = str(response.content).strip()
+        if content.startswith("```"):
+            content = content.split("\n", 1)[-1]
+            if content.endswith("```"):
+                content = content.rsplit("```", 1)[0]
+            content = content.strip()
+            if content.startswith("json"):
+                content = content[4:].strip()
         return json.loads(content)
-    except json.JSONDecodeError:
+    except Exception:
         return {"action": "none"}
+
+
+def extract_move_request(request: str):
+    """Backwards compatibility helper."""
+    intent = extract_intent(request)
+    if intent.get("action") == "move":
+        return {
+            "action": "move",
+            "filename": intent.get("source"),
+            "source_directory": None,
+            "destination_directory": intent.get("destination"),
+        }
+    return {"action": "none"}
 
 
 def extract_rename_request(request: str):
+    """Backwards compatibility helper."""
+    intent = extract_intent(request)
+    if intent.get("action") == "rename":
+        return {
+            "action": "rename",
+            "filename": intent.get("source"),
+            "new_name": intent.get("new_name"),
+            "directory": intent.get("directory"),
+        }
+    return {"action": "none"}
+
+
+def resolve_directory(dir_str: str | None) -> Path | None:
+    """Resolve natural language directory alias, workspace name, or path string."""
+    if not dir_str:
+        return None
+    dir_clean = dir_str.strip().lower()
+
+    # 1. Check configured workspaces first
+    ws = WorkspaceManager.get_workspace_by_name(dir_clean)
+    if ws:
+        return ws.canonical_path
+
+    # 2. Check known static aliases
+    if dir_clean in KNOWN_DIRECTORIES:
+        return KNOWN_DIRECTORIES[dir_clean]
+
+    # 3. Handle explicit paths
+    p = Path(dir_str).expanduser()
+    if p.is_absolute():
+        return p
+    return (Path.cwd() / p).resolve()
+
+
+def resolve_file_sources(source_str: str, dir_str: str | None = None) -> list[dict]:
     """
-    Understand a natural-language file rename request.
-
-    This function only extracts information.
-    It does not rename any files.
+    Resolve source_str (which may be a full/relative path or a bare filename)
+    to a list of matching file dicts: [{'path': str, 'created': str}, ...].
     """
+    if not source_str:
+        return []
 
-    prompt = f"""
-You are an intent extraction component for a local file automation system.
+    source_path = Path(source_str).expanduser()
 
-Determine whether the user's request is a file RENAME request.
+    # 1. If source_str represents an explicit path (has path separators or is absolute)
+    if source_path.is_absolute() or len(source_path.parts) > 1:
+        resolved = (
+            source_path if source_path.is_absolute() else (Path.cwd() / source_path).resolve()
+        )
+        if resolved.exists() and resolved.is_file():
+            stat = resolved.stat()
+            birthtime = getattr(stat, "st_birthtime", None)
+            timestamp = birthtime if birthtime is not None else stat.st_ctime
+            created_str = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
+            return [{"path": str(resolved), "created": created_str}]
+        else:
+            return []
 
-User request:
-{request}
+    # 2. Also check if source_str exists as a file directly in current working directory
+    cwd_file = (Path.cwd() / source_str).resolve()
+    if cwd_file.exists() and cwd_file.is_file():
+        stat = cwd_file.stat()
+        birthtime = getattr(stat, "st_birthtime", None)
+        timestamp = birthtime if birthtime is not None else stat.st_ctime
+        created_str = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
+        return [{"path": str(cwd_file), "created": created_str}]
 
-Supported directories:
-
-- Downloads
-- Documents
-- Desktop
-
-If this is a rename request, return ONLY valid JSON:
-
-{{
-    "action": "rename",
-    "filename": "exact current filename",
-    "new_name": "exact new filename",
-    "directory": "Downloads or Documents or Desktop or null"
-}}
-
-Rules:
-
-1. Preserve the current filename exactly as provided.
-2. Preserve the new filename exactly as provided.
-3. Do not invent filenames.
-4. If the directory is not specified, use null.
-5. The directory, if provided, must be Downloads, Documents, or Desktop.
-6. Do not perform the rename.
-7. Return JSON only.
-
-Example:
-
-User:
-Rename agent_renamed_test.txt to final_test.txt
-
-Return:
-
-{{
-    "action": "rename",
-    "filename": "agent_renamed_test.txt",
-    "new_name": "final_test.txt",
-    "directory": null
-}}
-
-If this is NOT a rename request, return:
-
-{{
-    "action": "none"
-}}
-"""
-
-    response = llm.invoke(prompt)
-
-    content = str(response.content).strip()
-
-    try:
-        return json.loads(content)
-    except json.JSONDecodeError:
-        return {"action": "none"}
+    # 3. Otherwise, treat source_str as a bare filename and search
+    filename = source_path.name
+    if dir_str:
+        resolved_d = resolve_directory(dir_str)
+        target_dir = str(resolved_d) if resolved_d else dir_str
+        search_res = search_files.invoke(
+            {
+                "directory": target_dir,
+                "extension": "",
+                "filename": filename,
+                "start_date": "",
+                "end_date": "",
+            }
+        )
+        return search_res.get("files", [])
+    else:
+        matched = []
+        if WorkspaceManager.count_workspaces() > 0:
+            for ws in WorkspaceManager.list_workspaces(enabled_only=True):
+                if Permission.READ.value in ws.permissions:
+                    search_res = search_files.invoke(
+                        {
+                            "directory": str(ws.canonical_path),
+                            "extension": "",
+                            "filename": filename,
+                            "start_date": "",
+                            "end_date": "",
+                        }
+                    )
+                    matched.extend(search_res.get("files", []))
+        else:
+            for d in KNOWN_DIRECTORIES:
+                search_res = search_files.invoke(
+                    {
+                        "directory": d,
+                        "extension": "",
+                        "filename": filename,
+                        "start_date": "",
+                        "end_date": "",
+                    }
+                )
+                matched.extend(search_res.get("files", []))
+        return matched
 
 
 def run_agent(request: str):
     current_date = datetime.now().strftime("%Y-%m-%d")
     current_day = datetime.now().strftime("%A")
 
+    intent = extract_intent(request)
+    action = intent.get("action")
+
     # ---------------------------------------------------------
-    # FIRST: CHECK FOR MOVE INTENT
+    # MOVE INTENT
     # ---------------------------------------------------------
+    if action == "move":
+        source_str = intent.get("source") or ""
+        dest_str = intent.get("destination") or ""
 
-    move_intent = extract_move_request(request)
-
-    if move_intent.get("action") == "move":
-
-        filename = move_intent.get("filename")
-        source_directory = move_intent.get("source_directory")
-        destination_directory = move_intent.get(
-            "destination_directory"
-        )
-
-        if not filename or not destination_directory:
+        if not source_str or not dest_str:
             return "UNSUPPORTED_REQUEST"
 
-        if source_directory:
-            # User explicitly named a directory — search only there.
-            search_result = search_files.invoke(
-                {
-                    "directory": source_directory,
-                    "extension": "",
-                    "filename": filename,
-                    "start_date": "",
-                    "end_date": "",
-                }
-            )
-            matched_files = search_result.get("files", [])
-        else:
-            # No directory specified — search ALL allowed directories
-            # so ambiguous filenames are always detected.
-            matched_files = []
-            for dir_name in KNOWN_DIRECTORIES:
-                search_result = search_files.invoke(
-                    {
-                        "directory": dir_name,
-                        "extension": "",
-                        "filename": filename,
-                        "start_date": "",
-                        "end_date": "",
-                    }
-                )
-                matched_files.extend(search_result.get("files", []))
+        resolved_dest = resolve_directory(dest_str)
+        if not resolved_dest:
+            return "UNSUPPORTED_REQUEST"
+
+        matched_files = resolve_file_sources(source_str)
 
         return {
             "action": "move",
             "source_files": matched_files,
             "count": len(matched_files),
-            "destination": str(
-                KNOWN_DIRECTORIES[
-                    destination_directory.lower()
-                ]
-            ),
-            "destination_name": destination_directory,
-            "directory_specified": bool(source_directory),
+            "destination": str(resolved_dest),
+            "destination_name": dest_str,
+            "directory_specified": bool(len(Path(source_str).parts) > 1),
         }
 
     # ---------------------------------------------------------
-    # SECOND: CHECK FOR RENAME INTENT
+    # RENAME INTENT
     # ---------------------------------------------------------
+    if action == "rename":
+        source_str = intent.get("source") or ""
+        new_name = intent.get("new_name") or ""
+        dir_str = intent.get("directory")
 
-    rename_intent = extract_rename_request(request)
-
-    if rename_intent.get("action") == "rename":
-
-        filename = rename_intent.get("filename")
-        new_name = rename_intent.get("new_name")
-        directory = rename_intent.get("directory")
-
-        if not filename or not new_name:
+        if not source_str or not new_name:
             return "UNSUPPORTED_REQUEST"
 
-        if directory:
-            # User explicitly named a directory — search only there.
-            search_result = search_files.invoke(
-                {
-                    "directory": directory,
-                    "extension": "",
-                    "filename": filename,
-                    "start_date": "",
-                    "end_date": "",
-                }
-            )
-            matched_files = search_result.get("files", [])
-        else:
-            # No directory specified — search ALL allowed directories
-            # so ambiguous filenames are always detected.
-            matched_files = []
-            for dir_name in KNOWN_DIRECTORIES:
-                search_result = search_files.invoke(
-                    {
-                        "directory": dir_name,
-                        "extension": "",
-                        "filename": filename,
-                        "start_date": "",
-                        "end_date": "",
-                    }
-                )
-                matched_files.extend(search_result.get("files", []))
+        matched_files = resolve_file_sources(source_str, dir_str=dir_str)
 
         return {
             "action": "rename",
             "source_files": matched_files,
             "count": len(matched_files),
             "new_name": new_name,
-            "directory_specified": bool(directory),
+            "directory_specified": bool(dir_str or len(Path(source_str).parts) > 1),
         }
 
     # ---------------------------------------------------------
-    # NORMAL SEARCH / DELETE AGENT
+    # DELETE INTENT
     # ---------------------------------------------------------
+    if action == "delete":
+        target_str = intent.get("target") or ""
+        dir_str = intent.get("directory")
+
+        if not target_str:
+            return "UNSUPPORTED_REQUEST"
+
+        matched_files = resolve_file_sources(target_str, dir_str=dir_str)
+
+        return {
+            "action": "delete",
+            "found": len(matched_files) > 0,
+            "count": len(matched_files),
+            "files": matched_files,
+        }
+
+    # ---------------------------------------------------------
+    # SEARCH INTENT — workspace-aware explicit branch
+    # ---------------------------------------------------------
+    if action == "search":
+        filename = intent.get("filename") or ""
+        extension = intent.get("extension") or ""
+        dir_str = intent.get("directory")
+
+        # Normalize: if the LLM split "m4_test.txt" into filename="m4_test" and
+        # extension=".txt", recombine them. search_files does an exact file.name
+        # match when filename is set, so the full name is required.
+        if filename and extension and not filename.endswith(extension):
+            filename = filename + extension
+            extension = ""
+
+        if dir_str:
+            # Resolve the specified directory through the workspace-aware resolver
+            resolved_dir = resolve_directory(dir_str)
+            if not resolved_dir:
+                return {
+                    "action": "search",
+                    "found": False,
+                    "files": [],
+                    "count": 0,
+                    "directory": dir_str,
+                    "filename": filename,
+                    "extension": extension,
+                    "start_date": "",
+                    "end_date": "",
+                    "message": f"Location '{dir_str}' could not be resolved.",
+                }
+            # Workspace authorization check when workspaces are configured
+            if WorkspaceManager.count_workspaces() > 0:
+                ok, reason, _ = WorkspaceManager.check_workspace_authorization(
+                    resolved_dir, Permission.READ.value
+                )
+                if not ok:
+                    return {
+                        "action": "search",
+                        "found": False,
+                        "files": [],
+                        "count": 0,
+                        "directory": str(resolved_dir),
+                        "filename": filename,
+                        "extension": extension,
+                        "start_date": "",
+                        "end_date": "",
+                        "message": f"Search blocked: {reason}",
+                    }
+            result = search_files.invoke(
+                {
+                    "directory": str(resolved_dir),
+                    "filename": filename,
+                    "extension": extension,
+                    "start_date": "",
+                    "end_date": "",
+                }
+            )
+            return result
+        else:
+            # No directory specified — search all enabled READ workspaces when configured
+            if WorkspaceManager.count_workspaces() > 0:
+                matched: list[dict] = []
+                for ws in WorkspaceManager.list_workspaces(enabled_only=True):
+                    if Permission.READ.value in ws.permissions:
+                        res = search_files.invoke(
+                            {
+                                "directory": str(ws.canonical_path),
+                                "filename": filename,
+                                "extension": extension,
+                                "start_date": "",
+                                "end_date": "",
+                            }
+                        )
+                        matched.extend(res.get("files", []))
+                return {
+                    "action": "search",
+                    "found": len(matched) > 0,
+                    "count": len(matched),
+                    "files": matched,
+                    "directory": "configured workspaces",
+                    "filename": filename,
+                    "extension": extension,
+                    "start_date": "",
+                    "end_date": "",
+                }
+            # No workspaces configured — fall through to legacy LLM path below
+
+    # ---------------------------------------------------------
+    # NORMAL SEARCH / DELETE AGENT  (legacy / LLM tool-call path)
+    # ---------------------------------------------------------
+
+    # Build workspace-aware directory instructions for the LLM prompt
+    _ws_count = WorkspaceManager.count_workspaces()
+    if _ws_count > 0:
+        _ws_lines = "\n".join(
+            f"- {ws.name}: {ws.canonical_path}"
+            for ws in WorkspaceManager.list_workspaces(enabled_only=True)
+            if Permission.READ.value in ws.permissions
+        )
+        _dir_section = (
+            "DIRECTORIES:\n\n"
+            "Use only configured workspaces:\n\n"
+            f"{_ws_lines}\n\n"
+            "For searches with no directory specified, use the first listed workspace."
+        )
+    else:
+        _dir_section = (
+            "DIRECTORIES:\n\n"
+            "The allowed top-level directories are:\n\n"
+            "- Downloads\n"
+            "- Documents\n"
+            "- Desktop\n\n"
+            "These are separate directories.\n\n"
+            "For normal searches with no directory specified,\n"
+            "use Downloads.\n\n"
+            "For specific filename searches with no directory specified,\n"
+            "use Downloads."
+        )
 
     system_prompt = f"""
 You are the reasoning component of a local computer automation agent.
@@ -304,26 +458,12 @@ Supported tasks:
 
 1. Find files by extension.
 2. Find a specific file by filename.
-3. Search Downloads, Documents, or Desktop.
+3. Search configured directories.
 4. Filter files by creation date.
 5. Understand natural-language dates.
 6. Find files for deletion.
 
-DIRECTORIES:
-
-The allowed top-level directories are:
-
-- Downloads
-- Documents
-- Desktop
-
-These are separate directories.
-
-For normal searches with no directory specified,
-use Downloads.
-
-For specific filename searches with no directory specified,
-use Downloads.
+{_dir_section}
 
 FILENAME SEARCH:
 
@@ -378,7 +518,6 @@ UNSUPPORTED_REQUEST
     response = llm_with_tools.invoke(messages)
 
     if not response.tool_calls:
-
         response_text = str(response.content).strip()
 
         if response_text == "UNSUPPORTED_REQUEST":
@@ -397,10 +536,7 @@ UNSUPPORTED_REQUEST
 
         response_lower = response_text.lower()
 
-        if any(
-            phrase in response_lower
-            for phrase in unsupported_phrases
-        ):
+        if any(phrase in response_lower for phrase in unsupported_phrases):
             return "UNSUPPORTED_REQUEST"
 
         return response.content
@@ -408,12 +544,8 @@ UNSUPPORTED_REQUEST
     results = []
 
     for tool_call in response.tool_calls:
-
         if tool_call["name"] == "search_files":
-
-            result = search_files.invoke(
-                tool_call["args"]
-            )
+            result = search_files.invoke(tool_call["args"])
 
             results.append(result)
 

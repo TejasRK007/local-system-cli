@@ -36,6 +36,7 @@ def setup_tmp_db(tmp_path, monkeypatch):
 # 1. Successful search creates audit entry
 # ---------------------------------------------------------------------------
 
+
 def test_successful_search_creates_audit_entry():
     """Verify logging a successful search records the expected row."""
     row_id = db.log_event(
@@ -68,6 +69,7 @@ def test_successful_search_creates_audit_entry():
 # 2. Approved rename creates audit entry
 # ---------------------------------------------------------------------------
 
+
 def test_approved_rename_creates_audit_entry():
     """Verify an approved rename records APPROVED and SUCCESS."""
     row_id = db.log_event(
@@ -96,6 +98,7 @@ def test_approved_rename_creates_audit_entry():
 # 3. Cancelled delete creates audit entry
 # ---------------------------------------------------------------------------
 
+
 def test_cancelled_delete_creates_audit_entry():
     """Verify user cancellation of a delete records DENIED and CANCELLED."""
     row_id = db.log_event(
@@ -123,6 +126,7 @@ def test_cancelled_delete_creates_audit_entry():
 # 4. Successful delete creates audit entry
 # ---------------------------------------------------------------------------
 
+
 def test_successful_delete_creates_audit_entry():
     """Verify an approved delete execution records APPROVED and SUCCESS."""
     row_id = db.log_event(
@@ -149,6 +153,7 @@ def test_successful_delete_creates_audit_entry():
 # 5. Ambiguous request creates audit entry
 # ---------------------------------------------------------------------------
 
+
 def test_ambiguous_request_creates_audit_entry():
     """Verify an ambiguous request refusal records AMBIGUOUS and NOT_APPLICABLE."""
     row_id = db.log_event(
@@ -174,6 +179,7 @@ def test_ambiguous_request_creates_audit_entry():
 # 6. Unsupported request creates audit entry
 # ---------------------------------------------------------------------------
 
+
 def test_unsupported_request_creates_audit_entry():
     """Verify an unsupported request records NOT_SUPPORTED and NOT_APPLICABLE."""
     row_id = db.log_event(
@@ -197,6 +203,7 @@ def test_unsupported_request_creates_audit_entry():
 # ---------------------------------------------------------------------------
 # 7. Logs command displays entries and respects --limit
 # ---------------------------------------------------------------------------
+
 
 def test_logs_command_displays_entries():
     """Verify python -m app.main logs renders rows and column headers in Rich table."""
@@ -252,6 +259,7 @@ def test_logs_command_empty_database():
 # 8. Secrets are not stored or exposed
 # ---------------------------------------------------------------------------
 
+
 def test_secrets_are_not_stored_or_exposed(monkeypatch):
     """Verify API keys, tokens, and passwords are sanitized before persistence."""
     fake_groq_key = "gsk_testsecretgroqkey1234567890abcdef"
@@ -294,6 +302,7 @@ def test_secrets_are_not_stored_or_exposed(monkeypatch):
 # ---------------------------------------------------------------------------
 # 9. CLI End-to-End Integration Tests
 # ---------------------------------------------------------------------------
+
 
 def test_cli_agent_search_creates_audit_entry(monkeypatch):
     """End-to-end: running 'agent <search request>' creates an audit entry."""

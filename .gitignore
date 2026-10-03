@@ -27,3 +27,7 @@ htmlcov/
 
 # Database files
 data/*.db
+
+# Local development/test artifacts
+agent_data.db
+manual_test/

@@ -1,11 +1,29 @@
 from pathlib import Path
 
+import pytest
+
+import app.database as db
 from app.tools.file_actions import (
     delete_file,
     is_allowed_path,
     move_file,
     rename_file,
 )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_db(tmp_path, monkeypatch):
+    """
+    Redirect the database to an empty temp DB for each test in this module.
+    This ensures WorkspaceManager.count_workspaces() == 0, so legacy
+    ALLOWED_DIRECTORIES fallback is used (no workspace enforcement).
+    """
+    temp_db = tmp_path / "test_file_actions.db"
+    monkeypatch.setattr(db, "DB_PATH", temp_db)
+    monkeypatch.setenv("AGENT_DB_PATH", str(temp_db))
+    monkeypatch.delenv("AGENT_ENFORCE_WORKSPACES", raising=False)
+    db.init_db(temp_db)
+
 
 # ------------------------------------------------------------------
 # is_allowed_path
@@ -39,6 +57,7 @@ def test_is_allowed_path_home_root_rejected():
 # delete_file
 # ------------------------------------------------------------------
 
+
 def test_delete_file_non_existent():
     result = delete_file("~/Downloads/non_existent_file_xyz123.pdf")
     assert "File does not exist" in result
@@ -67,6 +86,7 @@ def test_delete_file_success(monkeypatch, tmp_path):
 
     # Monkeypatch ALLOWED_DIRECTORIES to include tmp_path for safe testing
     import app.tools.file_actions as fa
+
     monkeypatch.setattr(fa, "ALLOWED_DIRECTORIES", [tmp_path])
 
     result = delete_file(str(test_file))
@@ -77,6 +97,7 @@ def test_delete_file_success(monkeypatch, tmp_path):
 # ------------------------------------------------------------------
 # rename_file
 # ------------------------------------------------------------------
+
 
 def test_rename_file_outside_allowed_blocked(tmp_path):
     """rename_file must refuse when the source is outside allowed dirs."""
@@ -95,6 +116,7 @@ def test_rename_file_empty_new_name(monkeypatch, tmp_path):
     src.write_text("data")
 
     import app.tools.file_actions as fa
+
     monkeypatch.setattr(fa, "ALLOWED_DIRECTORIES", [tmp_path])
 
     result = rename_file(str(src), "")
@@ -108,6 +130,7 @@ def test_rename_file_slash_in_name_blocked(monkeypatch, tmp_path):
     src.write_text("data")
 
     import app.tools.file_actions as fa
+
     monkeypatch.setattr(fa, "ALLOWED_DIRECTORIES", [tmp_path])
 
     result = rename_file(str(src), "subdir/evil.txt")
@@ -123,6 +146,7 @@ def test_rename_file_target_exists_blocked(monkeypatch, tmp_path):
     existing.write_text("already here")
 
     import app.tools.file_actions as fa
+
     monkeypatch.setattr(fa, "ALLOWED_DIRECTORIES", [tmp_path])
 
     result = rename_file(str(src), "existing.txt")
@@ -134,6 +158,7 @@ def test_rename_file_target_exists_blocked(monkeypatch, tmp_path):
 # ------------------------------------------------------------------
 # move_file
 # ------------------------------------------------------------------
+
 
 def test_move_file_outside_source_blocked(tmp_path):
     """move_file must refuse when the source is outside allowed dirs."""
@@ -160,6 +185,7 @@ def test_move_file_target_exists_blocked(monkeypatch, tmp_path):
     existing.write_text("already here")
 
     import app.tools.file_actions as fa
+
     monkeypatch.setattr(fa, "ALLOWED_DIRECTORIES", [tmp_path])
 
     result = move_file(str(src_file), str(dst_dir))

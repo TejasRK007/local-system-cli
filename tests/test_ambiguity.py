@@ -16,7 +16,25 @@ Scenarios covered:
 
 from pathlib import Path
 
+import pytest
+
+import app.database as db
 from app.tools.filesystem import KNOWN_DIRECTORIES, search_files
+
+
+@pytest.fixture(autouse=True)
+def _isolate_db(tmp_path, monkeypatch):
+    """
+    Redirect the database to an empty temp DB for each test in this module.
+    This ensures WorkspaceManager.count_workspaces() == 0, so real search_files
+    calls on tmp_path directories work in legacy mode (no workspace enforcement).
+    """
+    temp_db = tmp_path / "test_ambiguity.db"
+    monkeypatch.setattr(db, "DB_PATH", temp_db)
+    monkeypatch.setenv("AGENT_DB_PATH", str(temp_db))
+    monkeypatch.delenv("AGENT_ENFORCE_WORKSPACES", raising=False)
+    db.init_db(temp_db)
+
 
 # ---------------------------------------------------------------------------
 # Stub: replaces search_files with a callable .invoke(args) look-alike
@@ -30,6 +48,7 @@ class _SearchStub:
     files_by_dir: maps directory key (lowercase) → list of filenames
     that should appear as matches.
     """
+
     def __init__(self, files_by_dir: dict[str, list[str]]):
         self._files_by_dir = files_by_dir
         self._calls: list[str] = []
@@ -42,14 +61,13 @@ class _SearchStub:
         _dir_map = {
             "downloads": "Downloads",
             "documents": "Documents",
-            "desktop":   "Desktop",
+            "desktop": "Desktop",
         }
         label = _dir_map.get(directory, directory)
 
         available = self._files_by_dir.get(directory, [])
         matched = [
-            {"path": str(Path.home() / label / name),
-             "created": "2026-09-27 00:00:00"}
+            {"path": str(Path.home() / label / name), "created": "2026-09-27 00:00:00"}
             for name in available
             if name.lower() == filename
         ]
@@ -71,8 +89,13 @@ def _merge_all_dirs(search_tool, filename: str) -> list:
     matched: list = []
     for dir_name in KNOWN_DIRECTORIES:
         result = search_tool.invoke(
-            {"directory": dir_name, "extension": "", "filename": filename,
-             "start_date": "", "end_date": ""}
+            {
+                "directory": dir_name,
+                "extension": "",
+                "filename": filename,
+                "start_date": "",
+                "end_date": "",
+            }
         )
         matched.extend(result.get("files", []))
     return matched
@@ -82,19 +105,23 @@ def _merge_all_dirs(search_tool, filename: str) -> list:
 # a. Single match across all directories
 # ---------------------------------------------------------------------------
 
+
 def test_single_match_across_all_directories(monkeypatch):
     """
     File exists only in Downloads.
     Merge of all three dirs returns exactly 1 result.
     """
-    stub = _SearchStub({
-        "downloads": ["target.txt"],
-        "documents": [],
-        "desktop":   [],
-    })
+    stub = _SearchStub(
+        {
+            "downloads": ["target.txt"],
+            "documents": [],
+            "desktop": [],
+        }
+    )
     _patch(monkeypatch, stub)
 
     import app.agent as ag
+
     matched = _merge_all_dirs(ag.search_files, "target.txt")
 
     assert len(matched) == 1
@@ -105,19 +132,23 @@ def test_single_match_across_all_directories(monkeypatch):
 # b. Multiple matches across directories → ambiguity detected
 # ---------------------------------------------------------------------------
 
+
 def test_multi_match_across_directories_detected(monkeypatch):
     """
     File exists in Downloads AND Documents.
     Merge returns 2 results — the caller (main.py) will refuse the action.
     """
-    stub = _SearchStub({
-        "downloads": ["ambiguous.txt"],
-        "documents": ["ambiguous.txt"],
-        "desktop":   [],
-    })
+    stub = _SearchStub(
+        {
+            "downloads": ["ambiguous.txt"],
+            "documents": ["ambiguous.txt"],
+            "desktop": [],
+        }
+    )
     _patch(monkeypatch, stub)
 
     import app.agent as ag
+
     matched = _merge_all_dirs(ag.search_files, "ambiguous.txt")
 
     assert len(matched) == 2
@@ -128,14 +159,17 @@ def test_multi_match_across_directories_detected(monkeypatch):
 
 def test_three_way_match_all_directories(monkeypatch):
     """File in Downloads, Documents, AND Desktop → 3 results."""
-    stub = _SearchStub({
-        "downloads": ["everywhere.txt"],
-        "documents": ["everywhere.txt"],
-        "desktop":   ["everywhere.txt"],
-    })
+    stub = _SearchStub(
+        {
+            "downloads": ["everywhere.txt"],
+            "documents": ["everywhere.txt"],
+            "desktop": ["everywhere.txt"],
+        }
+    )
     _patch(monkeypatch, stub)
 
     import app.agent as ag
+
     matched = _merge_all_dirs(ag.search_files, "everywhere.txt")
 
     assert len(matched) == 3
@@ -145,47 +179,59 @@ def test_three_way_match_all_directories(monkeypatch):
 # c. Explicit directory → only that directory is searched
 # ---------------------------------------------------------------------------
 
+
 def test_explicit_directory_searches_only_that_dir(monkeypatch):
     """
     When directory is explicit, agent calls search_files exactly once
     with that directory — not all three.
     """
-    stub = _SearchStub({
-        "downloads": ["myfile.txt"],   # also here, but shouldn't be searched
-        "documents": ["myfile.txt"],   # explicit target
-        "desktop":   [],
-    })
+    stub = _SearchStub(
+        {
+            "downloads": ["myfile.txt"],  # also here, but shouldn't be searched
+            "documents": ["myfile.txt"],  # explicit target
+            "desktop": [],
+        }
+    )
     _patch(monkeypatch, stub)
 
     import app.agent as ag
 
     # Simulate the explicit-directory branch (one call only)
     result = ag.search_files.invoke(
-        {"directory": "documents", "extension": "", "filename": "myfile.txt",
-         "start_date": "", "end_date": ""}
+        {
+            "directory": "documents",
+            "extension": "",
+            "filename": "myfile.txt",
+            "start_date": "",
+            "end_date": "",
+        }
     )
 
     assert len(result["files"]) == 1
-    assert stub._calls == ["documents"]   # exactly one dir searched
+    assert stub._calls == ["documents"]  # exactly one dir searched
 
 
 # ---------------------------------------------------------------------------
 # d. No match anywhere → empty list (safe failure)
 # ---------------------------------------------------------------------------
 
+
 def test_no_match_anywhere_returns_empty(monkeypatch):
     """
     File does not exist in any allowed directory.
     Merge returns 0 results — main.py shows "File Not Found".
     """
-    stub = _SearchStub({
-        "downloads": [],
-        "documents": [],
-        "desktop":   [],
-    })
+    stub = _SearchStub(
+        {
+            "downloads": [],
+            "documents": [],
+            "desktop": [],
+        }
+    )
     _patch(monkeypatch, stub)
 
     import app.agent as ag
+
     matched = _merge_all_dirs(ag.search_files, "ghost.txt")
 
     assert len(matched) == 0
@@ -195,6 +241,7 @@ def test_no_match_anywhere_returns_empty(monkeypatch):
 # e. Result dict keys consumed by main.py
 # ---------------------------------------------------------------------------
 
+
 def test_rename_result_dict_structure(monkeypatch):
     """
     The dict returned to main.py for a rename must have the right keys.
@@ -203,6 +250,7 @@ def test_rename_result_dict_structure(monkeypatch):
     _patch(monkeypatch, stub)
 
     import app.agent as ag
+
     matched = _merge_all_dirs(ag.search_files, "report.pdf")
 
     result = {
@@ -228,6 +276,7 @@ def test_move_result_dict_structure(monkeypatch):
     _patch(monkeypatch, stub)
 
     import app.agent as ag
+
     matched = _merge_all_dirs(ag.search_files, "report.pdf")
 
     result = {
@@ -250,6 +299,7 @@ def test_move_result_dict_structure(monkeypatch):
 # f. Filesystem level: same filename found via merge of two real directories
 # ---------------------------------------------------------------------------
 
+
 def test_search_same_filename_merged_from_two_dirs(tmp_path):
     """
     search_files is called on two separate tmp directories.
@@ -262,20 +312,30 @@ def test_search_same_filename_merged_from_two_dirs(tmp_path):
     (dir_a / "shared.txt").write_text("in A")
     (dir_b / "shared.txt").write_text("in B")
 
-    result_a = search_files.invoke({
-        "directory": str(dir_a), "filename": "shared.txt",
-        "extension": "", "start_date": "", "end_date": "",
-    })
-    result_b = search_files.invoke({
-        "directory": str(dir_b), "filename": "shared.txt",
-        "extension": "", "start_date": "", "end_date": "",
-    })
+    result_a = search_files.invoke(
+        {
+            "directory": str(dir_a),
+            "filename": "shared.txt",
+            "extension": "",
+            "start_date": "",
+            "end_date": "",
+        }
+    )
+    result_b = search_files.invoke(
+        {
+            "directory": str(dir_b),
+            "filename": "shared.txt",
+            "extension": "",
+            "start_date": "",
+            "end_date": "",
+        }
+    )
 
     combined = result_a["files"] + result_b["files"]
     assert len(combined) == 2
-    paths = [f["path"] for f in combined]
-    assert any("/A/" in p for p in paths)
-    assert any("/B/" in p for p in paths)
+    paths = [Path(f["path"]) for f in combined]
+    assert any("A" in p.parts for p in paths)
+    assert any("B" in p.parts for p in paths)
 
 
 def test_search_unique_filename_no_false_positive(tmp_path):
@@ -290,14 +350,24 @@ def test_search_unique_filename_no_false_positive(tmp_path):
     (dir_a / "unique.txt").write_text("only here")
     # dir_b deliberately has no file
 
-    result_a = search_files.invoke({
-        "directory": str(dir_a), "filename": "unique.txt",
-        "extension": "", "start_date": "", "end_date": "",
-    })
-    result_b = search_files.invoke({
-        "directory": str(dir_b), "filename": "unique.txt",
-        "extension": "", "start_date": "", "end_date": "",
-    })
+    result_a = search_files.invoke(
+        {
+            "directory": str(dir_a),
+            "filename": "unique.txt",
+            "extension": "",
+            "start_date": "",
+            "end_date": "",
+        }
+    )
+    result_b = search_files.invoke(
+        {
+            "directory": str(dir_b),
+            "filename": "unique.txt",
+            "extension": "",
+            "start_date": "",
+            "end_date": "",
+        }
+    )
 
     combined = result_a["files"] + result_b["files"]
     assert len(combined) == 1

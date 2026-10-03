@@ -3,10 +3,12 @@ from pathlib import Path
 
 from langchain_core.tools import tool
 
+from app.workspaces import Permission, WorkspaceManager
+
 KNOWN_DIRECTORIES = {
     "downloads": Path.home() / "Downloads",
     "documents": Path.home() / "Documents",
-    "desktop":   Path.home() / "Desktop",
+    "desktop": Path.home() / "Desktop",
 }
 
 # -------------------------------------------------------------
@@ -16,16 +18,18 @@ KNOWN_DIRECTORIES = {
 # This prevents noise from version-control internals,
 # Python virtual environments, macOS app bundles, etc.
 
-EXCLUDED_DIR_NAMES: frozenset[str] = frozenset({
-    ".git",
-    ".venv",
-    ".env",
-    "__pycache__",
-    ".mypy_cache",
-    ".pytest_cache",
-    ".ruff_cache",
-    "node_modules",
-})
+EXCLUDED_DIR_NAMES: frozenset[str] = frozenset(
+    {
+        ".git",
+        ".venv",
+        ".env",
+        "__pycache__",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        "node_modules",
+    }
+)
 
 
 def _should_skip_path(path: Path) -> bool:
@@ -68,7 +72,10 @@ def search_files(
 
     directory_key = directory.strip().lower()
 
-    if directory_key in KNOWN_DIRECTORIES:
+    ws = WorkspaceManager.get_workspace_by_name(directory_key)
+    if ws:
+        folder = ws.canonical_path
+    elif directory_key in KNOWN_DIRECTORIES:
         folder = KNOWN_DIRECTORIES[directory_key]
     else:
         folder = Path(directory).expanduser()
@@ -85,6 +92,24 @@ def search_files(
             "end_date": end_date,
             "message": f"Directory does not exist: {folder}",
         }
+
+    # Verify workspace READ permission when workspaces are configured
+    if WorkspaceManager.count_workspaces() > 0:
+        ok, reason, _ = WorkspaceManager.check_workspace_authorization(
+            folder, Permission.READ.value
+        )
+        if not ok:
+            return {
+                "found": False,
+                "files": [],
+                "count": 0,
+                "directory": str(folder),
+                "filename": filename,
+                "extension": extension,
+                "start_date": start_date,
+                "end_date": end_date,
+                "message": f"Search blocked: {reason}",
+            }
 
     start = None
     end = None
@@ -112,7 +137,6 @@ def search_files(
     requested_extension = extension.strip().lower()
 
     for file in folder.rglob("*"):
-
         if not file.is_file():
             continue
 
@@ -157,9 +181,7 @@ def search_files(
         results.append(
             {
                 "path": str(file),
-                "created": created_time.strftime(
-                    "%Y-%m-%d %H:%M:%S"
-                ),
+                "created": created_time.strftime("%Y-%m-%d %H:%M:%S"),
             }
         )
 

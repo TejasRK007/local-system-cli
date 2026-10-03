@@ -1,4 +1,22 @@
+import pytest
+
+import app.database as db
 from app.tools.filesystem import search_files
+
+
+@pytest.fixture(autouse=True)
+def _isolate_db(tmp_path, monkeypatch):
+    """
+    Redirect the database to an empty temp DB for each test in this module.
+    This ensures WorkspaceManager.count_workspaces() == 0, so the real-path
+    search tests aren't blocked by workspace authorization.
+    """
+    temp_db = tmp_path / "test_filesystem.db"
+    monkeypatch.setattr(db, "DB_PATH", temp_db)
+    monkeypatch.setenv("AGENT_DB_PATH", str(temp_db))
+    monkeypatch.delenv("AGENT_ENFORCE_WORKSPACES", raising=False)
+    db.init_db(temp_db)
+
 
 # ------------------------------------------------------------------
 # Basic search
@@ -6,10 +24,7 @@ from app.tools.filesystem import search_files
 
 
 def test_search_files_non_existent_directory():
-    result = search_files.invoke({
-        "directory": "/non/existent/path/xyz123",
-        "extension": ".pdf"
-    })
+    result = search_files.invoke({"directory": "/non/existent/path/xyz123", "extension": ".pdf"})
     assert result["found"] is False
     assert "Directory does not exist" in result["message"]
 
@@ -22,10 +37,7 @@ def test_search_files_valid(tmp_path):
     txt_file = tmp_path / "notes.txt"
     txt_file.write_text("dummy txt")
 
-    result = search_files.invoke({
-        "directory": str(tmp_path),
-        "extension": ".pdf"
-    })
+    result = search_files.invoke({"directory": str(tmp_path), "extension": ".pdf"})
 
     assert result["found"] is True
     assert result["count"] == 1
@@ -35,6 +47,7 @@ def test_search_files_valid(tmp_path):
 # ------------------------------------------------------------------
 # Exclusion filter
 # ------------------------------------------------------------------
+
 
 def test_search_excludes_app_bundle(tmp_path):
     """Files inside a .app bundle must not appear in search results."""
@@ -46,10 +59,12 @@ def test_search_excludes_app_bundle(tmp_path):
     real = tmp_path / "real.txt"
     real.write_text("user file")
 
-    result = search_files.invoke({
-        "directory": str(tmp_path),
-        "extension": ".txt",
-    })
+    result = search_files.invoke(
+        {
+            "directory": str(tmp_path),
+            "extension": ".txt",
+        }
+    )
 
     paths = [f["path"] for f in result["files"]]
     assert str(real) in paths
@@ -66,10 +81,12 @@ def test_search_excludes_git_directory(tmp_path):
     real = tmp_path / "readme.txt"
     real.write_text("project readme")
 
-    result = search_files.invoke({
-        "directory": str(tmp_path),
-        "extension": ".txt",
-    })
+    result = search_files.invoke(
+        {
+            "directory": str(tmp_path),
+            "extension": ".txt",
+        }
+    )
 
     paths = [f["path"] for f in result["files"]]
     assert str(real) in paths
@@ -86,10 +103,12 @@ def test_search_excludes_pycache(tmp_path):
     real = tmp_path / "script.py"
     real.write_text("print('hello')")
 
-    result = search_files.invoke({
-        "directory": str(tmp_path),
-        "filename": "script.py",
-    })
+    result = search_files.invoke(
+        {
+            "directory": str(tmp_path),
+            "filename": "script.py",
+        }
+    )
 
     paths = [f["path"] for f in result["files"]]
     assert str(real) in paths
@@ -110,10 +129,12 @@ def test_search_real_files_alongside_excluded(tmp_path):
     user_txt = tmp_path / "notes.txt"
     user_txt.write_text("my notes")
 
-    result = search_files.invoke({
-        "directory": str(tmp_path),
-        "extension": ".txt",
-    })
+    result = search_files.invoke(
+        {
+            "directory": str(tmp_path),
+            "extension": ".txt",
+        }
+    )
 
     paths = [f["path"] for f in result["files"]]
     assert str(user_txt) in paths
