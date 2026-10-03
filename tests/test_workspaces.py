@@ -473,14 +473,29 @@ def test_safe_task_resume(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_drive_root_and_system_path_rejection():
-    """Verify adding drive roots and Windows system folders is explicitly rejected."""
-    with pytest.raises(ValueError, match="drive root"):
-        WorkspaceManager.add_workspace("C:\\")
+def test_drive_root_and_system_path_rejection(monkeypatch):
+    """Verify adding drive roots and system folders is explicitly rejected (platform-aware)."""
+    import sys
 
-    windows_dir = os.environ.get("SystemRoot", "C:\\Windows")
-    with pytest.raises(PermissionError, match="protected system directory"):
-        WorkspaceManager.add_workspace(windows_dir)
+    if sys.platform == "win32":
+        # --- Windows: original behaviour ---
+        with pytest.raises(ValueError, match="drive root"):
+            WorkspaceManager.add_workspace("C:\\")
+
+        windows_dir = os.environ.get("SystemRoot", "C:\\Windows")
+        with pytest.raises(PermissionError, match="protected system directory"):
+            WorkspaceManager.add_workspace(windows_dir)
+    else:
+        # --- Linux / macOS: use platform-appropriate equivalents ---
+        # The filesystem root "/" is the Unix equivalent of a drive root.
+        with pytest.raises(ValueError, match="drive root"):
+            WorkspaceManager.add_workspace("/")
+
+        # Patch SystemRoot to point to a real directory that always exists on
+        # POSIX systems (/etc) so the production PermissionError guard fires.
+        monkeypatch.setenv("SystemRoot", "/etc")
+        with pytest.raises(PermissionError, match="protected system directory"):
+            WorkspaceManager.add_workspace("/etc")
 
 
 def test_windows_casing_insensitivity(tmp_path):
