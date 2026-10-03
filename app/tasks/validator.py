@@ -470,6 +470,10 @@ class PlanValidator:
     @classmethod
     def _check_path_safety(cls, path: Path) -> tuple[bool, str]:
         """Verify canonical path boundaries, traversal rejection, and protected paths."""
+        # 1. Protected path check on input path BEFORE filesystem resolution/existence
+        if WorkspaceManager.is_protected_system_path(path):
+            return False, f"Targeting protected system directory '{path}' is blocked."
+
         try:
             resolved = path.resolve()
         except Exception as e:

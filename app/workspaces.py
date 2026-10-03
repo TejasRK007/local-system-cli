@@ -6,6 +6,7 @@ canonical path containment, and deterministic security checks.
 """
 
 import os
+import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -103,76 +104,132 @@ class WorkspaceManager:
         Verify whether a path targets a protected system directory across platforms.
         Handles Windows system roots, drive letters, POSIX system directories, symlinks
         (e.g. macOS /etc -> /private/etc), and case variations.
+        Evaluates protection before and without requiring path existence on the host OS.
         """
-        # 1. Inspect Windows-style paths (drive roots, Windows/Program Files, env vars)
+        try:
+            raw_str = str(path).replace("\\", "/").strip()
+        except Exception:
+            return False
+
+        if not raw_str:
+            return False
+
+        def _is_protected_normalized_path(s: str) -> bool:
+            # Block filesystem drive/root anchors (e.g. "/", "\\", "C:", "C:/")
+            drive_match = re.match(r"^([a-zA-Z]:)(?:/.*)?$", s)
+            if s in ("/", "\\"):
+                return True
+            if drive_match and s.rstrip("/") == drive_match.group(1):
+                return True
+
+            # Uniform inspection without Windows drive prefix (e.g. C:/Windows -> /Windows)
+            no_drive = re.sub(r"^[a-zA-Z]:", "", s)
+            if not no_drive.startswith("/"):
+                return False
+
+            norm_lower = no_drive.lower().rstrip("/")
+            if norm_lower in ("", "/"):
+                return True
+
+            # macOS System Volume Data prefix normalization
+            if norm_lower.startswith("/system/volumes/data/"):
+                norm_lower = norm_lower[len("/system/volumes/data"):].rstrip("/")
+            elif norm_lower == "/system/volumes/data":
+                return True
+
+            if norm_lower in ("", "/"):
+                return True
+
+            parts = [p for p in norm_lower.split("/") if p]
+            if not parts:
+                return True
+
+            top_dir = parts[0]
+            posix_protected = {
+                "system",
+                "library",
+                "etc",
+                "bin",
+                "sbin",
+                "usr",
+                "dev",
+                "proc",
+                "sys",
+                "boot",
+                "root",
+            }
+            win_protected = {
+                "windows",
+                "program files",
+                "program files (x86)",
+                "programdata",
+                "system volume information",
+                "$recycle.bin",
+            }
+
+            if top_dir in posix_protected or top_dir in win_protected:
+                return True
+
+            # /private: /private, /private/etc, /private/var/{root,db,log} are protected.
+            # /private/var/folders and other temp directories are not protected.
+            if top_dir == "private":
+                if len(parts) == 1:
+                    return True
+                if parts[1] == "etc":
+                    return True
+                if parts[1] == "var" and len(parts) >= 3 and parts[2] in ("root", "db", "log"):
+                    return True
+
+            # /var: /var/{root,db,log} are protected.
+            if top_dir == "var":
+                if len(parts) >= 2 and parts[1] in ("root", "db", "log"):
+                    return True
+
+            return False
+
+        # 1. Check raw path if rooted
+        is_rooted = raw_str.startswith("/") or bool(re.match(r"^[a-zA-Z]:", raw_str))
+        if is_rooted and _is_protected_normalized_path(raw_str):
+            return True
+
+        # 2. Check Windows environment variables on raw and normalized path
         try:
             raw_win = PureWindowsPath(path)
-            if raw_win.drive:
-                # Drive root e.g. C:\ or D:
-                if raw_win == PureWindowsPath(raw_win.anchor) or len(raw_win.parts) <= 1:
+            raw_win_str = str(raw_win).lower()
+            for env_name in (
+                "SystemRoot",
+                "windir",
+                "ProgramFiles",
+                "ProgramFiles(x86)",
+                "ProgramW6432",
+                "ProgramData",
+            ):
+                env_val = os.environ.get(env_name)
+                if not env_val:
+                    continue
+                norm_env_win = str(PureWindowsPath(env_val)).lower()
+                if raw_win_str == norm_env_win or raw_win_str.startswith(norm_env_win + "\\"):
                     return True
-                if len(raw_win.parts) >= 2:
-                    second = raw_win.parts[1].lower().rstrip("\\/")
-                    win_system_dir_names = {
-                        "windows",
-                        "program files",
-                        "program files (x86)",
-                        "programdata",
-                        "system volume information",
-                        "$recycle.bin",
-                    }
-                    if second in win_system_dir_names:
-                        return True
-                raw_win_str = str(raw_win).lower()
-                for env_name in (
-                    "SystemRoot",
-                    "windir",
-                    "ProgramFiles",
-                    "ProgramFiles(x86)",
-                    "ProgramW6432",
-                    "ProgramData",
-                ):
-                    env_val = os.environ.get(env_name)
-                    if not env_val:
-                        continue
-                    norm_env_win = str(PureWindowsPath(env_val)).lower()
-                    if raw_win_str == norm_env_win or raw_win_str.startswith(norm_env_win + "\\"):
-                        return True
+                norm_env_posix = env_val.replace("\\", "/").lower().rstrip("/")
+                if not norm_env_posix.startswith("/"):
+                    norm_env_posix = re.sub(r"^[a-zA-Z]:", "", norm_env_posix)
+                raw_posix = raw_str.lower().rstrip("/")
+                if raw_posix == norm_env_posix or raw_posix.startswith(norm_env_posix + "/"):
+                    return True
         except Exception:
             pass
 
-        # 2. Canonicalize path
+        # 3. Canonicalize / resolve path
         try:
-            target_path = Path(path).expanduser()
-            target_resolved = target_path.resolve()
-        except Exception:
-            target_resolved = Path(path)
-
-        # 3. Block filesystem drive/root anchors (e.g. "/" or "C:\")
-        if target_resolved == Path(target_resolved.anchor) or len(target_resolved.parts) <= 1:
-            return True
-
-        posix_str = str(target_resolved).replace("\\", "/").lower()
-        if posix_str.startswith("/system/volumes/data/"):
-            posix_str = posix_str[len("/system/volumes/data"):]
-        if posix_str.endswith("/") and len(posix_str) > 1:
-            posix_str = posix_str.rstrip("/")
-
-        # 4. Check Windows environment variables on POSIX path
-        for env_name in ("SystemRoot", "windir"):
-            env_val = os.environ.get(env_name)
-            if not env_val:
-                continue
-            norm_env_posix = env_val.replace("\\", "/").lower().rstrip("/")
-            if posix_str == norm_env_posix or posix_str.startswith(norm_env_posix + "/"):
+            target_resolved = Path(path).expanduser().resolve()
+            resolved_str = str(target_resolved).replace("\\", "/").strip()
+            if _is_protected_normalized_path(resolved_str):
                 return True
+        except Exception:
+            pass
 
-        # 5. POSIX protected paths
-        exact_posix = {"/private", "/private/"}
-        if posix_str in exact_posix:
-            return True
-
-        posix_prefixes = [
+        # 4. Host OS symlink checks against existing protected paths
+        for pfx in (
             "/system",
             "/library",
             "/etc",
@@ -185,24 +242,13 @@ class WorkspaceManager:
             "/sys",
             "/boot",
             "/root",
-            "/private/var/root",
-            "/private/var/db",
-            "/private/var/log",
-            "/var/root",
-            "/var/db",
-            "/var/log",
-        ]
-        for pfx in posix_prefixes:
-            if posix_str == pfx or posix_str.startswith(pfx + "/"):
-                return True
+        ):
             try:
-                cand_path = Path(pfx)
-                if cand_path.is_absolute() and cand_path.exists():
-                    cand_resolved = cand_path.resolve()
-                    if (
-                        target_resolved == cand_resolved
-                        or target_resolved.is_relative_to(cand_resolved)
-                    ):
+                cand = Path(pfx)
+                if cand.is_absolute() and cand.exists():
+                    cand_res = cand.resolve()
+                    tgt_res = Path(path).expanduser().resolve()
+                    if tgt_res == cand_res or tgt_res.is_relative_to(cand_res):
                         return True
             except Exception:
                 pass
