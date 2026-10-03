@@ -2,6 +2,7 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -13,16 +14,37 @@ from app.workspaces import Permission, WorkspaceManager
 load_dotenv()
 
 
-llm = ChatGroq(
-    model="openai/gpt-oss-20b",
-    api_key=os.getenv("GROQ_API_KEY"),  # type: ignore[arg-type]
-    temperature=0,
-)
-
-
 tools = [search_files]
 
-llm_with_tools = llm.bind_tools(tools)
+llm: Any = None
+llm_with_tools: Any = None
+
+
+def get_llm() -> Any:
+    global llm
+    if llm is not None:
+        return llm
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        raise ValueError(
+            "GROQ_API_KEY environment variable is missing or empty. "
+            "Please set GROQ_API_KEY in your environment or .env file."
+        )
+    llm = ChatGroq(
+        model="openai/gpt-oss-20b",
+        api_key=api_key,  # type: ignore[arg-type]
+        temperature=0,
+    )
+    return llm
+
+
+def get_llm_with_tools() -> Any:
+    global llm_with_tools
+    if llm_with_tools is not None:
+        return llm_with_tools
+    current_llm = get_llm()
+    llm_with_tools = current_llm.bind_tools(tools)
+    return llm_with_tools
 
 
 KNOWN_DIRECTORIES = {
@@ -98,8 +120,9 @@ Rules:
 4. Return valid JSON only with no markdown formatting.
 """
 
+    llm_inst = get_llm()
     try:
-        response = llm.invoke(prompt)
+        response = llm_inst.invoke(prompt)
         content = str(response.content).strip()
         if content.startswith("```"):
             content = content.split("\n", 1)[-1]
@@ -515,7 +538,7 @@ UNSUPPORTED_REQUEST
         HumanMessage(content=request),
     ]
 
-    response = llm_with_tools.invoke(messages)
+    response = get_llm_with_tools().invoke(messages)
 
     if not response.tool_calls:
         response_text = str(response.content).strip()

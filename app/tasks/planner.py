@@ -14,11 +14,25 @@ from app.agent import extract_intent
 
 load_dotenv()
 
-llm = ChatGroq(
-    model="openai/gpt-oss-20b",
-    api_key=os.getenv("GROQ_API_KEY"),  # type: ignore[arg-type]
-    temperature=0,
-)
+llm: Any = None
+
+
+def get_llm() -> Any:
+    global llm
+    if llm is not None:
+        return llm
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        raise ValueError(
+            "GROQ_API_KEY environment variable is missing or empty. "
+            "Please set GROQ_API_KEY in your environment or .env file."
+        )
+    llm = ChatGroq(
+        model="openai/gpt-oss-20b",
+        api_key=api_key,  # type: ignore[arg-type]
+        temperature=0,
+    )
+    return llm
 
 
 def plan_task_steps(request: str) -> list[dict[str, Any]]:
@@ -84,8 +98,9 @@ Rules:
 1. Preserve exact filenames, paths, and directory names.
 2. Return JSON list only with no markdown or explanations.
 """
+    llm_inst = get_llm()
     try:
-        response = llm.invoke(prompt)
+        response = llm_inst.invoke(prompt)
         content = str(response.content).strip()
         if content.startswith("```"):
             content = content.split("\n", 1)[-1]

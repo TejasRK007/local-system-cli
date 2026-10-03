@@ -22,11 +22,25 @@ from app.workspaces import Permission, Workspace, WorkspaceManager
 
 load_dotenv()
 
-llm = ChatGroq(
-    model="openai/gpt-oss-20b",
-    api_key=os.getenv("GROQ_API_KEY"),  # type: ignore[arg-type]
-    temperature=0,
-)
+llm: Any = None
+
+
+def get_llm() -> Any:
+    global llm
+    if llm is not None:
+        return llm
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        raise ValueError(
+            "GROQ_API_KEY environment variable is missing or empty. "
+            "Please set GROQ_API_KEY in your environment or .env file."
+        )
+    llm = ChatGroq(
+        model="openai/gpt-oss-20b",
+        api_key=api_key,  # type: ignore[arg-type]
+        temperature=0,
+    )
+    return llm
 
 
 @dataclass
@@ -87,7 +101,8 @@ Rules:
 4. Return JSON only with no markdown formatting.
 """
         try:
-            res = llm.invoke(prompt)
+            llm_inst = get_llm()
+            res = llm_inst.invoke(prompt)
             content = str(res.content).strip()
             if content.startswith("```"):
                 content = content.split("\n", 1)[-1]
