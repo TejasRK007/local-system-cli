@@ -99,7 +99,19 @@ Rules:
             data = json.loads(content)
             if isinstance(data, dict):
                 # Ensure rename intent extracts both source and destination cleanly
-                if data.get("action_type") == "rename" or "rename" in goal.lower():
+                is_rename_cmd = bool(
+                    (
+                        data.get("action_type") == "rename"
+                        or re.search(r"^\s*(?:please\s+)?rename\b", goal, re.IGNORECASE)
+                        or re.search(r"\brename\b(?:\s+the\s+file)?\s+", goal, re.IGNORECASE)
+                    )
+                    and not re.search(
+                        r"\b(?:move|delete|remove|clean|find|search|show|list|locate)\b",
+                        goal,
+                        re.IGNORECASE,
+                    )
+                )
+                if is_rename_cmd:
                     data["action_type"] = "rename"
                     heur = cls._heuristic_goal_analysis(goal)
                     if not data.get("filename") and heur.get("filename"):
@@ -144,7 +156,10 @@ Rules:
                     # Prefer heuristic action_type for cross-workspace moves or move goals
                     if heur.get("source_workspace_name") and heur.get("target_workspace_name"):
                         data["action_type"] = heur["action_type"]
-                    elif data.get("action_type") == "archive" and "move" in goal.lower():
+                    elif (
+                        data.get("action_type") in ("archive", "rename")
+                        and re.search(r"\bmove\b", goal, re.IGNORECASE)
+                    ):
                         data["action_type"] = "move"
 
                     # Sanitize keywords so workspace names are not used as file search filters
@@ -236,7 +251,15 @@ Rules:
             }
 
         # 2. Handle rename goals specifically with robust quote and space parsing
-        if "rename" in goal_lower:
+        m_action = re.search(r"\brename\b(?:\s+the\s+file)?\s+", goal, re.IGNORECASE)
+        is_conflicting_verb = bool(
+            re.search(
+                r"\b(?:move|delete|remove|clean|find|search|show|list|locate)\b",
+                goal,
+                re.IGNORECASE,
+            )
+        )
+        if m_action and not is_conflicting_verb:
             target_ws = None
             for ws in WorkspaceManager.list_workspaces():
                 if ws.name.lower() in goal_lower:

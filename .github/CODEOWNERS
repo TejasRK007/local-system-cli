@@ -1,0 +1,5 @@
+# Critical CI/CD workflows and repository governance rules must be reviewed
+# by the repository owner before changes can be merged.
+
+/.github/workflows/ @TejasRK007
+/.github/CODEOWNERS @TejasRK007

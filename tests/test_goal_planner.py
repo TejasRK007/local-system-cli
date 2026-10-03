@@ -830,3 +830,114 @@ def test_rename_goal_permission_enforcement(tmp_path):
     plan_disabled = GoalPlanner.plan_goal("Rename readonly.txt to renamed.txt in RoWs")
     assert len(plan_disabled.steps) == 0
     assert "currently disabled" in plan_disabled.summary
+
+
+# ---------------------------------------------------------------------------
+# Move vs Rename Goal Classification Regressions
+# ---------------------------------------------------------------------------
+
+
+def test_move_with_renamed_in_filename_classified_as_move(tmp_path):
+    """Verify 'Move <file> into <directory> in <ws>' with 'renamed' in filename is a MOVE."""
+    ws_dir = tmp_path / "Downloads"
+    ws_dir.mkdir()
+    f = ws_dir / "agent_test_report_renamed.txt"
+    f.write_text("report data", encoding="utf-8")
+    WorkspaceManager.add_workspace(
+        ws_dir, name="Downloads", permissions=["READ", "WRITE"]
+    )
+
+    plan = GoalPlanner.plan_goal(
+        "Move agent_test_report_renamed.txt into agent_test_archive in Downloads"
+    )
+
+    assert plan.target_workspace is not None
+    assert plan.target_workspace.name == "Downloads"
+    assert len(plan.discovered_files) == 1
+    assert Path(plan.discovered_files[0]["path"]).resolve() == f.resolve()
+    # Steps: create_directory then move
+    actions = [s["action"] for s in plan.steps]
+    assert actions == ["create_directory", "move"]
+    move_step = next(s for s in plan.steps if s["action"] == "move")
+    assert move_step["arguments"]["source"] == str(f)
+    assert plan.cumulative_risk == "medium"
+    assert plan.requires_approval is True
+
+
+def test_existing_move_syntax_supported(tmp_path):
+    """Verify existing move syntax works for single-workspace and cross-workspace."""
+    ws1 = tmp_path / "Downloads"
+    ws2 = tmp_path / "Documents"
+    ws1.mkdir()
+    ws2.mkdir()
+    (ws1 / "doc.pdf").write_text("pdf", encoding="utf-8")
+    WorkspaceManager.add_workspace(ws1, name="Downloads", permissions=["READ", "WRITE"])
+    WorkspaceManager.add_workspace(ws2, name="Documents", permissions=["READ", "WRITE"])
+
+    # Cross-workspace move
+    plan_cross = GoalPlanner.plan_goal(
+        "Move doc.pdf from Downloads into Documents"
+    )
+    assert plan_cross.target_workspace is not None
+    assert plan_cross.target_workspace.name == "Documents"
+    assert len(plan_cross.discovered_files) == 1
+    assert [s["action"] for s in plan_cross.steps] == ["move"]
+
+    # Single workspace move into folder
+    (ws1 / "report.txt").write_text("txt", encoding="utf-8")
+    plan_single = GoalPlanner.plan_goal(
+        "Move report.txt into Archive in Downloads"
+    )
+    assert plan_single.target_workspace is not None
+    assert plan_single.target_workspace.name == "Downloads"
+    assert len(plan_single.discovered_files) == 1
+    assert [s["action"] for s in plan_single.steps] == ["create_directory", "move"]
+
+
+def test_rename_goals_remain_rename_goals(tmp_path):
+    """Verify genuine rename goals are always classified and planned as rename."""
+    ws_dir = tmp_path / "Downloads"
+    ws_dir.mkdir()
+    f = ws_dir / "agent_test_report.txt"
+    f.write_text("report", encoding="utf-8")
+    WorkspaceManager.add_workspace(
+        ws_dir, name="Downloads", permissions=["READ", "WRITE"]
+    )
+
+    plan = GoalPlanner.plan_goal(
+        "Rename agent_test_report.txt to agent_test_report_renamed.txt in Downloads"
+    )
+    assert plan.target_workspace is not None
+    assert plan.target_workspace.name == "Downloads"
+    assert len(plan.steps) == 1
+    assert plan.steps[0]["action"] == "rename"
+    assert plan.steps[0]["arguments"]["new_name"] == "agent_test_report_renamed.txt"
+
+
+def test_archive_and_organize_wording_preserved(tmp_path):
+    """Verify archive and organize goals are not accidentally turned into MOVE unless requested."""
+    ws_dir = tmp_path / "Downloads"
+    ws_dir.mkdir()
+    (ws_dir / "item1.pdf").write_text("p1", encoding="utf-8")
+    (ws_dir / "item2.pdf").write_text("p2", encoding="utf-8")
+    WorkspaceManager.add_workspace(
+        ws_dir, name="Downloads", permissions=["READ", "WRITE"]
+    )
+
+    # 1. Archive wording produces archive action
+    heur_archive = GoalPlanner._heuristic_goal_analysis(
+        "Archive all PDF files into archive folder in Downloads"
+    )
+    assert heur_archive["action_type"] == "archive"
+
+    # 2. Organize wording produces organize action
+    heur_org = GoalPlanner._heuristic_goal_analysis(
+        "Organize all documents in Downloads"
+    )
+    assert heur_org["action_type"] == "organize"
+
+    # 3. Explicit move wording produces move action
+    heur_move = GoalPlanner._heuristic_goal_analysis(
+        "Move all PDF files into archive folder in Downloads"
+    )
+    assert heur_move["action_type"] == "move"
