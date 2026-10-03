@@ -26,6 +26,9 @@ DB_PATH = Path(os.getenv("AGENT_DB_PATH", str(DEFAULT_DB_PATH)))
 
 def get_db_path() -> Path:
     """Return the active SQLite database path."""
+    env_override = os.getenv("AGENT_DB_PATH")
+    if env_override:
+        return Path(env_override)
     return DB_PATH
 
 

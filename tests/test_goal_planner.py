@@ -689,3 +689,144 @@ def test_organize_pdf_files_into_documents_end_to_end(tmp_path):
     dest_files = [f.name for f in dest_dir.iterdir() if f.is_file()]
     assert "invoice.pdf" in dest_files
     assert "report.pdf" in dest_files
+
+
+# ---------------------------------------------------------------------------
+# 33. Rename Goal Planning & Execution Tests
+# ---------------------------------------------------------------------------
+
+
+def test_rename_goal_source_to_destination(tmp_path):
+    """Verify renaming existing file generates a single RENAME step and executes successfully."""
+    ws_dir = tmp_path / "ws_rename"
+    ws_dir.mkdir()
+    src_file = ws_dir / "agent_demo.txt"
+    src_file.write_text("demo content", encoding="utf-8")
+    WorkspaceManager.add_workspace(ws_dir, name="RenameWs", permissions=["READ", "WRITE"])
+
+    plan = GoalPlanner.plan_goal("Rename agent_demo.txt to agent_demo_renamed.txt in RenameWs")
+
+    assert len(plan.discovered_files) == 1
+    assert Path(plan.discovered_files[0]["path"]).resolve() == src_file.resolve()
+    assert len(plan.steps) == 1
+    assert plan.steps[0]["action"] == "rename"
+    assert plan.steps[0]["arguments"]["source"] == str(src_file.resolve())
+    assert plan.steps[0]["arguments"]["new_name"] == "agent_demo_renamed.txt"
+    assert plan.cumulative_risk == "medium"
+    assert plan.requires_approval is True
+
+    # Execute via CLI with approval
+    goal_cmd = "Rename agent_demo.txt to agent_demo_renamed.txt in RenameWs"
+    res = runner.invoke(app, ["goal", goal_cmd], input="y\n")
+    assert res.exit_code == 0
+    assert "RENAME" in res.stdout
+    assert "Goal Completed" in res.stdout or "completed successfully" in res.stdout
+
+    # Verify physical file rename on disk
+    dest_file = ws_dir / "agent_demo_renamed.txt"
+    assert dest_file.exists() and dest_file.is_file()
+    assert dest_file.read_text(encoding="utf-8") == "demo content"
+    assert not src_file.exists()
+
+
+def test_rename_goal_quoted_filenames_with_spaces(tmp_path):
+    """Verify rename parser handles quoted filenames with spaces cleanly."""
+    ws_dir = tmp_path / "ws_spaces"
+    ws_dir.mkdir()
+    src_file = ws_dir / "my quarterly report.pdf"
+    src_file.write_text("quarterly data", encoding="utf-8")
+    WorkspaceManager.add_workspace(ws_dir, name="SpacesWs", permissions=["READ", "WRITE"])
+
+    goal_str = 'Rename "my quarterly report.pdf" to "my final report.pdf" in SpacesWs'
+    plan = GoalPlanner.plan_goal(goal_str)
+
+    assert len(plan.discovered_files) == 1
+    assert len(plan.steps) == 1
+    assert plan.steps[0]["action"] == "rename"
+    assert plan.steps[0]["arguments"]["source"] == str(src_file.resolve())
+    assert plan.steps[0]["arguments"]["new_name"] == "my final report.pdf"
+
+    # Execute via CLI
+    res = runner.invoke(
+        app,
+        ["goal", 'Rename "my quarterly report.pdf" to "my final report.pdf" in SpacesWs'],
+        input="y\n",
+    )
+    assert res.exit_code == 0
+    dest_file = ws_dir / "my final report.pdf"
+    assert dest_file.exists()
+    assert not src_file.exists()
+
+
+def test_rename_goal_ambiguous_source_filename(tmp_path):
+    """Verify ambiguous filename matching multiple files halts without guessing."""
+    ws1 = tmp_path / "ws_ambig1"
+    ws2 = tmp_path / "ws_ambig2"
+    ws1.mkdir()
+    ws2.mkdir()
+    f1 = ws1 / "common_doc.txt"
+    f2 = ws2 / "common_doc.txt"
+    f1.write_text("doc 1", encoding="utf-8")
+    f2.write_text("doc 2", encoding="utf-8")
+    WorkspaceManager.add_workspace(ws1, name="AmbigWs1", permissions=["READ", "WRITE"])
+    WorkspaceManager.add_workspace(ws2, name="AmbigWs2", permissions=["READ", "WRITE"])
+
+    plan = GoalPlanner.plan_goal("Rename common_doc.txt to common_renamed.txt")
+
+    assert len(plan.discovered_files) == 2
+    assert len(plan.steps) == 0
+    assert "Ambiguous rename goal" in plan.summary
+    assert f1.exists()
+    assert f2.exists()
+
+
+def test_rename_goal_nonexistent_source(tmp_path):
+    """Verify nonexistent source file halts safely as a zero-modification no-op."""
+    ws_dir = tmp_path / "ws_empty_rename"
+    ws_dir.mkdir()
+    WorkspaceManager.add_workspace(ws_dir, name="EmptyRenameWs", permissions=["READ", "WRITE"])
+
+    plan = GoalPlanner.plan_goal("Rename missing_file.txt to new_file.txt in EmptyRenameWs")
+
+    assert len(plan.discovered_files) == 0
+    assert len(plan.steps) == 0
+    assert "No matching file" in plan.summary
+
+
+def test_rename_goal_destination_collision(tmp_path):
+    """Verify collision with an existing destination file rejects plan generation safely."""
+    ws_dir = tmp_path / "ws_collision"
+    ws_dir.mkdir()
+    src = ws_dir / "source.txt"
+    dest = ws_dir / "target.txt"
+    src.write_text("src content", encoding="utf-8")
+    dest.write_text("existing content", encoding="utf-8")
+    WorkspaceManager.add_workspace(ws_dir, name="CollisionWs", permissions=["READ", "WRITE"])
+
+    plan = GoalPlanner.plan_goal("Rename source.txt to target.txt in CollisionWs")
+
+    assert len(plan.steps) == 0
+    assert "Destination collision" in plan.summary
+    # Both files must remain untouched
+    assert src.read_text(encoding="utf-8") == "src content"
+    assert dest.read_text(encoding="utf-8") == "existing content"
+
+
+def test_rename_goal_permission_enforcement(tmp_path):
+    """Verify rename requires WRITE permission and rejects disabled workspaces."""
+    ws_dir = tmp_path / "ws_ro"
+    ws_dir.mkdir()
+    f = ws_dir / "readonly.txt"
+    f.write_text("readonly content", encoding="utf-8")
+    ws = WorkspaceManager.add_workspace(ws_dir, name="RoWs", permissions=["READ"])
+
+    # Missing WRITE permission
+    plan = GoalPlanner.plan_goal("Rename readonly.txt to renamed.txt in RoWs")
+    assert len(plan.steps) == 0
+    assert "lacks WRITE permission" in plan.summary
+
+    # Disabled workspace
+    WorkspaceManager.disable_workspace(ws.workspace_id)
+    plan_disabled = GoalPlanner.plan_goal("Rename readonly.txt to renamed.txt in RoWs")
+    assert len(plan_disabled.steps) == 0
+    assert "currently disabled" in plan_disabled.summary

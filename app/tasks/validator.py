@@ -8,7 +8,7 @@ rejection of hallucinated source files or unauthorized system paths.
 
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from app.workspaces import Permission, WorkspaceManager
 
@@ -121,7 +121,11 @@ class PlanValidator:
                             f"'{arg_val}'.",
                         )
 
-        # 2. Second pass: per-action argument validation, path safety, and workspace permissions
+        # 2. Second pass: per-action argument validation, path safety, workspace permissions,
+        # destination collisions, and cross-step conflict detection
+        deleted_paths: set[Path] = set()
+        planned_destinations: set[Path] = set()
+
         for step in steps:
             order = step["step_order"]
             action = step["action"].lower().strip()
@@ -186,6 +190,7 @@ class PlanValidator:
                 src_str = str(src).strip()
                 dst_str = str(dst).strip()
 
+                src_path_obj: Optional[Path] = None
                 # Source path validation (if not variable reference, must exist on disk)
                 if not src_str.startswith("$") and src_str.lower() not in ("it", "$prev.path"):
                     src_path = Path(src_str).expanduser()
@@ -206,6 +211,15 @@ class PlanValidator:
                                 f"on disk: {src_path}. "
                                 f"Plans must be grounded in real files."
                             )
+                        resolved_src = src_path.resolve()
+                        if resolved_src in deleted_paths:
+                            return (
+                                False,
+                                f"Plan validation failed: step #{order} conflicting steps: "
+                                f"source '{src_path}' was deleted in an earlier step.",
+                            )
+                        src_path_obj = resolved_src
+
                         # Verify source workspace READ permission
                         if WorkspaceManager.count_workspaces() > 0:
                             auth_ok, reason, _ = WorkspaceManager.check_workspace_authorization(
@@ -239,6 +253,27 @@ class PlanValidator:
                                 f"unauthorized: {reason}",
                             )
 
+                    # Destination collision check
+                    if src_path_obj:
+                        dest_file = (
+                            (dst_path / src_path_obj.name).resolve()
+                            if dst_path.is_dir()
+                            else dst_path.resolve()
+                        )
+                        if dest_file.exists():
+                            return (
+                                False,
+                                f"Plan validation failed: step #{order} destination collision: "
+                                f"file already exists at '{dest_file}'.",
+                            )
+                        if dest_file in planned_destinations:
+                            return (
+                                False,
+                                f"Plan validation failed: step #{order} conflicting steps: "
+                                f"multiple steps target destination '{dest_file}'.",
+                            )
+                        planned_destinations.add(dest_file)
+
             # ---------------------------------------------------------
             # RENAME
             # ---------------------------------------------------------
@@ -259,11 +294,36 @@ class PlanValidator:
                     )
 
                 new_name_str = str(new_name).strip()
+                if new_name_str in (".", ".."):
+                    return (
+                        False,
+                        f"Plan validation failed: step #{order} rename new_name is invalid: "
+                        f"'{new_name_str}'.",
+                    )
                 if "/" in new_name_str or "\\" in new_name_str:
                     return (
                         False,
                         f"Plan validation failed: step #{order} rename new_name must not contain "
                         f"path separators.",
+                    )
+
+                windows_reserved = {
+                    "con", "prn", "aux", "nul",
+                    "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9",
+                    "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+                }
+                stem_lower = Path(new_name_str).stem.lower()
+                if stem_lower in windows_reserved or new_name_str.lower() in windows_reserved:
+                    return (
+                        False,
+                        f"Plan validation failed: step #{order} rename new_name is a reserved "
+                        f"device name: '{new_name_str}'.",
+                    )
+                if any(c in '<>:"|?*' or ord(c) < 32 for c in new_name_str):
+                    return (
+                        False,
+                        f"Plan validation failed: step #{order} rename new_name contains invalid "
+                        f"filename characters: '{new_name_str}'.",
                     )
 
                 src_str = str(src).strip()
@@ -279,9 +339,45 @@ class PlanValidator:
                     if not src_path.exists():
                         return (
                             False,
-                            f"Plan validation failed: step #{order} rename target does not exist: "
+                            f"Plan validation failed: step #{order} rename source does not exist: "
                             f"{src_path}",
                         )
+                    resolved_src = src_path.resolve()
+                    if resolved_src in deleted_paths:
+                        return (
+                            False,
+                            f"Plan validation failed: step #{order} conflicting steps: "
+                            f"source '{src_path}' was deleted in an earlier step.",
+                        )
+                    if resolved_src.name == new_name_str:
+                        return (
+                            False,
+                            f"Plan validation failed: step #{order} rename source and destination "
+                            f"are identical: '{new_name_str}'.",
+                        )
+
+                    dest_path = (resolved_src.parent / new_name_str).resolve()
+                    safe_dst_ok, safe_dst_reason = cls._check_path_safety(dest_path)
+                    if not safe_dst_ok:
+                        return (
+                            False,
+                            f"Plan validation failed: step #{order} rename destination unsafe: "
+                            f"{safe_dst_reason}",
+                        )
+                    if dest_path.exists():
+                        return (
+                            False,
+                            f"Plan validation failed: step #{order} destination collision: "
+                            f"target file already exists at '{dest_path}'.",
+                        )
+                    if dest_path in planned_destinations:
+                        return (
+                            False,
+                            f"Plan validation failed: step #{order} conflicting steps: "
+                            f"multiple steps target destination '{dest_path}'.",
+                        )
+                    planned_destinations.add(dest_path)
+
                     if WorkspaceManager.count_workspaces() > 0:
                         auth_ok, reason, _ = WorkspaceManager.check_workspace_authorization(
                             src_path, Permission.WRITE.value
@@ -324,6 +420,15 @@ class PlanValidator:
                             f"Plan validation failed: step #{order} delete target does not exist: "
                             f"{tgt_path}",
                         )
+                    resolved_tgt = tgt_path.resolve()
+                    if resolved_tgt in deleted_paths:
+                        return (
+                            False,
+                            f"Plan validation failed: step #{order} conflicting steps: "
+                            f"target '{tgt_path}' was already deleted in an earlier step.",
+                        )
+                    deleted_paths.add(resolved_tgt)
+
                     if WorkspaceManager.count_workspaces() > 0:
                         auth_ok, reason, _ = WorkspaceManager.check_workspace_authorization(
                             tgt_path, Permission.DELETE.value
@@ -374,14 +479,18 @@ class PlanValidator:
         if resolved == Path(resolved.anchor) or len(resolved.parts) <= 1:
             return False, f"Targeting drive root '{resolved}' is blocked."
 
-        # Protected system directories on Windows
+        # Cross-platform protected system paths (Windows, POSIX, symlinks)
+        if WorkspaceManager.is_protected_system_path(resolved):
+            return False, f"Targeting protected system directory '{resolved}' is blocked."
+
+        # Protected system directories on Windows environment fallback
         resolved_str = str(resolved).lower()
         windows_dir = os.environ.get("SystemRoot", "C:\\Windows").lower()
         prog_files = os.environ.get("ProgramFiles", "C:\\Program Files").lower()
         prog_files_x86 = os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)").lower()
 
         for sys_path in (windows_dir, prog_files, prog_files_x86):
-            if (
+            if sys_path and (
                 resolved_str == sys_path
                 or resolved_str.startswith(sys_path + "\\")
                 or resolved_str.startswith(sys_path + "/")

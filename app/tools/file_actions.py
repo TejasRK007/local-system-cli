@@ -136,6 +136,18 @@ def rename_file(file_path: str, new_name: str) -> str:
     if "/" in new_name or "\\" in new_name:
         return "Rename blocked: new name must be a filename only."
 
+    windows_reserved = {
+        "con", "prn", "aux", "nul",
+        "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9",
+        "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+    }
+    stem_lower = Path(new_name).stem.lower()
+    if stem_lower in windows_reserved or new_name.lower() in windows_reserved:
+        return f"Rename blocked: '{new_name}' is a reserved device name."
+
+    if any(c in '<>:"|?*' or ord(c) < 32 for c in new_name):
+        return f"Rename blocked: new name contains invalid filename characters: '{new_name}'."
+
     target = path.parent / new_name
 
     if target.exists():
@@ -175,20 +187,9 @@ def create_directory(directory_path: str) -> str:
     if path == Path(path.anchor) or len(path.parts) <= 1:
         return f"Directory creation blocked: cannot target drive root: {path}"
 
-    # Reject Windows system directories
-    import os
-
-    windows_dir = os.environ.get("SystemRoot", "C:\\Windows").lower()
-    prog_files = os.environ.get("ProgramFiles", "C:\\Program Files").lower()
-    prog_files_x86 = os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)").lower()
-    p_str = str(path).lower()
-    for sys_path in (windows_dir, prog_files, prog_files_x86):
-        if (
-            p_str == sys_path
-            or p_str.startswith(sys_path + "\\")
-            or p_str.startswith(sys_path + "/")
-        ):
-            return f"Directory creation blocked: cannot target protected system directory: {path}"
+    # Reject protected system directories across platforms
+    if WorkspaceManager.is_protected_system_path(path):
+        return f"Directory creation blocked: cannot target protected system directory: {path}"
 
     # Verify workspace containment and WRITE permission
     if not is_allowed_path(path, permission=Permission.WRITE.value):
