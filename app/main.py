@@ -22,6 +22,7 @@ from app.agent import run_agent
 from app.database import get_recent_logs, log_event
 from app.policy import RISK_COLORS, get_action_risk, requires_approval
 from app.recovery import FailureCategory, execute_action_with_recovery
+from app.tasks.adaptive import AdaptiveFilesystemAgent
 from app.tasks.executor import StepExecutor
 from app.tasks.goal_planner import GoalPlanner
 from app.tasks.manager import TaskManager
@@ -1728,6 +1729,127 @@ def goal_command(
                 border_style="red",
             )
         )
+
+
+@app.command(
+    name="adaptive",
+    help="Run an adaptive filesystem goal with observation and safe replanning (M6).",
+)
+def adaptive_command(
+    goal: str,
+    max_cycles: int = typer.Option(
+        3,
+        "--max-cycles",
+        min=1,
+        max=10,
+        help="Maximum observe/plan/execute/replan cycles.",
+    ),
+    compensate: bool = typer.Option(
+        True,
+        "--compensate/--no-compensate",
+        help="Compensate completed steps when a cycle partially fails.",
+    ),
+    auto_approve: bool = typer.Option(
+        False,
+        "--yes",
+        "-y",
+        help="Automatically approve modifying plans.",
+    ),
+):
+    """Execute a high-level goal using the M6 adaptive filesystem loop."""
+    show_header()
+    show_user_request(goal)
+
+    if not check_workspace_requirement("adaptive goal execution"):
+        return
+
+    def render_cycle(cycle_no, plan, observation):
+        total_files = sum(ws.file_count for ws in observation.workspaces)
+        console.print(
+            f"\n[bold blue]M6 Cycle {cycle_no}/{max_cycles}[/bold blue] — "
+            f"observed {total_files} file(s) across {len(observation.workspaces)} workspace(s)."
+        )
+
+        if plan.discovered_files:
+            table = Table(
+                title=f"Observed Goal Inputs ({len(plan.discovered_files)})",
+                title_style="bold cyan",
+                border_style="blue",
+            )
+            table.add_column("#", justify="right")
+            table.add_column("File")
+            table.add_column("Path", style="dim")
+            for idx, item in enumerate(plan.discovered_files, 1):
+                path = Path(item["path"])
+                table.add_row(str(idx), path.name, str(path))
+            console.print(table)
+
+        if plan.steps:
+            table = Table(
+                title="Validated Adaptive Plan",
+                title_style="bold cyan",
+                border_style="blue",
+            )
+            table.add_column("#", justify="right")
+            table.add_column("Action")
+            table.add_column("Arguments", style="dim")
+            for step in plan.steps:
+                args = ", ".join(
+                    f"{key}={value}" for key, value in step.get("arguments", {}).items()
+                )
+                table.add_row(str(step["step_order"]), step["action"].upper(), args)
+            console.print(table)
+            risk_color = RISK_COLORS.get(plan.cumulative_risk, "white")
+            console.print(
+                f"Risk: [{risk_color}]{plan.cumulative_risk.upper()}[/{risk_color}] — "
+                f"{plan.summary}"
+            )
+        else:
+            console.print(f"[yellow]{plan.summary}[/yellow]")
+
+    def approve(plan):
+        if auto_approve or not plan.requires_approval:
+            return True
+        return typer.confirm(f"Execute this adaptive plan? ({len(plan.steps)} steps)")
+
+    result = AdaptiveFilesystemAgent.run(
+        goal,
+        confirm_callback=approve,
+        compensate_on_failure=compensate,
+        max_cycles=max_cycles,
+        on_cycle=render_cycle,
+        on_retry=lambda attempt, reason: console.print(
+            f"[yellow]Retry {attempt + 1}: {reason}[/yellow]"
+        ),
+    )
+
+    status_style = {
+        "COMPLETE": "bold green",
+        "PARTIAL": "bold yellow",
+        "BLOCKED": "bold red",
+    }.get(result.status, "bold white")
+    console.print()
+    console.print(
+        Panel(
+            f"[{status_style}]{result.summary}[/{status_style}]\n\n"
+            f"Cycles: {len(result.cycles)}\n"
+            f"Observed filesystem changes: {len(result.observed_changes)}",
+            title=f"[bold white]M6 Result: {result.status}[/bold white]",
+            border_style=status_style.split()[-1],
+        )
+    )
+
+    log_event(
+        user_request=goal,
+        action="adaptive_goal",
+        risk_level=(
+            result.cycles[-1].plan.cumulative_risk if result.cycles else "low"
+        ),
+        approval_required=any(c.plan.requires_approval for c in result.cycles),
+        approval_result="APPROVED" if result.status == "COMPLETE" else "NOT_APPLICABLE",
+        execution_status=result.status,
+        result_summary=result.summary,
+    )
 
 
 @app.command(
