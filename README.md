@@ -78,9 +78,9 @@ The system translates natural-language goals into structured, deterministic, and
 
 ---
 
-## 🚀 Milestone Evolution (M1 – M6)
+## 🚀 Milestone Evolution (M1 – M7)
 
-The system was developed iteratively across six core milestones:
+The system was developed iteratively across seven core milestones:
 
 | Milestone | Title | Focus & Delivered Capabilities |
 |-----------|-------|--------------------------------|
@@ -90,6 +90,7 @@ The system was developed iteratively across six core milestones:
 | **M4** | Persistent Workspaces & Permissions | Persistent workspace registration in SQLite, unique workspace IDs, names, canonical path resolution, enabled/disabled toggles, granular permissions (`READ`, `WRITE`, `DELETE`), primary authorization boundary, source `READ` + destination `WRITE` enforcement for moves, `WRITE` for rename, `DELETE` for delete, `READ` for search, protection against unauthorized directories and traversal escapes, workspace CLI commands (`workspace`, `workspace-add`, `workspace-remove`, `workspace-enable`, `workspace-disable`, `workspace-permissions`). |
 | **M5** | Natural-Language Goal Planning | High-level goal planning, authorized workspace inspection, grounded plan synthesis with zero hallucinated source files, `PlanValidator` security gating, plan-level cumulative risk calculation, plan-level approval, execution via `StepExecutor`, `CREATE_DIRECTORY` physical verification, bulk move destination collision prevention, natural-language search variations, partial failure handling, and compensation rollbacks. |
 | **M6** | Adaptive Filesystem Agent | Read-only workspace observation, observe → plan → validate → approve → act → verify → replan cycles, bounded adaptive replanning, filesystem diffs, physical goal-completion verification, stable-plan loop protection, and explainable cycle summaries. |
+| **M7** | General Local System Tools | Controlled local system tools: hardware & resource inspection (`sys-info`), process listing & filtering (`ps`), clipboard read/write with approval gate (`clipboard`), archive inspection & Zip Slip-safe extraction (`archive`), and rich file metadata with SHA-256/MD5 hashes (`metadata`). Zero arbitrary shell access. |
 
 ---
 
@@ -169,8 +170,12 @@ local-system-cli/
 │   │   └── manager.py         # TaskManager: SQLite task persistence, resumption, compensation
 │   └── tools/
 │       ├── __init__.py
+│       ├── archive_tools.py   # Archive inspection & Zip Slip-safe extraction (.zip, .tar)
+│       ├── clipboard.py       # Safe cross-platform clipboard read & write with fallbacks
 │       ├── file_actions.py    # Core filesystem actions (delete, move, rename, create_directory)
-│       └── filesystem.py      # search_files tool with rglob, exclusion filtering, date filters
+│       ├── filesystem.py      # search_files tool with rglob, exclusion filtering, date filters
+│       ├── metadata_tools.py  # File metadata, MIME type detection, cryptographic hashing (SHA-256/MD5)
+│       └── system_tools.py    # Structured process inspection and system resource monitoring (CPU, RAM, Disk)
 ├── tests/
 │   ├── test_ambiguity.py      # Cross-directory collision and ambiguity resolution tests
 │   ├── test_audit.py          # SQLite audit logging, status transitions, secret redaction tests
@@ -179,6 +184,7 @@ local-system-cli/
 │   ├── test_filesystem.py     # File discovery and exclusion filter tests
 │   ├── test_goal_planner.py   # Goal parsing, search variations, organize workflows, physical checks
 │   ├── test_m6_adaptive.py    # M6 observation, replanning, approval, completion and verification
+│   ├── test_m7_system_tools.py# M7 system tools, Zip Slip safety, metadata, clipboard, CLI tests
 │   ├── test_policy.py         # Risk classification and approval requirement tests
 │   ├── test_recovery.py       # Failure categorization, retry thresholds, recovery replanning tests
 │   ├── test_tasks.py          # Persistent task execution, DAG validation, compensation tests
@@ -187,7 +193,7 @@ local-system-cli/
 │   └── workflows/
 │       └── ci.yml             # GitHub Actions CI workflow (Python 3.10, 3.11, 3.12)
 ├── pyproject.toml             # Ruff, Flake8, Pytest, and Mypy configuration
-├── requirements.txt           # Production dependencies
+├── requirements.txt           # Production dependencies (including psutil, pyperclip)
 └── requirements-dev.txt       # Development, linting, and testing dependencies
 ```
 
@@ -293,6 +299,30 @@ py -m app.main delete "C:\Users\You\manual_test\temp.txt"
 
 # View recent SQLite audit logs
 py -m app.main logs --limit 10
+```
+
+### 6. Controlled Local System Tools (M7)
+
+Safe, structured inspection and manipulation of local system resources without raw shell exposure:
+
+```bash
+# View structured hardware & OS statistics (CPU, RAM, Disk)
+py -m app.main sys-info
+
+# List running processes sorted by memory or CPU, with optional filtering
+py -m app.main ps --limit 20 --sort-by memory
+py -m app.main ps --filter python
+
+# Read or write system clipboard (modifying writes require confirmation)
+py -m app.main clipboard
+py -m app.main clipboard --write "Hello from Local System CLI!"
+
+# Inspect archive contents or safely extract with Zip Slip protection
+py -m app.main archive ./backup.zip
+py -m app.main archive ./backup.zip --extract-to ./extracted_folder
+
+# Inspect rich file metadata, MIME type, and cryptographic checksums
+py -m app.main metadata ./report.pdf
 ```
 
 ---
