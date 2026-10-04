@@ -25,6 +25,17 @@ _ACTION_RISK_MAP: dict[str, str] = {
     "rename": "medium",
     "move": "medium",
     "delete": "high",
+    # Milestone 7: General local system tools
+    "get_system_info": "low",
+    "sys_info": "low",
+    "list_processes": "low",
+    "find_process": "low",
+    "read_clipboard": "low",
+    "write_clipboard": "medium",
+    "inspect_archive": "low",
+    "extract_archive": "medium",
+    "get_file_metadata": "low",
+    "metadata": "low",
 }
 
 

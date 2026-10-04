@@ -20,6 +20,17 @@ ALLOWED_ACTIONS: frozenset[str] = frozenset(
         "move",
         "rename",
         "delete",
+        # Milestone 7: General local system tools
+        "get_system_info",
+        "sys_info",
+        "list_processes",
+        "find_process",
+        "read_clipboard",
+        "write_clipboard",
+        "inspect_archive",
+        "extract_archive",
+        "get_file_metadata",
+        "metadata",
     }
 )
 
@@ -462,6 +473,146 @@ class PlanValidator:
                             return (
                                 False,
                                 f"Plan validation failed: step #{order} search unauthorized: "
+                                f"{reason}",
+                            )
+
+            # ---------------------------------------------------------
+            # M7: SYSTEM & PROCESS INSPECTION
+            # ---------------------------------------------------------
+            elif action in ("get_system_info", "sys_info", "list_processes", "find_process"):
+                pass
+
+            # ---------------------------------------------------------
+            # M7: CLIPBOARD
+            # ---------------------------------------------------------
+            elif action == "read_clipboard":
+                pass
+            elif action == "write_clipboard":
+                if not (args.get("text") or args.get("content")):
+                    return (
+                        False,
+                        f"Plan validation failed: step #{order} (write_clipboard) "
+                        f"missing 'text' argument.",
+                    )
+
+            # ---------------------------------------------------------
+            # M7: ARCHIVES
+            # ---------------------------------------------------------
+            elif action == "inspect_archive":
+                raw_arc = args.get("archive_path") or args.get("path")
+                if not raw_arc:
+                    return (
+                        False,
+                        f"Plan validation failed: step #{order} (inspect_archive) "
+                        f"missing 'archive_path'.",
+                    )
+                if not str(raw_arc).startswith("$"):
+                    arc_path = Path(str(raw_arc)).expanduser()
+                    safe_ok, safe_reason = cls._check_path_safety(arc_path)
+                    if not safe_ok:
+                        return (
+                            False,
+                            f"Plan validation failed: step #{order} archive unsafe: {safe_reason}",
+                        )
+                    if not arc_path.exists():
+                        return (
+                            False,
+                            f"Plan validation failed: step #{order} archive not found: {arc_path}",
+                        )
+                    if WorkspaceManager.count_workspaces() > 0:
+                        auth_ok, reason, _ = WorkspaceManager.check_workspace_authorization(
+                            arc_path, Permission.READ.value
+                        )
+                        if not auth_ok:
+                            return (
+                                False,
+                                f"Plan validation failed: step #{order} archive unauthorized: "
+                                f"{reason}",
+                            )
+
+            elif action == "extract_archive":
+                raw_arc = args.get("archive_path") or args.get("path")
+                raw_dst = args.get("destination") or args.get("target_dir")
+                if not raw_arc or not raw_dst:
+                    return (
+                        False,
+                        f"Plan validation failed: step #{order} (extract_archive) "
+                        f"requires 'archive_path' and 'destination'.",
+                    )
+                if not str(raw_arc).startswith("$"):
+                    arc_path = Path(str(raw_arc)).expanduser()
+                    safe_ok, safe_reason = cls._check_path_safety(arc_path)
+                    if not safe_ok:
+                        return (
+                            False,
+                            f"Plan validation failed: step #{order} archive unsafe: {safe_reason}",
+                        )
+                    if not arc_path.exists():
+                        return (
+                            False,
+                            f"Plan validation failed: step #{order} archive not found: {arc_path}",
+                        )
+                    if WorkspaceManager.count_workspaces() > 0:
+                        auth_ok, reason, _ = WorkspaceManager.check_workspace_authorization(
+                            arc_path, Permission.READ.value
+                        )
+                        if not auth_ok:
+                            return (
+                                False,
+                                f"Plan validation failed: step #{order} archive unauthorized: "
+                                f"{reason}",
+                            )
+                if not str(raw_dst).startswith("$"):
+                    dst_path = Path(str(raw_dst)).expanduser()
+                    safe_ok, safe_reason = cls._check_path_safety(dst_path)
+                    if not safe_ok:
+                        return (
+                            False,
+                            f"Plan validation failed: step #{order} destination unsafe: "
+                            f"{safe_reason}",
+                        )
+                    if WorkspaceManager.count_workspaces() > 0:
+                        auth_ok, reason, _ = WorkspaceManager.check_workspace_authorization(
+                            dst_path, Permission.WRITE.value
+                        )
+                        if not auth_ok:
+                            return (
+                                False,
+                                f"Plan validation failed: step #{order} destination unauthorized: "
+                                f"{reason}",
+                            )
+
+            # ---------------------------------------------------------
+            # M7: METADATA
+            # ---------------------------------------------------------
+            elif action in ("get_file_metadata", "metadata"):
+                raw_file = args.get("file_path") or args.get("path")
+                if not raw_file:
+                    return (
+                        False,
+                        f"Plan validation failed: step #{order} (metadata) missing 'file_path'.",
+                    )
+                if not str(raw_file).startswith("$"):
+                    target_path = Path(str(raw_file)).expanduser()
+                    safe_ok, safe_reason = cls._check_path_safety(target_path)
+                    if not safe_ok:
+                        return (
+                            False,
+                            f"Plan validation failed: step #{order} file unsafe: {safe_reason}",
+                        )
+                    if not target_path.exists():
+                        return (
+                            False,
+                            f"Plan validation failed: step #{order} file not found: {target_path}",
+                        )
+                    if WorkspaceManager.count_workspaces() > 0:
+                        auth_ok, reason, _ = WorkspaceManager.check_workspace_authorization(
+                            target_path, Permission.READ.value
+                        )
+                        if not auth_ok:
+                            return (
+                                False,
+                                f"Plan validation failed: step #{order} file unauthorized: "
                                 f"{reason}",
                             )
 

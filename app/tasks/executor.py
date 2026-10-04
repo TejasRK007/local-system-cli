@@ -11,6 +11,8 @@ from app.policy import get_action_risk, requires_approval
 from app.recovery import execute_action_with_recovery
 from app.tasks.manager import TaskManager
 from app.tasks.models import StepStatus, Task, TaskStatus, TaskStep
+from app.tools.archive_tools import extract_archive, inspect_archive
+from app.tools.clipboard import read_clipboard, write_clipboard
 from app.tools.file_actions import (
     create_directory,
     delete_file,
@@ -19,6 +21,8 @@ from app.tools.file_actions import (
     rename_file,
 )
 from app.tools.filesystem import search_files
+from app.tools.metadata_tools import get_file_metadata
+from app.tools.system_tools import find_process, get_system_info, list_processes
 from app.workspaces import Permission, WorkspaceManager
 
 
@@ -712,6 +716,297 @@ class StepExecutor:
                 result_summary=summary,
             )
             return True
+
+        # -------------------------------------------------------------
+        # M7: SYSTEM INFO
+        # -------------------------------------------------------------
+        elif action in ("get_system_info", "sys_info"):
+            TaskManager.update_step_state(step, StepStatus.RUNNING, attempts=1)
+            TaskManager.update_task_state(task, TaskStatus.RUNNING)
+            info = get_system_info()
+            summary = (
+                f"System info: {info['os']} {info['architecture']} "
+                f"({info['cpu_count']} CPUs, {info['ram_total_gb']} GB RAM)"
+            )
+            TaskManager.update_step_state(
+                step, StepStatus.SUCCESS, attempts=1, output=info, error_info=None
+            )
+            log_event(
+                user_request=f"[{step.step_id}] get_system_info",
+                action="get_system_info",
+                risk_level=risk,
+                approval_required=False,
+                approval_result="NOT_REQUIRED",
+                execution_status="SUCCESS",
+                result_summary=summary,
+            )
+            return True
+
+        # -------------------------------------------------------------
+        # M7: PROCESSES
+        # -------------------------------------------------------------
+        elif action in ("list_processes", "find_process"):
+            TaskManager.update_step_state(step, StepStatus.RUNNING, attempts=1)
+            TaskManager.update_task_state(task, TaskStatus.RUNNING)
+            query = resolved_args.get("query") or resolved_args.get("name")
+            limit = int(resolved_args.get("limit", 15))
+            sort_by = str(resolved_args.get("sort_by", "memory"))
+
+            if query:
+                procs = find_process(str(query))
+                summary = f"Found {len(procs)} process(es) matching '{query}'"
+            else:
+                procs = list_processes(limit=limit, sort_by=sort_by)
+                summary = f"Listed top {len(procs)} process(es) sorted by {sort_by}"
+
+            TaskManager.update_step_state(
+                step,
+                StepStatus.SUCCESS,
+                attempts=1,
+                output={"processes": procs, "count": len(procs)},
+                error_info=None,
+            )
+            log_event(
+                user_request=f"[{step.step_id}] {action}",
+                action=action,
+                risk_level=risk,
+                approval_required=False,
+                approval_result="NOT_REQUIRED",
+                execution_status="SUCCESS",
+                result_summary=summary,
+            )
+            return True
+
+        # -------------------------------------------------------------
+        # M7: CLIPBOARD READ
+        # -------------------------------------------------------------
+        elif action == "read_clipboard":
+            TaskManager.update_step_state(step, StepStatus.RUNNING, attempts=1)
+            TaskManager.update_task_state(task, TaskStatus.RUNNING)
+            content = read_clipboard()
+            summary = f"Read {len(content)} characters from clipboard"
+            TaskManager.update_step_state(
+                step,
+                StepStatus.SUCCESS,
+                attempts=1,
+                output={"text": content, "length": len(content)},
+                error_info=None,
+            )
+            log_event(
+                user_request=f"[{step.step_id}] read_clipboard",
+                action="read_clipboard",
+                risk_level=risk,
+                approval_required=False,
+                approval_result="NOT_REQUIRED",
+                execution_status="SUCCESS",
+                result_summary=summary,
+            )
+            return True
+
+        # -------------------------------------------------------------
+        # M7: CLIPBOARD WRITE
+        # -------------------------------------------------------------
+        elif action == "write_clipboard":
+            text = str(resolved_args.get("text") or resolved_args.get("content") or "")
+            if requires_approval(risk):
+                TaskManager.update_step_state(step, StepStatus.WAITING_FOR_APPROVAL, attempts=0)
+                TaskManager.update_task_state(task, TaskStatus.WAITING_FOR_APPROVAL)
+                prompt_msg = f"Do you want to write {len(text)} characters to the clipboard?"
+                approved = (
+                    confirm_callback(action, prompt_msg, {"Length": len(text)})
+                    if confirm_callback
+                    else True
+                )
+                if not approved:
+                    TaskManager.update_step_state(
+                        step, StepStatus.FAILED, attempts=0, error_info="Approval denied by user"
+                    )
+                    log_event(
+                        user_request=f"[{step.step_id}] write_clipboard",
+                        action="write_clipboard",
+                        risk_level=risk,
+                        approval_required=True,
+                        approval_result="DENIED",
+                        execution_status="CANCELLED",
+                        result_summary="User cancelled clipboard write",
+                    )
+                    return False
+
+            TaskManager.update_step_state(step, StepStatus.RUNNING, attempts=1)
+            TaskManager.update_task_state(task, TaskStatus.RUNNING)
+            success = write_clipboard(text)
+            summary = f"Wrote {len(text)} characters to clipboard"
+            status = "SUCCESS" if success else "FAILED"
+            TaskManager.update_step_state(
+                step,
+                StepStatus.SUCCESS if success else StepStatus.FAILED,
+                attempts=1,
+                output={"written_length": len(text)} if success else None,
+                error_info=None if success else "Failed to write clipboard",
+            )
+            log_event(
+                user_request=f"[{step.step_id}] write_clipboard",
+                action="write_clipboard",
+                risk_level=risk,
+                approval_required=True,
+                approval_result="APPROVED",
+                execution_status=status,
+                result_summary=summary,
+            )
+            return success
+
+        # -------------------------------------------------------------
+        # M7: ARCHIVE INSPECT
+        # -------------------------------------------------------------
+        elif action == "inspect_archive":
+            raw_arc = resolved_args.get("archive_path") or resolved_args.get("path") or ""
+            TaskManager.update_step_state(step, StepStatus.RUNNING, attempts=1)
+            TaskManager.update_task_state(task, TaskStatus.RUNNING)
+            try:
+                report = inspect_archive(raw_arc)
+                arc_name = Path(raw_arc).name
+                summary = (
+                    f"Inspected archive {arc_name}: {report['total_files']} files "
+                    f"({report['total_uncompressed_bytes']} bytes)"
+                )
+                TaskManager.update_step_state(
+                    step, StepStatus.SUCCESS, attempts=1, output=report, error_info=None
+                )
+                log_event(
+                    user_request=f"[{step.step_id}] inspect_archive {raw_arc}",
+                    action="inspect_archive",
+                    risk_level=risk,
+                    approval_required=False,
+                    approval_result="NOT_REQUIRED",
+                    execution_status="SUCCESS",
+                    result_summary=summary,
+                )
+                return True
+            except Exception as e:
+                TaskManager.update_step_state(
+                    step, StepStatus.FAILED, attempts=1, error_info=str(e)
+                )
+                log_event(
+                    user_request=f"[{step.step_id}] inspect_archive {raw_arc}",
+                    action="inspect_archive",
+                    risk_level=risk,
+                    approval_required=False,
+                    approval_result="NOT_REQUIRED",
+                    execution_status="FAILED",
+                    result_summary=str(e),
+                )
+                return False
+
+        # -------------------------------------------------------------
+        # M7: ARCHIVE EXTRACT
+        # -------------------------------------------------------------
+        elif action == "extract_archive":
+            raw_arc = resolved_args.get("archive_path") or resolved_args.get("path") or ""
+            raw_dst = resolved_args.get("destination") or resolved_args.get("target_dir") or ""
+
+            if requires_approval(risk):
+                TaskManager.update_step_state(step, StepStatus.WAITING_FOR_APPROVAL, attempts=0)
+                TaskManager.update_task_state(task, TaskStatus.WAITING_FOR_APPROVAL)
+                arc_name = Path(raw_arc).name
+                prompt_msg = f"Do you want to extract {arc_name} into {raw_dst}?"
+                approved = (
+                    confirm_callback(
+                        action, prompt_msg, {"Archive": str(raw_arc), "Destination": str(raw_dst)}
+                    )
+                    if confirm_callback
+                    else True
+                )
+                if not approved:
+                    TaskManager.update_step_state(
+                        step, StepStatus.FAILED, attempts=0, error_info="Approval denied by user"
+                    )
+                    log_event(
+                        user_request=f"[{step.step_id}] extract_archive {raw_arc} -> {raw_dst}",
+                        action="extract_archive",
+                        risk_level=risk,
+                        approval_required=True,
+                        approval_result="DENIED",
+                        execution_status="CANCELLED",
+                        result_summary="User cancelled archive extraction",
+                    )
+                    return False
+
+            TaskManager.update_step_state(step, StepStatus.RUNNING, attempts=1)
+            TaskManager.update_task_state(task, TaskStatus.RUNNING)
+            try:
+                extract_res = extract_archive(raw_arc, raw_dst)
+                arc_name = Path(raw_arc).name
+                count = extract_res["extracted_count"]
+                summary = f"Extracted {count} file(s) from {arc_name} into {raw_dst}"
+                TaskManager.update_step_state(
+                    step, StepStatus.SUCCESS, attempts=1, output=extract_res, error_info=None
+                )
+                log_event(
+                    user_request=f"[{step.step_id}] extract_archive {raw_arc} -> {raw_dst}",
+                    action="extract_archive",
+                    risk_level=risk,
+                    approval_required=True,
+                    approval_result="APPROVED",
+                    execution_status="SUCCESS",
+                    result_summary=summary,
+                )
+                return True
+            except Exception as e:
+                TaskManager.update_step_state(
+                    step, StepStatus.FAILED, attempts=1, error_info=str(e)
+                )
+                log_event(
+                    user_request=f"[{step.step_id}] extract_archive {raw_arc} -> {raw_dst}",
+                    action="extract_archive",
+                    risk_level=risk,
+                    approval_required=True,
+                    approval_result="APPROVED",
+                    execution_status="FAILED",
+                    result_summary=str(e),
+                )
+                return False
+
+        # -------------------------------------------------------------
+        # M7: FILE METADATA
+        # -------------------------------------------------------------
+        elif action in ("get_file_metadata", "metadata"):
+            raw_file = resolved_args.get("file_path") or resolved_args.get("path") or ""
+            TaskManager.update_step_state(step, StepStatus.RUNNING, attempts=1)
+            TaskManager.update_task_state(task, TaskStatus.RUNNING)
+            try:
+                meta = get_file_metadata(raw_file)
+                fname = Path(raw_file).name
+                summary = (
+                    f"Metadata for {fname}: {meta['human_size']}, "
+                    f"{meta['mime_type']}, SHA256={meta['sha256'][:8]}..."
+                )
+                TaskManager.update_step_state(
+                    step, StepStatus.SUCCESS, attempts=1, output=meta, error_info=None
+                )
+                log_event(
+                    user_request=f"[{step.step_id}] get_file_metadata {raw_file}",
+                    action="get_file_metadata",
+                    risk_level=risk,
+                    approval_required=False,
+                    approval_result="NOT_REQUIRED",
+                    execution_status="SUCCESS",
+                    result_summary=summary,
+                )
+                return True
+            except Exception as e:
+                TaskManager.update_step_state(
+                    step, StepStatus.FAILED, attempts=1, error_info=str(e)
+                )
+                log_event(
+                    user_request=f"[{step.step_id}] get_file_metadata {raw_file}",
+                    action="get_file_metadata",
+                    risk_level=risk,
+                    approval_required=False,
+                    approval_result="NOT_REQUIRED",
+                    execution_status="FAILED",
+                    result_summary=str(e),
+                )
+                return False
 
         # -------------------------------------------------------------
         # UNRECOGNIZED ACTION

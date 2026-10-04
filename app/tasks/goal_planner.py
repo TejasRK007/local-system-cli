@@ -213,6 +213,95 @@ Rules:
         """Fallback analysis for offline, missing API keys, or mocked tests."""
         goal_lower = goal.lower()
 
+        # 0. Milestone 7: System tools intents
+        if re.search(
+            r"\b(?:system\s+info|sys-info|system\s+specs|hardware\s+info|cpu\s+and\s+ram)\b",
+            goal_lower,
+        ):
+            return {
+                "action_type": "get_system_info",
+                "extension": None,
+                "filename": None,
+                "new_filename": None,
+                "keywords": [],
+                "target_directory_name": None,
+                "target_workspace_name": None,
+                "source_workspace_name": None,
+                "target_workspace_names": [],
+            }
+
+        if re.search(
+            r"\b(?:processes|process\s+list|running\s+apps|running\s+processes|top\s+processes)\b",
+            goal_lower,
+        ):
+            return {
+                "action_type": "list_processes",
+                "extension": None,
+                "filename": None,
+                "new_filename": None,
+                "keywords": [],
+                "target_directory_name": None,
+                "target_workspace_name": None,
+                "source_workspace_name": None,
+                "target_workspace_names": [],
+            }
+
+        if re.search(r"\b(?:clipboard|copy\s+to\s+clipboard|read\s+clipboard)\b", goal_lower):
+            is_write = bool(re.search(r"\b(?:copy|write|save|set)\b", goal_lower))
+            return {
+                "action_type": "write_clipboard" if is_write else "read_clipboard",
+                "extension": None,
+                "filename": None,
+                "new_filename": None,
+                "keywords": [],
+                "target_directory_name": None,
+                "target_workspace_name": None,
+                "source_workspace_name": None,
+                "target_workspace_names": [],
+            }
+
+        if re.search(r"\b(?:unzip|extract\s+archive|extract\s+zip)\b", goal_lower):
+            return {
+                "action_type": "extract_archive",
+                "extension": ".zip",
+                "filename": None,
+                "new_filename": None,
+                "keywords": [],
+                "target_directory_name": None,
+                "target_workspace_name": None,
+                "source_workspace_name": None,
+                "target_workspace_names": [],
+            }
+
+        if re.search(
+            r"\b(?:inspect\s+archive|inspect\s+zip|view\s+zip|list\s+archive)\b",
+            goal_lower,
+        ):
+            return {
+                "action_type": "inspect_archive",
+                "extension": ".zip",
+                "filename": None,
+                "new_filename": None,
+                "keywords": [],
+                "target_directory_name": None,
+                "target_workspace_name": None,
+                "source_workspace_name": None,
+                "target_workspace_names": [],
+            }
+
+        if re.search(r"\b(?:metadata|file\s+details|file\s+info|inspect\s+metadata)\b", goal_lower):
+            return {
+                "action_type": "get_file_metadata",
+                "extension": None,
+                "filename": None,
+                "new_filename": None,
+                "keywords": [],
+                "target_directory_name": None,
+                "target_workspace_name": None,
+                "source_workspace_name": None,
+                "target_workspace_names": [],
+            }
+
         # 1. Handle standalone directory creation goals
         if (
             re.search(r"\b(?:create|make|mkdir)\b.*?\b(?:folder|directory)\b", goal_lower)
@@ -589,6 +678,61 @@ Rules:
 
         target_workspace = None
         search_scope: list[Workspace] = []
+
+        # Milestone 7: Direct system & process inspection goals
+        if action_type in ("get_system_info", "sys_info"):
+            return GoalPlan(
+                goal=goal,
+                target_workspace=None,
+                discovered_files=[],
+                steps=[
+                    {
+                        "step_order": 1,
+                        "action": "get_system_info",
+                        "arguments": {},
+                        "depends_on_order": None,
+                    }
+                ],
+                cumulative_risk="low",
+                requires_approval=False,
+                summary="Inspect system specifications, OS architecture, and resource usage.",
+            )
+
+        if action_type in ("list_processes", "find_process"):
+            return GoalPlan(
+                goal=goal,
+                target_workspace=None,
+                discovered_files=[],
+                steps=[
+                    {
+                        "step_order": 1,
+                        "action": "list_processes",
+                        "arguments": {"limit": 15, "sort_by": "memory"},
+                        "depends_on_order": None,
+                    }
+                ],
+                cumulative_risk="low",
+                requires_approval=False,
+                summary="Inspect active system processes sorted by resource utilization.",
+            )
+
+        if action_type == "read_clipboard":
+            return GoalPlan(
+                goal=goal,
+                target_workspace=None,
+                discovered_files=[],
+                steps=[
+                    {
+                        "step_order": 1,
+                        "action": "read_clipboard",
+                        "arguments": {},
+                        "depends_on_order": None,
+                    }
+                ],
+                cumulative_risk="low",
+                requires_approval=False,
+                summary="Read current clipboard contents.",
+            )
 
         # Special handling for standalone directory creation
         if action_type == "create_directory":

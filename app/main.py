@@ -29,11 +29,15 @@ from app.tasks.manager import TaskManager
 from app.tasks.models import StepStatus, TaskStatus
 from app.tasks.planner import plan_task_steps
 from app.tasks.validator import PlanValidator
+from app.tools.archive_tools import extract_archive, inspect_archive
+from app.tools.clipboard import read_clipboard, write_clipboard
 from app.tools.file_actions import (
     delete_file,
     move_file,
     rename_file,
 )
+from app.tools.metadata_tools import get_file_metadata
+from app.tools.system_tools import get_system_info, list_processes
 from app.workspaces import WorkspaceManager
 
 console = Console()
@@ -2421,6 +2425,250 @@ def workspace_permissions_command(
             border_style="green",
         )
     )
+
+
+# ==============================================================================
+# MILESTONE 7: GENERAL LOCAL SYSTEM TOOLS
+# ==============================================================================
+
+
+@app.command(
+    name="sys-info",
+    help="Inspect system hardware, OS specifications, and resource utilization (M7).",
+)
+def sys_info_command():
+    """Display structured hardware and operating system statistics."""
+    show_header()
+    info = get_system_info()
+
+    table = Table(
+        title="System & Resource Information",
+        title_style="bold cyan",
+        border_style="blue",
+    )
+    table.add_column("Property", style="bold white", width=25)
+    table.add_column("Value", style="cyan")
+
+    table.add_row("Operating System", f"{info['os']} ({info['release']})")
+    table.add_row("OS Version", info["version"])
+    table.add_row("Architecture", info["architecture"])
+    table.add_row("Processor / CPUs", f"{info['processor']} ({info['cpu_count']} cores)")
+    table.add_row("Total RAM", f"{info['ram_total_gb']} GB")
+    ram_free_pct = 100 - info["ram_percent"]
+    table.add_row("Available RAM", f"{info['ram_available_gb']} GB ({ram_free_pct:.1f}% free)")
+    table.add_row("Disk Total", f"{info['disk_total_gb']} GB")
+    table.add_row("Disk Used", f"{info['disk_used_gb']} GB ({info['disk_percent']}% used)")
+    table.add_row("Disk Free", f"{info['disk_free_gb']} GB")
+
+    console.print(table)
+
+
+@app.command(
+    name="ps",
+    help="List or search running system processes safely (M7).",
+)
+def ps_command(
+    limit: int = typer.Option(15, "--limit", "-n", help="Maximum processes to display."),
+    sort_by: str = typer.Option(
+        "memory", "--sort-by", "-s", help="Sort order: 'memory' or 'cpu'."
+    ),
+    filter_name: Optional[str] = typer.Option(
+        None, "--filter", "-f", help="Filter by process name."
+    ),
+):
+    """List running processes with memory and CPU usage."""
+    show_header()
+    processes = list_processes(limit=limit, sort_by=sort_by, name_filter=filter_name)
+
+    title = f"Top {len(processes)} Processes (Sorted by {sort_by.upper()})"
+    if filter_name:
+        title += f" [Filter: '{filter_name}']"
+
+    table = Table(title=title, title_style="bold cyan", border_style="blue")
+    table.add_column("PID", justify="right", style="cyan", width=8)
+    table.add_column("Process Name", style="bold white", width=30)
+    table.add_column("Memory (MB)", justify="right", style="green", width=14)
+    table.add_column("Memory %", justify="right", style="yellow", width=10)
+    table.add_column("CPU %", justify="right", style="magenta", width=10)
+    table.add_column("Status", style="dim white", width=10)
+
+    for p in processes:
+        table.add_row(
+            str(p["pid"]),
+            p["name"],
+            f"{p['memory_mb']:.2f}",
+            f"{p['memory_percent']:.1f}%",
+            f"{p['cpu_percent']:.1f}%",
+            p["status"],
+        )
+
+    console.print(table)
+
+
+@app.command(
+    name="clipboard",
+    help="Inspect or write to system clipboard safely (M7).",
+)
+def clipboard_command(
+    write: Optional[str] = typer.Option(None, "--write", "-w", help="Text to copy to clipboard."),
+):
+    """Read from or write to the system clipboard."""
+    show_header()
+    if write is not None:
+        risk = get_action_risk("write_clipboard")
+        snippet = write[:80] + ("..." if len(write) > 80 else "")
+        r_color = RISK_COLORS[risk]
+        console.print(
+            Panel(
+                f"[bold yellow]Action:[/bold yellow] Write to Clipboard\n"
+                f"[bold yellow]Content:[/bold yellow] {snippet}\n"
+                f"[bold yellow]Risk:[/bold yellow] [{r_color}]{risk.upper()}[/{r_color}]",
+                title="Clipboard Write Request",
+                border_style="yellow",
+            )
+        )
+        if not typer.confirm("Copy this text to clipboard?"):
+            console.print("[yellow]Clipboard write cancelled by user.[/yellow]")
+            return
+
+        success = write_clipboard(write)
+        if success:
+            console.print(
+                f"[bold green]Copied {len(write)} characters to clipboard![/bold green]"
+            )
+        else:
+            console.print("[bold red]Failed to write to clipboard.[/bold red]")
+    else:
+        content = read_clipboard()
+        console.print(
+            Panel(
+                content if content else "[dim italic](Clipboard is currently empty)[/dim italic]",
+                title=f"Clipboard Content ({len(content)} chars)",
+                border_style="cyan",
+            )
+        )
+
+
+@app.command(
+    name="archive",
+    help="Inspect or safely extract archive files (.zip, .tar) (M7).",
+)
+def archive_command(
+    archive_path: str = typer.Argument(..., help="Path to archive file."),
+    extract_to: Optional[str] = typer.Option(
+        None, "--extract-to", "-x", help="Destination folder for extraction."
+    ),
+):
+    """Inspect archive contents or safely extract with Zip Slip protection."""
+    show_header()
+    path_obj = Path(archive_path).expanduser().resolve()
+    if not path_obj.exists():
+        console.print(f"[bold red]Archive file not found: {path_obj}[/bold red]")
+        return
+
+    if extract_to:
+        dest_obj = Path(extract_to).expanduser().resolve()
+        risk = get_action_risk("extract_archive")
+        r_color = RISK_COLORS[risk]
+        console.print(
+            Panel(
+                f"[bold yellow]Archive:[/bold yellow] {path_obj.name}\n"
+                f"[bold yellow]Destination:[/bold yellow] {dest_obj}\n"
+                f"[bold yellow]Risk:[/bold yellow] [{r_color}]{risk.upper()}[/{r_color}]",
+                title="Archive Extraction Request",
+                border_style="yellow",
+            )
+        )
+        if not typer.confirm("Extract archive?"):
+            console.print("[yellow]Extraction cancelled by user.[/yellow]")
+            return
+
+        try:
+            res = extract_archive(path_obj, dest_obj)
+            console.print(
+                Panel(
+                    f"[bold green]Extracted {res['extracted_count']} files "
+                    f"to {dest_obj}[/bold green]",
+                    title="Extraction Complete",
+                    border_style="green",
+                )
+            )
+        except Exception as e:
+            console.print(f"[bold red]Extraction failed: {e}[/bold red]")
+    else:
+        try:
+            report = inspect_archive(path_obj)
+            title = (
+                f"Archive: {path_obj.name} "
+                f"({report['total_files']} files, {report['total_uncompressed_bytes']} bytes)"
+            )
+            table = Table(
+                title=title,
+                title_style="bold cyan",
+                border_style="blue",
+            )
+            table.add_column("#", justify="right", width=5)
+            table.add_column("Filename", style="bold white")
+            table.add_column("Size (Bytes)", justify="right", style="green", width=14)
+            table.add_column("Type", style="cyan", width=10)
+
+            for i, m in enumerate(report["members"][:25], 1):
+                table.add_row(
+                    str(i),
+                    m["filename"],
+                    str(m["size_bytes"]),
+                    "DIR" if m["is_dir"] else "FILE",
+                )
+
+            if len(report["members"]) > 25:
+                extra = len(report["members"]) - 25
+                table.add_row("...", f"... and {extra} more items", "...", "...")
+
+            console.print(table)
+        except Exception as e:
+            console.print(f"[bold red]Failed to inspect archive: {e}[/bold red]")
+
+
+@app.command(
+    name="metadata",
+    help="Inspect detailed file metadata, MIME type, and cryptographic hashes (M7).",
+)
+def metadata_command(
+    file_path: str = typer.Argument(..., help="Path to target file."),
+):
+    """Inspect structured file metadata and checksums."""
+    show_header()
+    path_obj = Path(file_path).expanduser().resolve()
+    if not path_obj.exists():
+        console.print(f"[bold red]File not found: {path_obj}[/bold red]")
+        return
+
+    try:
+        meta = get_file_metadata(path_obj)
+        table = Table(
+            title=f"Metadata: {path_obj.name}",
+            title_style="bold cyan",
+            border_style="blue",
+        )
+        table.add_column("Attribute", style="bold white", width=20)
+        table.add_column("Value", style="cyan")
+
+        table.add_row("Full Path", meta["path"])
+        table.add_row("File Size", f"{meta['human_size']} ({meta['size_bytes']} bytes)")
+        table.add_row("MIME Type", meta["mime_type"])
+        table.add_row("Created", meta["created_at"])
+        table.add_row("Modified", meta["modified_at"])
+        table.add_row("Permissions", meta["permissions_octal"])
+        if meta.get("line_count") is not None:
+            table.add_row("Line Count", str(meta["line_count"]))
+        if meta.get("sha256"):
+            table.add_row("SHA-256", meta["sha256"])
+        if meta.get("md5"):
+            table.add_row("MD5", meta["md5"])
+
+        console.print(table)
+    except Exception as e:
+        console.print(f"[bold red]Failed to read metadata: {e}[/bold red]")
 
 
 if __name__ == "__main__":
