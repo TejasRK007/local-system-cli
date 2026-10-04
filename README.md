@@ -78,9 +78,9 @@ The system translates natural-language goals into structured, deterministic, and
 
 ---
 
-## 🚀 Milestone Evolution (M1 – M5)
+## 🚀 Milestone Evolution (M1 – M6)
 
-The system was developed iteratively across five core milestones:
+The system was developed iteratively across six core milestones:
 
 | Milestone | Title | Focus & Delivered Capabilities |
 |-----------|-------|--------------------------------|
@@ -89,6 +89,7 @@ The system was developed iteratively across five core milestones:
 | **M3** | Stateful Multi-Step Tasks | Persistent task and step lifecycle in SQLite (`Task`, `TaskStep`, `TaskStatus`, `StepStatus`), sequential execution, dependency DAG enforcement, dynamic output reference resolution (`$output.step_N.path`, `$prev.path`, `it`), per-step risk gating and approval, partial failure handling, reverse compensation rollbacks, CLI task management commands (`task`, `tasks`, `task-status`, `task-resume`). |
 | **M4** | Persistent Workspaces & Permissions | Persistent workspace registration in SQLite, unique workspace IDs, names, canonical path resolution, enabled/disabled toggles, granular permissions (`READ`, `WRITE`, `DELETE`), primary authorization boundary, source `READ` + destination `WRITE` enforcement for moves, `WRITE` for rename, `DELETE` for delete, `READ` for search, protection against unauthorized directories and traversal escapes, workspace CLI commands (`workspace`, `workspace-add`, `workspace-remove`, `workspace-enable`, `workspace-disable`, `workspace-permissions`). |
 | **M5** | Natural-Language Goal Planning | High-level goal planning, authorized workspace inspection, grounded plan synthesis with zero hallucinated source files, `PlanValidator` security gating, plan-level cumulative risk calculation, plan-level approval, execution via `StepExecutor`, `CREATE_DIRECTORY` physical verification, bulk move destination collision prevention, natural-language search variations, partial failure handling, and compensation rollbacks. |
+| **M6** | Adaptive Filesystem Agent | Read-only workspace observation, observe → plan → validate → approve → act → verify → replan cycles, bounded adaptive replanning, filesystem diffs, physical goal-completion verification, stable-plan loop protection, and explainable cycle summaries. |
 
 ---
 
@@ -162,6 +163,7 @@ local-system-cli/
 │   │   ├── models.py          # Task, TaskStep, TaskStatus, StepStatus data models
 │   │   ├── planner.py         # Multi-step task planner ($output.step_N.path resolution)
 │   │   ├── goal_planner.py    # Natural-language goal planner, workspace grounding, collision-safe planning
+│   │   ├── adaptive.py        # M6 observation, adaptive replanning, verification, completion
 │   │   ├── validator.py       # PlanValidator: DAG cycles, permissions, workspace containment
 │   │   ├── executor.py        # StepExecutor: sequential step execution, physical checks, rollbacks
 │   │   └── manager.py         # TaskManager: SQLite task persistence, resumption, compensation
@@ -176,6 +178,7 @@ local-system-cli/
 │   ├── test_file_actions.py   # Path validation, traversal prevention, file action tests
 │   ├── test_filesystem.py     # File discovery and exclusion filter tests
 │   ├── test_goal_planner.py   # Goal parsing, search variations, organize workflows, physical checks
+│   ├── test_m6_adaptive.py    # M6 observation, replanning, approval, completion and verification
 │   ├── test_policy.py         # Risk classification and approval requirement tests
 │   ├── test_recovery.py       # Failure categorization, retry thresholds, recovery replanning tests
 │   ├── test_tasks.py          # Persistent task execution, DAG validation, compensation tests
@@ -213,7 +216,27 @@ py -m app.main goal "Organize my PDF files into a Documents folder"
 #   --auto-approve / --no-auto-approve Bypass interactive confirmation (default: False)
 ```
 
-### 2. Multi-Step Tasks (M3)
+### 2. Adaptive Goal Execution (M6)
+
+M6 adds a bounded observe/reason/plan/validate/approve/act/verify/replan loop around the existing M1-M5 controls. The agent re-observes authorized workspaces after execution, detects added/removed/changed files, and replans when the physical state differs from the original plan. It never gains shell or arbitrary command execution.
+
+```bash
+# Adaptive execution with up to three cycles
+py -m app.main adaptive "Organize my PDF files into an Archive folder"
+
+# Approve modifying plans automatically
+py -m app.main adaptive "Organize my PDF files into an Archive folder" --yes
+
+# Change the bounded replanning limit
+py -m app.main adaptive "Organize my PDF files into an Archive folder" --max-cycles 5
+
+# Disable compensation if you explicitly want successful steps retained after a failed cycle
+py -m app.main adaptive "Organize my PDF files into an Archive folder" --no-compensate
+```
+
+M6 reports `COMPLETE`, `PARTIAL`, or `BLOCKED`; modifying plans still require explicit approval unless `--yes` is supplied.
+
+### 3. Multi-Step Tasks (M3)
 
 Execute or manage structured multi-step tasks:
 
@@ -231,7 +254,7 @@ py -m app.main task-status <task_id>
 py -m app.main task-resume <task_id>
 ```
 
-### 3. Workspaces & Permissions (M4)
+### 4. Workspaces & Permissions (M4)
 
 Manage persistent authorization boundaries:
 
@@ -256,7 +279,7 @@ py -m app.main workspace-enable <workspace_id>
 py -m app.main workspace-remove <workspace_id>
 ```
 
-### 4. Interactive Agent & File Actions (M1 / M2)
+### 5. Interactive Agent & File Actions (M1 / M2)
 
 Direct single-step requests and audit inspection:
 
