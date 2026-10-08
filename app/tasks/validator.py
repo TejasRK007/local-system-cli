@@ -31,6 +31,22 @@ ALLOWED_ACTIONS: frozenset[str] = frozenset(
         "extract_archive",
         "get_file_metadata",
         "metadata",
+        # Milestone 8: Personal automation & productivity integrations
+        "read_document",
+        "summarize_document",
+        "browser_fetch_page",
+        "browser_search",
+        "browser_download_file",
+        "email_search",
+        "email_read",
+        "email_draft",
+        "email_send",
+        "calendar_list_events",
+        "calendar_check_conflict",
+        "calendar_create_event",
+        "github_list_issues",
+        "github_inspect_pr",
+        "github_create_issue",
     }
 )
 
@@ -319,9 +335,28 @@ class PlanValidator:
                     )
 
                 windows_reserved = {
-                    "con", "prn", "aux", "nul",
-                    "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9",
-                    "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+                    "con",
+                    "prn",
+                    "aux",
+                    "nul",
+                    "com1",
+                    "com2",
+                    "com3",
+                    "com4",
+                    "com5",
+                    "com6",
+                    "com7",
+                    "com8",
+                    "com9",
+                    "lpt1",
+                    "lpt2",
+                    "lpt3",
+                    "lpt4",
+                    "lpt5",
+                    "lpt6",
+                    "lpt7",
+                    "lpt8",
+                    "lpt9",
                 }
                 stem_lower = Path(new_name_str).stem.lower()
                 if stem_lower in windows_reserved or new_name_str.lower() in windows_reserved:
@@ -585,7 +620,7 @@ class PlanValidator:
             # ---------------------------------------------------------
             # M7: METADATA
             # ---------------------------------------------------------
-            elif action in ("get_file_metadata", "metadata"):
+            elif action in ("get_file_metadata", "metadata", "read_document", "summarize_document"):
                 raw_file = args.get("file_path") or args.get("path")
                 if not raw_file:
                     return (

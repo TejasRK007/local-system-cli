@@ -30,12 +30,19 @@ from app.tasks.models import StepStatus, TaskStatus
 from app.tasks.planner import plan_task_steps
 from app.tasks.validator import PlanValidator
 from app.tools.archive_tools import extract_archive, inspect_archive
+from app.tools.browser_tools import browser_fetch_page
+from app.tools.calendar_tools import (
+    calendar_list_events,
+)
 from app.tools.clipboard import read_clipboard, write_clipboard
+from app.tools.document_tools import read_document, summarize_document
+from app.tools.email_tools import email_draft
 from app.tools.file_actions import (
     delete_file,
     move_file,
     rename_file,
 )
+from app.tools.github_tools import github_list_issues
 from app.tools.metadata_tools import get_file_metadata
 from app.tools.system_tools import get_system_info, list_processes
 from app.workspaces import WorkspaceManager
@@ -1846,9 +1853,7 @@ def adaptive_command(
     log_event(
         user_request=goal,
         action="adaptive_goal",
-        risk_level=(
-            result.cycles[-1].plan.cumulative_risk if result.cycles else "low"
-        ),
+        risk_level=(result.cycles[-1].plan.cumulative_risk if result.cycles else "low"),
         approval_required=any(c.plan.requires_approval for c in result.cycles),
         approval_result="APPROVED" if result.status == "COMPLETE" else "NOT_APPLICABLE",
         execution_status=result.status,
@@ -2469,9 +2474,7 @@ def sys_info_command():
 )
 def ps_command(
     limit: int = typer.Option(15, "--limit", "-n", help="Maximum processes to display."),
-    sort_by: str = typer.Option(
-        "memory", "--sort-by", "-s", help="Sort order: 'memory' or 'cpu'."
-    ),
+    sort_by: str = typer.Option("memory", "--sort-by", "-s", help="Sort order: 'memory' or 'cpu'."),
     filter_name: Optional[str] = typer.Option(
         None, "--filter", "-f", help="Filter by process name."
     ),
@@ -2533,9 +2536,7 @@ def clipboard_command(
 
         success = write_clipboard(write)
         if success:
-            console.print(
-                f"[bold green]Copied {len(write)} characters to clipboard![/bold green]"
-            )
+            console.print(f"[bold green]Copied {len(write)} characters to clipboard![/bold green]")
         else:
             console.print("[bold red]Failed to write to clipboard.[/bold red]")
     else:
@@ -2669,6 +2670,305 @@ def metadata_command(
         console.print(table)
     except Exception as e:
         console.print(f"[bold red]Failed to read metadata: {e}[/bold red]")
+
+
+# =============================================================================
+# MILESTONE 8: PRODUCTIVITY & INTEGRATION CLI COMMANDS
+# =============================================================================
+
+
+@app.command(
+    name="read-doc",
+    help="Safely read document content within authorized workspaces (M8).",
+)
+def read_doc_command(
+    file_path: str = typer.Argument(..., help="Path to document (.txt, .md, .pdf, .docx)."),
+    max_chars: int = typer.Option(3000, help="Maximum characters to display."),
+):
+    """Read a document within authorized workspaces."""
+    show_header()
+    res = read_document(file_path, max_chars=max_chars)
+    if not res.get("success"):
+        console.print(f"[bold red]Error: {res.get('error')}[/bold red]")
+        return
+
+    doc_title = (
+        f"[bold cyan]Document: {res['filename']} "
+        f"({res['character_count']} chars, {res['workspace']})[/bold cyan]"
+    )
+    console.print(
+        Panel(
+            res["content"],
+            title=doc_title,
+            border_style="green",
+        )
+    )
+
+
+@app.command(
+    name="summarize-doc",
+    help="Summarize a document's key points without modifying the file (M8).",
+)
+def summarize_doc_command(
+    file_path: str = typer.Argument(..., help="Path to document to summarize."),
+):
+    """Summarize document content within authorized workspaces."""
+    show_header()
+    res = summarize_document(file_path)
+    if not res.get("success"):
+        console.print(f"[bold red]Error: {res.get('error')}[/bold red]")
+        return
+
+    body = f"[bold]Summary:[/bold]\n{res['summary']}\n\n[bold]Key Points:[/bold]\n"
+    for pt in res.get("key_points", []):
+        body += f"• {pt}\n"
+
+    console.print(
+        Panel(
+            body.strip(),
+            title=f"[bold cyan]Summary: {res['filename']} ({res['word_count']} words)[/bold cyan]",
+            border_style="blue",
+        )
+    )
+
+
+@app.command(
+    name="browser-fetch",
+    help="Safely extract readable text from a URL without script execution (M8).",
+)
+def browser_fetch_command(
+    url: str = typer.Argument(..., help="Target HTTP/HTTPS URL."),
+    max_chars: int = typer.Option(2000, help="Maximum characters to preview."),
+):
+    """Fetch clean readable web page content."""
+    show_header()
+    res = browser_fetch_page(url, max_chars=max_chars)
+    if not res.get("success"):
+        console.print(f"[bold red]Error: {res.get('error')}[/bold red]")
+        return
+
+    console.print(
+        Panel(
+            res["content"],
+            title=f"[bold cyan]{res['title']} ({res['length']} chars)[/bold cyan]",
+            border_style="cyan",
+        )
+    )
+
+
+@app.command(
+    name="email-draft",
+    help="Stage a local email draft without sending (M8).",
+)
+def email_draft_command(
+    to: str = typer.Argument(..., help="Recipient email address."),
+    subject: str = typer.Argument(..., help="Email subject line."),
+    body: str = typer.Option(
+        "Automated message staged via Local Agentic Automation.", help="Draft body text."
+    ),
+):
+    """Stage a local email draft."""
+    show_header()
+    res = email_draft(to, subject, body)
+    if not res.get("success"):
+        console.print(f"[bold red]Error: {res.get('error')}[/bold red]")
+        return
+
+    console.print(
+        Panel(
+            f"[bold green]Draft #{res['draft_id']} staged successfully.[/bold green]\n"
+            f"[cyan]To:[/cyan] {to}\n[cyan]Subject:[/cyan] {subject}\n[cyan]Body:[/cyan] {body}",
+            title="[bold blue]Email Draft Saved[/bold blue]",
+        )
+    )
+
+
+@app.command(
+    name="calendar-events",
+    help="List scheduled calendar events (M8).",
+)
+def calendar_events_command():
+    """List calendar appointments."""
+    show_header()
+    res = calendar_list_events()
+    events = res.get("events", [])
+    if not events:
+        console.print("[yellow]No calendar events found.[/yellow]")
+        return
+
+    table = Table(title="Calendar Events", title_style="bold cyan")
+    table.add_column("ID", width=6)
+    table.add_column("Title", style="bold white")
+    table.add_column("Start Time", style="green")
+    table.add_column("End Time", style="green")
+    table.add_column("Description", style="cyan")
+
+    for ev in events:
+        table.add_row(
+            str(ev["id"]), ev["title"], ev["start_time"], ev["end_time"], ev.get("description", "")
+        )
+
+    console.print(table)
+
+
+@app.command(
+    name="github-issues",
+    help="List issues in a GitHub repository (M8).",
+)
+def github_issues_command(
+    repo: str = typer.Argument(..., help="Repository in 'owner/repo' format."),
+    state: str = typer.Option("open", help="Issue state (open/closed/all)."),
+):
+    """Query GitHub repository issues."""
+    show_header()
+    res = github_list_issues(repo, state=state)
+    if not res.get("success"):
+        console.print(f"[bold red]Error querying GitHub: {res.get('error')}[/bold red]")
+        return
+
+    issues = res.get("issues", [])
+    if not issues:
+        console.print(f"[yellow]No {state} issues found in {repo}.[/yellow]")
+        return
+
+    table = Table(title=f"GitHub Issues: {repo}", title_style="bold cyan")
+    table.add_column("#", width=6)
+    table.add_column("Title", style="bold white")
+    table.add_column("Author", style="cyan")
+    table.add_column("State", style="green")
+
+    for iss in issues:
+        table.add_row(
+            str(iss.get("number")),
+            iss.get("title", ""),
+            iss.get("author", ""),
+            iss.get("state", ""),
+        )
+
+    console.print(table)
+
+
+@app.command(
+    name="ui",
+    help="Launch the local interactive web dashboard (FastAPI + Modern Web UI).",
+)
+def ui_command(
+    host: str = typer.Option(
+        "0.0.0.0", help="Host interface to bind (0.0.0.0 allows phone/LAN access)."
+    ),
+    port: int = typer.Option(8000, help="Port to run the dashboard web server on."),
+    open_browser: bool = typer.Option(True, help="Automatically open browser."),
+):
+    """Launch the Web Dashboard."""
+    import webbrowser
+
+    import uvicorn
+
+    from app.tools.attendance_tools import get_local_ip
+
+    show_header()
+    lan_ip = get_local_ip()
+    local_url = f"http://127.0.0.1:{port}"
+    network_url = f"http://{lan_ip}:{port}" if lan_ip != "127.0.0.1" else None
+
+    panel_text = (
+        f"[bold green]Local Agentic Dashboard starting:[/bold green]\n"
+        f"  Local Access:   [bold cyan]{local_url}[/bold cyan]\n"
+    )
+    if network_url:
+        panel_text += (
+            f"  Network Access: [bold cyan]{network_url}[/bold cyan] (Scan or visit on mobile)\n"
+        )
+    panel_text += (
+        "[dim]Powered by FastAPI, Uvicorn, and Ollama (qwen2.5:3b).\nPress Ctrl+C to stop.[/dim]"
+    )
+
+    console.print(
+        Panel(
+            panel_text,
+            title="[bold blue]Web Dashboard[/bold blue]",
+            border_style="cyan",
+        )
+    )
+
+    if open_browser:
+        try:
+            webbrowser.open(local_url)
+        except Exception:
+            pass
+
+    uvicorn.run("app.server:server_app", host=host, port=port, log_level="info")
+
+
+@app.command(
+    name="https-ui",
+    help="Launch dashboard over HTTPS (required for camera access on mobile/LAN).",
+)
+def https_ui_command(
+    host: str = typer.Option("0.0.0.0", help="Host interface to bind."),
+    port: int = typer.Option(8443, help="HTTPS port (default 8443)."),
+    open_browser: bool = typer.Option(True, help="Automatically open browser."),
+):
+    """Launch the Web Dashboard with HTTPS so phone cameras work on LAN."""
+    import webbrowser
+
+    import uvicorn
+
+    from app.ssl_cert import ensure_ssl_cert
+    from app.tools.attendance_tools import get_local_ip
+
+    show_header()
+    console.print("[bold cyan]Setting up HTTPS for LAN camera access...[/bold cyan]")
+
+    try:
+        cert_file, key_file = ensure_ssl_cert()
+    except Exception as e:
+        console.print(f"[bold red]Failed to generate SSL certificate: {e}[/bold red]")
+        console.print("[yellow]Install cryptography:  pip install cryptography[/yellow]")
+        raise typer.Exit(1)
+
+    lan_ip = get_local_ip()
+    local_url = f"https://127.0.0.1:{port}"
+    network_url = f"https://{lan_ip}:{port}" if lan_ip != "127.0.0.1" else None
+
+    panel_text = (
+        f"[bold green]Local Agentic Dashboard (HTTPS):[/bold green]\n"
+        f"  Local Access:   [bold cyan]{local_url}[/bold cyan]\n"
+    )
+    if network_url:
+        panel_text += (
+            f"  Network Access: [bold cyan]{network_url}[/bold cyan]\n"
+            "  [bold yellow]→ Open on phone, tap 'Advanced' → 'Proceed' "
+            "to trust the cert.[/bold yellow]\n"
+        )
+    panel_text += (
+        f"\n[dim]Camera access (QR scan) requires HTTPS — this is why we need the cert.\n"
+        f"Certificate: {cert_file}\n"
+        f"Press Ctrl+C to stop.[/dim]"
+    )
+
+    console.print(
+        Panel(
+            panel_text,
+            title="[bold blue]Web Dashboard — HTTPS Mode[/bold blue]",
+            border_style="green",
+        )
+    )
+
+    if open_browser:
+        try:
+            webbrowser.open(local_url)
+        except Exception:
+            pass
+
+    uvicorn.run(
+        "app.server:server_app",
+        host=host,
+        port=port,
+        ssl_certfile=cert_file,
+        ssl_keyfile=key_file,
+        log_level="info",
+    )
 
 
 if __name__ == "__main__":

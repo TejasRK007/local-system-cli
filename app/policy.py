@@ -36,6 +36,22 @@ _ACTION_RISK_MAP: dict[str, str] = {
     "extract_archive": "medium",
     "get_file_metadata": "low",
     "metadata": "low",
+    # Milestone 8: Personal automation & productivity integrations
+    "read_document": "low",
+    "summarize_document": "low",
+    "browser_fetch_page": "low",
+    "browser_search": "low",
+    "browser_download_file": "medium",
+    "email_search": "low",
+    "email_read": "low",
+    "email_draft": "medium",
+    "email_send": "high",
+    "calendar_list_events": "low",
+    "calendar_check_conflict": "low",
+    "calendar_create_event": "medium",
+    "github_list_issues": "low",
+    "github_inspect_pr": "low",
+    "github_create_issue": "medium",
 }
 
 

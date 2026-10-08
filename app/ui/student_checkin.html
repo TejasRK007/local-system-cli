@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Live Class Attendance Check-in</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-page: #f8fafc;
+      --card-bg: #ffffff;
+      --border-subtle: #e2e8f0;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --brand-blue: #2563eb;
+      --success-green: #059669;
+      --success-bg: #ecfdf5;
+      --error-red: #dc2626;
+      --error-bg: #fef2f2;
+      --font-heading: 'Plus Jakarta Sans', -apple-system, sans-serif;
+      --font-body: 'Inter', -apple-system, sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-body);
+      background-color: var(--bg-page);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px 16px;
+      -webkit-font-smoothing: antialiased;
+    }
+    .checkin-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-subtle);
+      border-radius: 20px;
+      padding: 32px 24px;
+      width: 100%;
+      max-width: 440px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+    }
+    .checkin-header {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    .checkin-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #eff6ff;
+      color: var(--brand-blue);
+      font-size: 12px;
+      font-weight: 700;
+      padding: 4px 12px;
+      border-radius: 9999px;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .live-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--brand-blue);
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(1.2); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+    .checkin-title {
+      font-family: var(--font-heading);
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--text-main);
+      margin-bottom: 6px;
+    }
+    .checkin-subtitle {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    .form-group {
+      margin-bottom: 18px;
+    }
+    .form-label {
+      display: block;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: #334155;
+      margin-bottom: 6px;
+    }
+    .form-input {
+      width: 100%;
+      height: 44px;
+      padding: 0 14px;
+      border-radius: 10px;
+      border: 1px solid var(--border-subtle);
+      background: #f8fafc;
+      font-size: 14px;
+      color: var(--text-main);
+      outline: none;
+      transition: all 0.15s ease;
+    }
+    .form-input:focus {
+      background: #ffffff;
+      border-color: var(--brand-blue);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    }
+    .token-badge-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #f1f5f9;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 11.5px;
+      color: #475569;
+      margin-bottom: 20px;
+    }
+    .token-code {
+      font-family: monospace;
+      font-weight: 700;
+      color: #0f172a;
+    }
+    .btn-submit {
+      width: 100%;
+      height: 48px;
+      background: #090d16;
+      color: #ffffff;
+      border: none;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s;
+    }
+    .btn-submit:hover {
+      background: #1e293b;
+      transform: translateY(-1px);
+    }
+    .btn-submit:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .result-box {
+      margin-top: 20px;
+      padding: 16px;
+      border-radius: 12px;
+      text-align: center;
+      display: none;
+    }
+    .result-box.success {
+      display: block;
+      background: var(--success-bg);
+      border: 1px solid #a7f3d0;
+      color: var(--success-green);
+    }
+    .result-box.error {
+      display: block;
+      background: var(--error-bg);
+      border: 1px solid #fecaca;
+      color: var(--error-red);
+    }
+    .result-title {
+      font-weight: 800;
+      font-size: 16px;
+      margin-bottom: 4px;
+    }
+    .result-desc {
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .footer-note {
+      text-align: center;
+      font-size: 11.5px;
+      color: #94a3b8;
+      margin-top: 24px;
+    }
+  </style>
+</head>
+<body>
+  <div class="checkin-card">
+    <div class="checkin-header">
+      <div class="checkin-badge">
+        <span class="live-dot"></span>
+        <span>Dynamic Attendance Verification</span>
+      </div>
+      <h1 class="checkin-title" id="course-title-display">Live Class Check-in</h1>
+      <p class="checkin-subtitle">Verify your in-person classroom presence</p>
+    </div>
+
+    <form id="checkin-form">
+      <div class="form-group">
+        <label class="form-label" for="student-name">Student Full Name</label>
+        <input type="text" id="student-name" class="form-input" placeholder="e.g. Alex Morgan" required autocomplete="name">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="student-id">Student ID / Roll Number</label>
+        <input type="text" id="student-id" class="form-input" placeholder="e.g. 21CS042" required autocomplete="off">
+      </div>
+
+      <div class="token-badge-row">
+        <span>Dynamic Security Nonce:</span>
+        <span class="token-code" id="token-display">...</span>
+      </div>
+
+      <button type="submit" class="btn-submit" id="btn-verify">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+        <span>Confirm My Presence</span>
+      </button>
+
+      <div class="result-box" id="result-box">
+        <div class="result-title" id="result-title"></div>
+        <div class="result-desc" id="result-desc"></div>
+      </div>
+    </form>
+  </div>
+
+  <p class="footer-note">100% Private Local System &bull; Rotating anti-proxy security enabled</p>
+
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const sessionId = urlParams.get('session_id') || '';
+    const token = urlParams.get('token') || '';
+
+    const tokenDisplay = document.getElementById('token-display');
+    if (token) {
+      tokenDisplay.textContent = token.substring(0, 10) + '...';
+    } else {
+      tokenDisplay.textContent = 'Missing Token';
+    }
+
+    try {
+      const savedProfile = localStorage.getItem('attendance_student_profile');
+      if (savedProfile) {
+        const p = JSON.parse(savedProfile);
+        if (p.name) document.getElementById('student-name').value = p.name;
+        if (p.id) document.getElementById('student-id').value = p.id;
+      }
+    } catch(e) {}
+
+    const form = document.getElementById('checkin-form');
+    const resultBox = document.getElementById('result-box');
+    const resultTitle = document.getElementById('result-title');
+    const resultDesc = document.getElementById('result-desc');
+    const btnVerify = document.getElementById('btn-verify');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const sName = document.getElementById('student-name').value.trim();
+      const sId = document.getElementById('student-id').value.trim();
+
+      if (!sessionId || !token) {
+        showError('Invalid QR Code', 'This check-in link is missing session parameters. Please scan the current live QR code on the display.');
+        return;
+      }
+
+      btnVerify.disabled = true;
+      btnVerify.querySelector('span').textContent = 'Verifying...';
+
+      try {
+        const res = await fetch('/api/attendance/checkin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: sessionId,
+            token: token,
+            student_id: sId,
+            student_name: sName,
+            device_info: navigator.userAgent.substring(0, 80)
+          })
+        });
+
+        const data = await res.json();
+        if (data.success) {
+          try {
+            localStorage.setItem('attendance_student_profile', JSON.stringify({ name: sName, id: sId }));
+          } catch(err) {}
+          showSuccess('Verified Present', `Attendance confirmed for ${data.student_name} (${data.student_id}) at ${data.timestamp}. You are marked present.`);
+          form.querySelector('.form-group').style.display = 'none';
+          document.getElementById('student-id').parentElement.style.display = 'none';
+          document.querySelector('.token-badge-row').style.display = 'none';
+          btnVerify.style.display = 'none';
+        } else {
+          showError('Verification Failed', data.error || 'Could not verify attendance.');
+          btnVerify.disabled = false;
+          btnVerify.querySelector('span').textContent = 'Confirm My Presence';
+        }
+      } catch (err) {
+        showError('Network Error', 'Could not reach attendance server. Ensure you are connected to the classroom network.');
+        btnVerify.disabled = false;
+        btnVerify.querySelector('span').textContent = 'Confirm My Presence';
+      }
+    });
+
+    function showSuccess(title, desc) {
+      resultBox.className = 'result-box success';
+      resultTitle.textContent = title;
+      resultDesc.textContent = desc;
+    }
+
+    function showError(title, desc) {
+      resultBox.className = 'result-box error';
+      resultTitle.textContent = title;
+      resultDesc.textContent = desc;
+    }
+  </script>
+</body>
+</html>

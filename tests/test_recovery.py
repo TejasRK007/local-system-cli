@@ -180,7 +180,7 @@ def test_destination_conflict_preserves_target(monkeypatch, tmp_path):
 
 def test_verification_failure_detected(tmp_path):
     """Verify tool claiming success while physical observation fails is classified as
-        VERIFICATION_FAILURE."""
+    VERIFICATION_FAILURE."""
     src = tmp_path / "source.txt"
     dst = tmp_path / "dest.txt"
     src.write_text("source still here")  # Physical state contradicts move success!

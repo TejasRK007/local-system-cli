@@ -218,9 +218,7 @@ def test_deeply_nested_directories(tmp_path):
     """Verify operations across deeply nested subdirectories."""
     ws_dir = tmp_path / "deep_ws"
     ws_dir.mkdir()
-    WorkspaceManager.add_workspace(
-        ws_dir, name="DeepWs", permissions=["READ", "WRITE", "DELETE"]
-    )
+    WorkspaceManager.add_workspace(ws_dir, name="DeepWs", permissions=["READ", "WRITE", "DELETE"])
 
     nested_dir = ws_dir / "lvl1" / "lvl2" / "lvl3" / "lvl4"
     res_dir = create_directory(str(nested_dir))

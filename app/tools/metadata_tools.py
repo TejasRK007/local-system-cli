@@ -73,9 +73,7 @@ def get_file_metadata(file_path: str | Path, compute_hashes: bool = True) -> dic
             except Exception:
                 pass
 
-    created_iso = datetime.datetime.fromtimestamp(
-        st.st_ctime, tz=datetime.timezone.utc
-    ).isoformat()
+    created_iso = datetime.datetime.fromtimestamp(st.st_ctime, tz=datetime.timezone.utc).isoformat()
     modified_iso = datetime.datetime.fromtimestamp(
         st.st_mtime, tz=datetime.timezone.utc
     ).isoformat()

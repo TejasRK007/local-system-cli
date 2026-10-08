@@ -1,6 +1,6 @@
 # 🤖 Local Agentic Automation System
 
-A robust, local-first, terminal-based agentic automation system built with Python, Typer, Rich, SQLite, and LangChain / Groq.
+A robust, local-first agentic automation system built with Python, FastAPI, SQLite, and LangChain / Groq — featuring a full web dashboard with live class attendance, email, calendar, and AI-powered chat.
 
 The system translates natural-language goals into structured, deterministic, and securely gated filesystem workflows. By design, the LLM is **never** given unrestricted filesystem access or raw shell execution capabilities. Every operation is grounded inside authorized workspaces, validated by a deterministic plan validator, risk-classified by policy, confirmed by the user when modifying files, executed through controlled Python functions, physically verified on disk, and logged to a persistent SQLite audit trail with automated recovery and compensation support.
 
@@ -78,19 +78,113 @@ The system translates natural-language goals into structured, deterministic, and
 
 ---
 
-## 🚀 Milestone Evolution (M1 – M7)
+## 🚀 Milestone Evolution (M1 – M9)
 
-The system was developed iteratively across seven core milestones:
+The system was developed iteratively across nine core milestones:
 
 | Milestone | Title | Focus & Delivered Capabilities |
 |-----------|-------|--------------------------------|
 | **M1** | Controlled Local Filesystem Agent | Single-step intent recognition, safe filesystem actions (`search`, `move`, `rename`, `delete`), path safety, allowed directory restrictions, protected path handling, overwrite protection, cross-directory ambiguity detection, deterministic risk classification (`LOW`, `MEDIUM`, `HIGH`), interactive approval for modifying actions, physical verification, SQLite audit logging with secret sanitization, Rich CLI UI. |
 | **M2** | Verification, Recovery & Replanning | Failure categorization (`PERMISSION_DENIED`, `NOT_FOUND`, `CONFLICT`, `UNVERIFIED`, `UNKNOWN`), retry handling with maximum retry limits (default 3), post-execution physical verification preventing false `SUCCESS` reporting, automated recovery replanning, fresh policy/approval gating for replanned actions, no-overwrite safety. |
 | **M3** | Stateful Multi-Step Tasks | Persistent task and step lifecycle in SQLite (`Task`, `TaskStep`, `TaskStatus`, `StepStatus`), sequential execution, dependency DAG enforcement, dynamic output reference resolution (`$output.step_N.path`, `$prev.path`, `it`), per-step risk gating and approval, partial failure handling, reverse compensation rollbacks, CLI task management commands (`task`, `tasks`, `task-status`, `task-resume`). |
-| **M4** | Persistent Workspaces & Permissions | Persistent workspace registration in SQLite, unique workspace IDs, names, canonical path resolution, enabled/disabled toggles, granular permissions (`READ`, `WRITE`, `DELETE`), primary authorization boundary, source `READ` + destination `WRITE` enforcement for moves, `WRITE` for rename, `DELETE` for delete, `READ` for search, protection against unauthorized directories and traversal escapes, workspace CLI commands (`workspace`, `workspace-add`, `workspace-remove`, `workspace-enable`, `workspace-disable`, `workspace-permissions`). |
+| **M4** | Persistent Workspaces & Permissions | Persistent workspace registration in SQLite, unique workspace IDs, names, canonical path resolution, enabled/disabled toggles, granular permissions (`READ`, `WRITE`, `DELETE`), primary authorization boundary, source `READ` + destination `WRITE` enforcement for moves, `WRITE` for rename, `DELETE` for delete, `READ` for search, protection against unauthorized directories and traversal escapes. |
 | **M5** | Natural-Language Goal Planning | High-level goal planning, authorized workspace inspection, grounded plan synthesis with zero hallucinated source files, `PlanValidator` security gating, plan-level cumulative risk calculation, plan-level approval, execution via `StepExecutor`, `CREATE_DIRECTORY` physical verification, bulk move destination collision prevention, natural-language search variations, partial failure handling, and compensation rollbacks. |
 | **M6** | Adaptive Filesystem Agent | Read-only workspace observation, observe → plan → validate → approve → act → verify → replan cycles, bounded adaptive replanning, filesystem diffs, physical goal-completion verification, stable-plan loop protection, and explainable cycle summaries. |
 | **M7** | General Local System Tools | Controlled local system tools: hardware & resource inspection (`sys-info`), process listing & filtering (`ps`), clipboard read/write with approval gate (`clipboard`), archive inspection & Zip Slip-safe extraction (`archive`), and rich file metadata with SHA-256/MD5 hashes (`metadata`). Zero arbitrary shell access. |
+| **M8** | Personal Automation & Integrations | Isolated, permission-controlled productivity integrations: safe document reading & summarization, clean browser extraction & workspace download, email staging & dispatch, calendar inspection & scheduling, and GitHub repository tools. Dual-provider LLM support for local Ollama and cloud Groq. |
+| **M9** | Web Dashboard & Live Attendance | Full-featured web UI served via FastAPI on LAN (`0.0.0.0:8000`), AI-powered chat panel with LLM toggle, live class dynamic attendance with rotating anti-proxy QR codes, Google Calendar integration, email copilot inbox, classroom projector mode, and dedicated mobile student scanner portal. |
+
+---
+
+## 🖥️ Web Dashboard (M9)
+
+The system includes a fully-featured browser-based dashboard accessible at `http://localhost:8000` (or over LAN at `http://<your-ip>:8000`).
+
+### Starting the Dashboard (One-Click or Terminal)
+
+#### Option 1: One-Click Launch (No Commands Needed)
+* **Desktop Icon**: Double-click **`AI Manager Dashboard`** directly on your Windows Desktop.
+* **Batch Launcher**: Double-click **`start.bat`** in the project folder.
+  - Automatically starts the server and opens your default browser at `http://127.0.0.1:8000`.
+* **HTTPS Mode (For Mobile Camera Scanning on LAN)**: Double-click **`start-https.bat`**.
+  - Starts with SSL enabled and opens `https://127.0.0.1:8443`.
+* **Create/Restore Desktop Shortcut**: Double-click **`create_desktop_shortcut.bat`**.
+
+#### Option 2: Terminal Commands
+
+```bash
+# Launch UI and automatically open browser
+python -m app.main ui
+
+# Launch UI over HTTPS (required for phone camera access over LAN)
+python -m app.main https-ui
+
+# Or start the server directly
+python -m uvicorn app.server:server_app --host 0.0.0.0 --port 8000
+```
+
+### Dashboard Features
+
+| Feature | Description |
+|---------|-------------|
+| **AI Chat Panel** | Natural language interface to the agentic backend. LLM can be toggled on/off via a UI switch. |
+| **Live Attendance** | Dynamic rotating QR-code attendance system with anti-proxy security (see below). |
+| **Email Copilot** | View, summarize, and reply to emails. Supports Gmail via IMAP. |
+| **Calendar** | View, create, and delete events. Supports Google Calendar import. |
+| **System Metrics** | Live CPU/RAM usage, platform info, workspace count. |
+| **Workspaces** | View registered authorized directories from the browser. |
+| **Audit Logs** | Browse the full cryptographic audit trail directly in the UI. |
+
+---
+
+## 📱 Live Class Attendance System
+
+A complete anti-proxy attendance engine built into the dashboard. Designed for real classroom use.
+
+### How It Works
+
+1. **Instructor** starts a session from the Dashboard → enters course name, section, and rotation interval (10–45 seconds).
+2. A **dynamic QR code** is displayed on the dashboard (or in fullscreen **Projector Mode** for classroom display).
+3. The QR code **automatically regenerates** every N seconds — any forwarded screenshots or shared links expire immediately.
+4. **Students** connect to the same Wi-Fi and open the Student Portal on their phones.
+5. Students scan the live QR code using their phone camera to mark attendance.
+6. Each check-in is **server-validated** and appears in real-time on the instructor roster.
+
+### Anti-Proxy Security
+
+- QR tokens are time-limited and cryptographically signed by the server.
+- Forwarded screenshots or shared links from absent students **fail verification** since the token has expired by the time they're used.
+- Each token is single-use per student — duplicate check-ins are rejected.
+
+### Student URLs
+
+| URL | Purpose |
+|-----|---------|
+| `http://<LAN-IP>:8000/attendance/student` | Main student mobile scanner portal |
+| `http://<LAN-IP>:8000/attendance/scan` | Alias for the scanner portal |
+| `http://<LAN-IP>:8000/attendance/checkin` | Direct check-in page (URL-based flow) |
+
+### Instructor Controls
+
+| Button | Action |
+|--------|--------|
+| **Start Session** | Opens modal to configure course, section, and rotation interval |
+| **Projector View** | Fullscreen QR display optimized for classroom projectors |
+| **Simulate Scan** | Instantly adds a test student entry (for testing without a phone) |
+| **Force Rotate** | Manually regenerate the QR token immediately |
+| **Export CSV** | Download the full attendance roster as a CSV file |
+
+### Mobile Student Portal
+
+The student portal at `/attendance/student` provides:
+- **Step 1**: Enter name and roll number (saved to `localStorage` for future sessions)
+- **Step 2**: Open phone camera → point at classroom QR code → auto-detected and submitted
+- **Fallback**: Upload a photo or paste the check-in URL manually if camera is unavailable
+- **Receipt**: Displays a verification receipt with course, timestamp, and anti-proxy confirmation
+
+### LAN Network Access
+
+The server binds to `0.0.0.0`, making it accessible to all devices on the same Wi-Fi network. The dashboard displays your LAN IP automatically. Students navigate to `http://<shown-IP>:8000/attendance/student` on their phones.
 
 ---
 
@@ -130,19 +224,20 @@ The LLM is strictly used as a reasoning and parsing engine. It produces structur
 
 ## 🛠️ Technology Stack
 
-Confirmed by the repository configuration:
-
 - **Language**: Python 3.10+
+- **Web Framework**: [FastAPI](https://fastapi.tiangolo.com/) — REST API & static file serving
+- **Web Server**: [Uvicorn](https://www.uvicorn.org/) — ASGI server, binds to `0.0.0.0` for LAN access
+- **Frontend**: Vanilla HTML/CSS/JavaScript (`app/ui/`) — no build step required
+- **QR Codes**: [qrcode](https://pypi.org/project/qrcode/) (server-side SVG generation) + [jsQR](https://github.com/cozmo/jsQR) (offline browser-side decoding)
 - **CLI Framework**: [Typer](https://typer.tiangolo.com/) (modern type-hinted CLI builder)
 - **Terminal UI**: [Rich](https://rich.readthedocs.io/) (tables, panels, status colors, styled output)
-- **Database**: SQLite3 (`app/database.py`, standard library) for audit logs, workspaces, and task persistence
+- **Database**: SQLite3 (`agent.db`) — audit logs, workspaces, task persistence, attendance tokens
 - **LLM & Agent Framework**: [LangChain Core](https://python.langchain.com/), [LangChain Groq](https://github.com/langchain-ai/langchain-groq), [Groq SDK](https://github.com/groq/groq-python)
+- **Local LLM**: [Ollama](https://ollama.com/) (`qwen2.5:3b`) — 100% offline inference
 - **Environment Management**: [python-dotenv](https://github.com/theskumar/python-dotenv)
 - **Testing & Quality**:
-  - [pytest](https://pytest.org/) & [pytest-cov](https://pytest-cov.readthedocs.io/) (test execution & coverage)
-  - [Flake8](https://flake8.pycqa.org/) (PEP 8 linting)
-  - [Ruff](https://beta.ruff.rs/docs/) (fast Python linter and formatter check)
-  - [Mypy](http://mypy-lang.org/) (static type checking)
+  - [pytest](https://pytest.org/) & [pytest-cov](https://pytest-cov.readthedocs.io/)
+  - [Flake8](https://flake8.pycqa.org/), [Ruff](https://beta.ruff.rs/docs/), [Mypy](http://mypy-lang.org/)
 
 ---
 
@@ -153,328 +248,84 @@ local-system-cli/
 ├── app/
 │   ├── __init__.py
 │   ├── agent.py               # LangChain + ChatGroq reasoning agent & intent extraction
-│   ├── database.py            # SQLite persistence: audit logs, workspaces, tasks, steps, secret sanitization
-│   ├── llm.py                 # LLM client configuration
-│   ├── main.py                # Typer CLI entrypoint, Rich UI, command handlers
+│   ├── assistant.py           # AI assistant logic for the web chat panel
+│   ├── database.py            # SQLite persistence: audit logs, workspaces, tasks, steps, attendance
+│   ├── llm.py                 # LLM client configuration (Groq / Ollama toggle)
+│   ├── main.py                # Typer CLI entrypoint, Rich UI, command handlers; also `serve` command
 │   ├── policy.py              # Deterministic risk engine (LOW/MEDIUM/HIGH) & approval rules
 │   ├── recovery.py            # Failure categorization, retry loop, physical verification, replanning
-│   ├── workspaces.py          # Workspace authorization boundary, permissions (READ/WRITE/DELETE), path safety
+│   ├── server.py              # FastAPI app: REST API, static file serving, attendance endpoints
+│   ├── workspaces.py          # Workspace authorization boundary, permissions (READ/WRITE/DELETE)
 │   ├── tasks/
-│   │   ├── __init__.py
 │   │   ├── models.py          # Task, TaskStep, TaskStatus, StepStatus data models
 │   │   ├── planner.py         # Multi-step task planner ($output.step_N.path resolution)
-│   │   ├── goal_planner.py    # Natural-language goal planner, workspace grounding, collision-safe planning
+│   │   ├── goal_planner.py    # Natural-language goal planner, workspace grounding
 │   │   ├── adaptive.py        # M6 observation, adaptive replanning, verification, completion
 │   │   ├── validator.py       # PlanValidator: DAG cycles, permissions, workspace containment
 │   │   ├── executor.py        # StepExecutor: sequential step execution, physical checks, rollbacks
 │   │   └── manager.py         # TaskManager: SQLite task persistence, resumption, compensation
-│   └── tools/
-│       ├── __init__.py
-│       ├── archive_tools.py   # Archive inspection & Zip Slip-safe extraction (.zip, .tar)
-│       ├── clipboard.py       # Safe cross-platform clipboard read & write with fallbacks
-│       ├── file_actions.py    # Core filesystem actions (delete, move, rename, create_directory)
-│       ├── filesystem.py      # search_files tool with rglob, exclusion filtering, date filters
-│       ├── metadata_tools.py  # File metadata, MIME type detection, cryptographic hashing (SHA-256/MD5)
-│       └── system_tools.py    # Structured process inspection and system resource monitoring (CPU, RAM, Disk)
+│   ├── tools/
+│   │   ├── archive_tools.py   # Archive inspection & Zip Slip-safe extraction (.zip, .tar)
+│   │   ├── attendance_tools.py# Live attendance: session management, token rotation, SQLite roster
+│   │   ├── browser_tools.py   # Safe browser content extraction
+│   │   ├── calendar_tools.py  # Calendar CRUD (local SQLite + Google Calendar import)
+│   │   ├── clipboard.py       # Safe cross-platform clipboard read & write with fallbacks
+│   │   ├── document_tools.py  # Safe document reading & summarization
+│   │   ├── email_tools.py     # Email reading, summarization, drafting & sending (IMAP/SMTP)
+│   │   ├── file_actions.py    # Core filesystem actions (delete, move, rename, create_directory)
+│   │   ├── filesystem.py      # search_files tool with rglob, exclusion filtering, date filters
+│   │   ├── github_tools.py    # GitHub repository tools (issues, PRs)
+│   │   ├── metadata_tools.py  # File metadata, MIME type detection, cryptographic hashing
+│   │   └── system_tools.py    # Structured process inspection and system resource monitoring
+│   └── ui/
+│       ├── index.html         # Main dashboard SPA (chat, attendance, email, calendar, audit)
+│       ├── index.css          # Full dashboard stylesheet
+│       ├── app.js             # Dashboard application logic (all feature modules)
+│       ├── student_scanner.html  # Mobile student QR scanner portal (/attendance/student)
+│       ├── student_checkin.html  # URL-based direct check-in page (/attendance/checkin)
+│       └── jsqr.min.js        # Offline browser-side QR decoder (no CDN required)
 ├── tests/
-│   ├── test_ambiguity.py      # Cross-directory collision and ambiguity resolution tests
-│   ├── test_audit.py          # SQLite audit logging, status transitions, secret redaction tests
-│   ├── test_cli_integration.py# End-to-end CLI integration and command prompt tests
-│   ├── test_file_actions.py   # Path validation, traversal prevention, file action tests
-│   ├── test_filesystem.py     # File discovery and exclusion filter tests
-│   ├── test_goal_planner.py   # Goal parsing, search variations, organize workflows, physical checks
-│   ├── test_m6_adaptive.py    # M6 observation, replanning, approval, completion and verification
-│   ├── test_m7_system_tools.py# M7 system tools, Zip Slip safety, metadata, clipboard, CLI tests
-│   ├── test_policy.py         # Risk classification and approval requirement tests
-│   ├── test_recovery.py       # Failure categorization, retry thresholds, recovery replanning tests
-│   ├── test_tasks.py          # Persistent task execution, DAG validation, compensation tests
-│   └── test_workspaces.py     # Workspace CRUD, authorization boundaries, permission enforcement tests
+│   ├── test_ambiguity.py
+│   ├── test_audit.py
+│   ├── test_cli_integration.py
+│   ├── test_file_actions.py
+│   ├── test_filesystem.py
+│   ├── test_goal_planner.py
+│   ├── test_m6_adaptive.py
+│   ├── test_m7_system_tools.py
+│   ├── test_m8_productivity_tools.py
+│   ├── test_policy.py
+│   ├── test_recovery.py
+│   ├── test_tasks.py
+│   ├── test_ui_server.py      # FastAPI route tests incl. attendance & student scanner endpoints
+│   └── test_workspaces.py
 ├── .github/
 │   └── workflows/
-│       └── ci.yml             # GitHub Actions CI workflow (Python 3.10, 3.11, 3.12)
+│       └── ci.yml             # GitHub Actions CI (Python 3.10, 3.11, 3.12)
 ├── pyproject.toml             # Ruff, Flake8, Pytest, and Mypy configuration
-├── requirements.txt           # Production dependencies (including psutil, pyperclip)
+├── requirements.txt           # Production dependencies
 └── requirements-dev.txt       # Development, linting, and testing dependencies
 ```
 
 ---
 
-## ⚡ Current CLI Commands
-
-All commands are executed via the Python runner (e.g. `py -m app.main <command>` on Windows).
-
-### 1. Goal Planning (M5)
-
-Synthesizes a grounded execution plan from natural language, validates permissions, checks risk, asks for confirmation, and executes safely:
-
-```bash
-# Search-only goals (read-only, auto-approved)
-py -m app.main goal "Find all PDF files"
-py -m app.main goal "List all Python files"
-py -m app.main goal "Find m4_test.txt"
-py -m app.main goal "Search for my resume"
-
-# Bulk file organization (modifying, requires approval)
-py -m app.main goal "Organize my PDF files into a Documents folder"
-
-# Options:
-#   --compensate / --no-compensate    Roll back executed steps on failure (default: True)
-#   --auto-approve / --no-auto-approve Bypass interactive confirmation (default: False)
-```
-
-### 2. Adaptive Goal Execution (M6)
-
-M6 adds a bounded observe/reason/plan/validate/approve/act/verify/replan loop around the existing M1-M5 controls. The agent re-observes authorized workspaces after execution, detects added/removed/changed files, and replans when the physical state differs from the original plan. It never gains shell or arbitrary command execution.
-
-```bash
-# Adaptive execution with up to three cycles
-py -m app.main adaptive "Organize my PDF files into an Archive folder"
-
-# Approve modifying plans automatically
-py -m app.main adaptive "Organize my PDF files into an Archive folder" --yes
-
-# Change the bounded replanning limit
-py -m app.main adaptive "Organize my PDF files into an Archive folder" --max-cycles 5
-
-# Disable compensation if you explicitly want successful steps retained after a failed cycle
-py -m app.main adaptive "Organize my PDF files into an Archive folder" --no-compensate
-```
-
-M6 reports `COMPLETE`, `PARTIAL`, or `BLOCKED`; modifying plans still require explicit approval unless `--yes` is supplied.
-
-### 3. Multi-Step Tasks (M3)
-
-Execute or manage structured multi-step tasks:
-
-```bash
-# Execute a multi-step natural language request
-py -m app.main task "Move test.txt to archive and rename it to old.txt"
-
-# List recent tasks and statuses
-py -m app.main tasks --limit 10
-
-# Inspect execution details and per-step output for a specific task
-py -m app.main task-status <task_id>
-
-# Resume an incomplete or partially failed task
-py -m app.main task-resume <task_id>
-```
-
-### 4. Workspaces & Permissions (M4)
-
-Manage persistent authorization boundaries:
-
-```bash
-# List all registered workspaces and permissions
-py -m app.main workspace
-
-# Register an authorized directory (default permissions: READ,WRITE,DELETE)
-py -m app.main workspace-add "C:\Users\You\manual_test" --name "TestWorkspace"
-
-# Register with restricted permissions
-py -m app.main workspace-add "C:\Users\You\archive" --name "Archive" --permissions "READ,WRITE"
-
-# Update permissions (e.g. revoke DELETE)
-py -m app.main workspace-permissions <workspace_id> "READ,WRITE"
-
-# Temporarily disable / re-enable a workspace
-py -m app.main workspace-disable <workspace_id>
-py -m app.main workspace-enable <workspace_id>
-
-# Remove a workspace registration
-py -m app.main workspace-remove <workspace_id>
-```
-
-### 5. Interactive Agent & File Actions (M1 / M2)
-
-Direct single-step requests and audit inspection:
-
-```bash
-# Interactive agent execution
-py -m app.main agent "Find all PDF files in Downloads"
-py -m app.main agent "Rename draft.txt to final.txt"
-
-# Direct verified file deletion (with confirmation)
-py -m app.main delete "C:\Users\You\manual_test\temp.txt"
-
-# View recent SQLite audit logs
-py -m app.main logs --limit 10
-```
-
-### 6. Controlled Local System Tools (M7)
-
-Safe, structured inspection and manipulation of local system resources without raw shell exposure:
-
-```bash
-# View structured hardware & OS statistics (CPU, RAM, Disk)
-py -m app.main sys-info
-
-# List running processes sorted by memory or CPU, with optional filtering
-py -m app.main ps --limit 20 --sort-by memory
-py -m app.main ps --filter python
-
-# Read or write system clipboard (modifying writes require confirmation)
-py -m app.main clipboard
-py -m app.main clipboard --write "Hello from Local System CLI!"
-
-# Inspect archive contents or safely extract with Zip Slip protection
-py -m app.main archive ./backup.zip
-py -m app.main archive ./backup.zip --extract-to ./extracted_folder
-
-# Inspect rich file metadata, MIME type, and cryptographic checksums
-py -m app.main metadata ./report.pdf
-```
-
----
-
-## 🔬 Safe Manual Testing Workflow
-
-To safely test the system without affecting personal files, create a dedicated test workspace:
-
-### Step 1: Create a Test Directory
-In PowerShell:
-```powershell
-New-Item -ItemType Directory -Path .\manual_test -Force
-New-Item -ItemType Directory -Path .\manual_test\folder1 -Force
-New-Item -ItemType Directory -Path .\manual_test\folder2 -Force
-
-# Create dummy sample files
-Set-Content -Path .\manual_test\folder1\report.pdf -Value "Dummy PDF 1"
-Set-Content -Path .\manual_test\folder2\summary.pdf -Value "Dummy PDF 2"
-Set-Content -Path .\manual_test\folder1\notes.txt -Value "Sample Notes"
-```
-
-### Step 2: Register & Enable the Workspace
-```bash
-py -m app.main workspace-add "manual_test" --name "ManualTest"
-py -m app.main workspace
-```
-
-### Step 3: Test Natural-Language Search
-```bash
-py -m app.main goal "Find all PDF files"
-```
-*Rich output displays discovered files grounded strictly within `manual_test` without requesting approval (LOW risk).*
-
-### Step 4: Test Bulk Organization
-```bash
-py -m app.main goal "Organize my PDF files into a Documents folder"
-```
-1. The planner presents a **Proposed Execution Plan** (e.g. `CREATE_DIRECTORY Documents`, followed by `MOVE` steps).
-2. The risk engine reports **Cumulative Plan Risk: MEDIUM**.
-3. Typer prompts: `Execute this plan? (3 steps) [y/N]`.
-4. Enter `y` to execute.
-
-### Step 5: Verify Disk State via PowerShell
-```powershell
-Get-ChildItem .\manual_test\Documents -Recurse
-```
-Both `report.pdf` and `summary.pdf` are physically verified inside `.\manual_test\Documents`.
-
----
-
-## 🛡️ Failure, Collision & Compensation Behavior
-
-- **No Overwrite**: If a move or rename targets a destination file that already exists, the operation halts immediately with `CONFLICT`.
-- **Destination Collision Prevention**: In M5 bulk move planning, if multiple files share identical names across different folders (e.g. `folder1/conflict.pdf` and `folder2/conflict.pdf`), the planner avoids planning duplicate moves to the same target name.
-- **Partial Failure & Compensation**: If an unexpected collision occurs during multi-step execution, the task transitions to `PARTIAL_FAILURE`. When `--compensate` is active, the system automatically runs reverse rollback actions (restoring moved files to their source locations and cleaning up newly created empty directories).
-
----
-
-## 🚦 CI/CD & Static Quality Pipeline
-
-Every pull request and push to `main` or `master` runs the automated GitHub Actions CI pipeline defined in [`.github/workflows/ci.yml`](file:///.github/workflows/ci.yml):
-
-- **Environment**: Ubuntu 24.04
-- **Python Matrix**: `3.10`, `3.11`, `3.12`
-- **Steps**:
-  1. Installs dependencies from `requirements.txt` and `requirements-dev.txt`
-  2. Runs **Flake8**:
-     ```bash
-     flake8 --max-line-length=100 app tests
-     ```
-  3. Runs **Ruff**:
-     ```bash
-     ruff check app tests
-     ```
-  4. Runs **Mypy**:
-     ```bash
-     mypy app
-     ```
-  5. Runs **Pytest**:
-     ```bash
-     pytest
-     ```
-
-All checks must pass before merging.
-
----
-
-## 🧪 Running Tests Locally
-
-Run the complete test suite:
-
-```bash
-# Run pytest in quiet mode
-py -m pytest -q
-
-# Run pytest with full verbosity and coverage report
-py -m pytest -v --cov=app --cov-report=term-missing
-```
-
-### Current Test Suite Status
-```
-============================ 142 passed in 52.09s =============================
-tests/test_ambiguity.py .........                                        [  6%]
-tests/test_audit.py ..................                                   [ 19%]
-tests/test_cli_integration.py ...........                                [ 26%]
-tests/test_file_actions.py ..............                                [ 36%]
-tests/test_filesystem.py ......                                          [ 40%]
-tests/test_goal_planner.py ..........................                    [ 59%]
-tests/test_policy.py ..........                                          [ 66%]
-tests/test_recovery.py ..........                                        [ 73%]
-tests/test_tasks.py ...........                                          [ 80%]
-tests/test_workspaces.py ...........................                     [100%]
-
-Overall Coverage: 79% (2,314 statements, 477 missed)
-```
-
----
-
-## ⚠️ Current Scope & Limitations
-
-The system is deliberately focused on controlled, local filesystem management up to Milestone 5:
-
-- **Supported Actions**: `search`, `create_directory`, `move`, `rename`, and `delete`.
-- **Workspace Boundary**: The system operates **exclusively** inside explicitly configured and authorized workspaces.
-- **Out of Scope (Not Implemented)**:
-  - Arbitrary file content editing or document generation
-  - Document parsing/summarization or internal modifications of PDF, DOCX, or XLSX files
-  - File compression / archive extraction (.zip, .tar.gz)
-  - Unrestricted shell command execution or OS-level automation
-  - Autonomous network activity outside LLM provider API communication
-
-Future milestones may extend capabilities into richer content manipulation and specialized workflows, but all current actions adhere strictly to the verified filesystem model above.
-
----
-
-## 🚀 Quick Start Guide
+## ⚡ Quick Start
 
 ### Prerequisites
 - Python 3.10, 3.11, or 3.12
-- Groq API Key (for natural-language parsing)
+- Groq API Key (for cloud LLM) **or** [Ollama](https://ollama.com/) running locally (for 100% offline)
 
 ### Setup
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/your-username/local-system-cli.git
+git clone https://github.com/TejasRK007/local-system-cli.git
 cd local-system-cli
 
 # 2. Create and activate a virtual environment
 py -m venv .venv
-.venv\Scripts\activate       # Windows PowerShell / CMD
-# source .venv/bin/activate  # macOS / Linux
+.venv\Scripts\activate        # Windows PowerShell / CMD
+# source .venv/bin/activate   # macOS / Linux
 
 # 3. Install dependencies
 py -m pip install --upgrade pip
@@ -483,9 +334,126 @@ py -m pip install -r requirements-dev.txt
 
 # 4. Configure environment
 cp .env.example .env
-# Edit .env and set your GROQ_API_KEY:
+# Edit .env — set GROQ_API_KEY for cloud, or point to Ollama for offline:
 # GROQ_API_KEY=gsk_...
+# LLM_PROVIDER=ollama   (optional, defaults to groq)
 
-# 5. Verify installation
-py -m app.main help
+# 5. Start the web dashboard
+python -m uvicorn app.server:server_app --host 0.0.0.0 --port 8000
+# Open http://localhost:8000 in your browser
 ```
+
+---
+
+## ⚡ CLI Commands
+
+All commands are executed via: `py -m app.main <command>`
+
+### Goal Planning (M5)
+
+```bash
+py -m app.main goal "Find all PDF files"
+py -m app.main goal "Organize my PDF files into a Documents folder"
+# Options: --compensate / --no-compensate  |  --auto-approve / --no-auto-approve
+```
+
+### Adaptive Goal Execution (M6)
+
+```bash
+py -m app.main adaptive "Organize my PDF files into an Archive folder"
+py -m app.main adaptive "Organize my PDF files into an Archive folder" --yes
+py -m app.main adaptive "Organize my PDF files into an Archive folder" --max-cycles 5
+```
+
+### Multi-Step Tasks (M3)
+
+```bash
+py -m app.main task "Move test.txt to archive and rename it to old.txt"
+py -m app.main tasks --limit 10
+py -m app.main task-status <task_id>
+py -m app.main task-resume <task_id>
+```
+
+### Workspaces (M4)
+
+```bash
+py -m app.main workspace
+py -m app.main workspace-add "C:\Users\You\manual_test" --name "TestWorkspace"
+py -m app.main workspace-permissions <id> "READ,WRITE"
+py -m app.main workspace-disable <id>
+py -m app.main workspace-enable <id>
+py -m app.main workspace-remove <id>
+```
+
+### System Tools (M7)
+
+```bash
+py -m app.main sys-info
+py -m app.main ps --limit 20 --sort-by memory
+py -m app.main clipboard
+py -m app.main archive ./backup.zip --extract-to ./extracted_folder
+py -m app.main metadata ./report.pdf
+```
+
+### Audit Logs
+
+```bash
+py -m app.main logs --limit 10
+```
+
+---
+
+## 🔬 Safe Manual Testing Workflow
+
+```powershell
+# Create test workspace
+New-Item -ItemType Directory -Path .\manual_test\folder1 -Force
+New-Item -ItemType Directory -Path .\manual_test\folder2 -Force
+Set-Content -Path .\manual_test\folder1\report.pdf  -Value "Dummy PDF 1"
+Set-Content -Path .\manual_test\folder2\summary.pdf -Value "Dummy PDF 2"
+
+# Register it
+py -m app.main workspace-add "manual_test" --name "ManualTest"
+
+# Test search (auto-approved, read-only)
+py -m app.main goal "Find all PDF files"
+
+# Test organization (requires approval)
+py -m app.main goal "Organize my PDF files into a Documents folder"
+
+# Verify physical result
+Get-ChildItem .\manual_test\Documents -Recurse
+```
+
+---
+
+## 🛡️ Failure, Collision & Compensation Behavior
+
+- **No Overwrite**: If a move or rename targets an existing destination, the operation halts immediately with `CONFLICT`.
+- **Destination Collision Prevention**: In bulk move planning, duplicate filenames across folders are detected and avoided.
+- **Partial Failure & Compensation**: On unexpected collision during multi-step execution, the task transitions to `PARTIAL_FAILURE`. With `--compensate`, the system automatically rolls back executed steps (restores moved files, cleans up created directories).
+
+---
+
+## 🚦 CI/CD & Static Quality Pipeline
+
+Every pull request and push to `main` runs the GitHub Actions CI pipeline:
+
+- **Python Matrix**: `3.10`, `3.11`, `3.12`
+- **Checks**: Flake8 → Ruff → Mypy → Pytest
+
+```bash
+# Run locally
+py -m pytest -v --cov=app --cov-report=term-missing
+```
+
+---
+
+## ⚠️ Current Scope & Limitations
+
+- **Supported Filesystem Actions**: `search`, `create_directory`, `move`, `rename`, `delete`
+- **Supported System Tools**: `sys-info`, `ps`, `clipboard`, `archive`, `metadata`
+- **Supported Productivity Tools**: `read-doc`, `summarize-doc`, `browser-fetch`, `email`, `calendar`, `github-issues`
+- **Supported Web Dashboard Features**: AI chat, live attendance, email copilot, calendar, system metrics, audit log
+- **LLM Providers**: Groq (cloud) and Ollama (local/offline)
+- **Out of Scope**: Unrestricted shell execution, arbitrary remote code execution, ungated network dispatches
