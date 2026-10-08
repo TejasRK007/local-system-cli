@@ -233,9 +233,7 @@ def test_val_g11_destination_collision(tmp_path):
 
 def test_val_g12_invalid_dependency():
     """G.12: Dependency pointing to non-existent step order rejected."""
-    steps = [
-        {"step_order": 1, "action": "search", "arguments": {}, "depends_on_order": 99}
-    ]
+    steps = [{"step_order": 1, "action": "search", "arguments": {}, "depends_on_order": 99}]
     valid, reason = PlanValidator.validate_plan(steps)
     assert valid is False
     assert "non-existent step #99" in reason.lower() or "invalid dependency" in reason.lower()
@@ -251,17 +249,13 @@ def test_val_g13_forward_dependency():
     assert valid is False
     reason_low = reason.lower()
     assert (
-        "forward reference" in reason_low
-        or "cycle" in reason_low
-        or "non-existent" in reason_low
+        "forward reference" in reason_low or "cycle" in reason_low or "non-existent" in reason_low
     )
 
 
 def test_val_g14_cyclic_dependency():
     """G.14: Cyclic dependency rejected."""
-    steps = [
-        {"step_order": 1, "action": "search", "arguments": {}, "depends_on_order": 1}
-    ]
+    steps = [{"step_order": 1, "action": "search", "arguments": {}, "depends_on_order": 1}]
     valid, reason = PlanValidator.validate_plan(steps)
     assert valid is False
     assert "cycle" in reason.lower() or "invalid dependency" in reason.lower()
@@ -357,9 +351,7 @@ def test_approval_h3_user_denial_cancels_execution(tmp_path):
     ws_dir.mkdir()
     f = ws_dir / "keep.txt"
     f.write_text("safe", encoding="utf-8")
-    WorkspaceManager.add_workspace(
-        ws_dir, name="ApprNoWs", permissions=["READ", "WRITE", "DELETE"]
-    )
+    WorkspaceManager.add_workspace(ws_dir, name="ApprNoWs", permissions=["READ", "WRITE", "DELETE"])
 
     res = runner.invoke(app, ["goal", "Delete keep.txt in ApprNoWs"], input="n\n")
     assert "cancelled" in res.output.lower() or "denied" in res.output.lower()

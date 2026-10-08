@@ -26,8 +26,21 @@ htmlcov/
 .idea/
 
 # Database files
+*.db
+*.sqlite
+*.sqlite3
 data/*.db
+agent.db
+agent_data.db
+
+# SSL / TLS certificates & private keys
+ssl/
+*.crt
+*.key
+*.pem
+
+# Uploads & local file attachments
+uploads/
 
 # Local development/test artifacts
-agent_data.db
 manual_test/

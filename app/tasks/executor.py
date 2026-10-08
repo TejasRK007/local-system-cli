@@ -12,7 +12,15 @@ from app.recovery import execute_action_with_recovery
 from app.tasks.manager import TaskManager
 from app.tasks.models import StepStatus, Task, TaskStatus, TaskStep
 from app.tools.archive_tools import extract_archive, inspect_archive
+from app.tools.browser_tools import browser_download_file, browser_fetch_page, browser_search
+from app.tools.calendar_tools import (
+    calendar_check_conflict,
+    calendar_create_event,
+    calendar_list_events,
+)
 from app.tools.clipboard import read_clipboard, write_clipboard
+from app.tools.document_tools import read_document, summarize_document
+from app.tools.email_tools import email_draft, email_read, email_search, email_send
 from app.tools.file_actions import (
     create_directory,
     delete_file,
@@ -21,6 +29,7 @@ from app.tools.file_actions import (
     rename_file,
 )
 from app.tools.filesystem import search_files
+from app.tools.github_tools import github_create_issue, github_inspect_pr, github_list_issues
 from app.tools.metadata_tools import get_file_metadata
 from app.tools.system_tools import find_process, get_system_info, list_processes
 from app.workspaces import Permission, WorkspaceManager
@@ -28,7 +37,7 @@ from app.workspaces import Permission, WorkspaceManager
 
 class StepExecutor:
     """Executes task steps in dependency order preserving all policy, approval, recovery, and audit
-        controls."""
+    controls."""
 
     @staticmethod
     def execute_step(
@@ -1007,6 +1016,399 @@ class StepExecutor:
                     result_summary=str(e),
                 )
                 return False
+
+        # -------------------------------------------------------------
+        # M8: DOCUMENT TOOLS
+        # -------------------------------------------------------------
+        elif action == "read_document":
+            raw_path = resolved_args.get("path") or resolved_args.get("file_path") or ""
+            TaskManager.update_step_state(step, StepStatus.RUNNING, attempts=1)
+            TaskManager.update_task_state(task, TaskStatus.RUNNING)
+            res = read_document(raw_path)
+            if res.get("success"):
+                TaskManager.update_step_state(step, StepStatus.SUCCESS, attempts=1, output=res)
+                char_count = res.get("character_count", 0)
+                summary = f"Read {char_count} chars from {Path(raw_path).name}"
+                log_event(
+                    user_request=f"[{step.step_id}] read_document {raw_path}",
+                    action="read_document",
+                    risk_level=risk,
+                    approval_required=False,
+                    approval_result="NOT_REQUIRED",
+                    execution_status="SUCCESS",
+                    result_summary=summary,
+                )
+                return True
+            else:
+                TaskManager.update_step_state(
+                    step, StepStatus.FAILED, attempts=1, error_info=res.get("error")
+                )
+                log_event(
+                    user_request=f"[{step.step_id}] read_document {raw_path}",
+                    action="read_document",
+                    risk_level=risk,
+                    approval_required=False,
+                    approval_result="NOT_REQUIRED",
+                    execution_status="FAILED",
+                    result_summary=res.get("error", "Failed to read document"),
+                )
+                return False
+
+        elif action == "summarize_document":
+            raw_path = resolved_args.get("path") or resolved_args.get("file_path") or ""
+            TaskManager.update_step_state(step, StepStatus.RUNNING, attempts=1)
+            TaskManager.update_task_state(task, TaskStatus.RUNNING)
+            res = summarize_document(raw_path)
+            if res.get("success"):
+                TaskManager.update_step_state(step, StepStatus.SUCCESS, attempts=1, output=res)
+                words = res.get("word_count", 0)
+                summary = f"Summarized {words} words from {Path(raw_path).name}"
+                log_event(
+                    user_request=f"[{step.step_id}] summarize_document {raw_path}",
+                    action="summarize_document",
+                    risk_level=risk,
+                    approval_required=False,
+                    approval_result="NOT_REQUIRED",
+                    execution_status="SUCCESS",
+                    result_summary=summary,
+                )
+                return True
+            else:
+                TaskManager.update_step_state(
+                    step, StepStatus.FAILED, attempts=1, error_info=res.get("error")
+                )
+                log_event(
+                    user_request=f"[{step.step_id}] summarize_document {raw_path}",
+                    action="summarize_document",
+                    risk_level=risk,
+                    approval_required=False,
+                    approval_result="NOT_REQUIRED",
+                    execution_status="FAILED",
+                    result_summary=res.get("error", "Failed to summarize document"),
+                )
+                return False
+
+        # -------------------------------------------------------------
+        # M8: BROWSER TOOLS
+        # -------------------------------------------------------------
+        elif action == "browser_fetch_page":
+            url = resolved_args.get("url") or ""
+            TaskManager.update_step_state(step, StepStatus.RUNNING, attempts=1)
+            TaskManager.update_task_state(task, TaskStatus.RUNNING)
+            res = browser_fetch_page(url)
+            if res.get("success"):
+                TaskManager.update_step_state(step, StepStatus.SUCCESS, attempts=1, output=res)
+                log_event(
+                    user_request=f"[{step.step_id}] browser_fetch_page {url}",
+                    action="browser_fetch_page",
+                    risk_level=risk,
+                    approval_required=False,
+                    approval_result="NOT_REQUIRED",
+                    execution_status="SUCCESS",
+                    result_summary=f"Fetched '{res.get('title')}' ({res.get('length')} chars)",
+                )
+                return True
+            else:
+                TaskManager.update_step_state(
+                    step, StepStatus.FAILED, attempts=1, error_info=res.get("error")
+                )
+                log_event(
+                    user_request=f"[{step.step_id}] browser_fetch_page {url}",
+                    action="browser_fetch_page",
+                    risk_level=risk,
+                    approval_required=False,
+                    approval_result="NOT_REQUIRED",
+                    execution_status="FAILED",
+                    result_summary=res.get("error", "Failed to fetch page"),
+                )
+                return False
+
+        elif action == "browser_search":
+            query = resolved_args.get("query") or ""
+            TaskManager.update_step_state(step, StepStatus.RUNNING, attempts=1)
+            TaskManager.update_task_state(task, TaskStatus.RUNNING)
+            res = browser_search(query)
+            if res.get("success"):
+                TaskManager.update_step_state(step, StepStatus.SUCCESS, attempts=1, output=res)
+                log_event(
+                    user_request=f"[{step.step_id}] browser_search {query}",
+                    action="browser_search",
+                    risk_level=risk,
+                    approval_required=False,
+                    approval_result="NOT_REQUIRED",
+                    execution_status="SUCCESS",
+                    result_summary=f"Found {res.get('results_count')} results for '{query}'",
+                )
+                return True
+            else:
+                TaskManager.update_step_state(
+                    step, StepStatus.FAILED, attempts=1, error_info=res.get("error")
+                )
+                return False
+
+        elif action == "browser_download_file":
+            url = resolved_args.get("url") or ""
+            ws_name = resolved_args.get("workspace") or resolved_args.get("dest_workspace") or ""
+            fname = resolved_args.get("filename") or ""
+
+            if requires_approval(risk):
+                TaskManager.update_step_state(step, StepStatus.WAITING_FOR_APPROVAL, attempts=0)
+                TaskManager.update_task_state(task, TaskStatus.WAITING_FOR_APPROVAL)
+                prompt_msg = (
+                    f"Do you want to download '{url}' into workspace '{ws_name}' as '{fname}'?"
+                )
+                approved = (
+                    confirm_callback(
+                        action, prompt_msg, {"URL": url, "Workspace": ws_name, "File": fname}
+                    )
+                    if confirm_callback
+                    else True
+                )
+                if not approved:
+                    TaskManager.update_step_state(
+                        step, StepStatus.FAILED, attempts=0, error_info="Approval denied by user"
+                    )
+                    log_event(
+                        user_request=f"[{step.step_id}] browser_download_file {url} -> {fname}",
+                        action="browser_download_file",
+                        risk_level=risk,
+                        approval_required=True,
+                        approval_result="DENIED",
+                        execution_status="CANCELLED",
+                        result_summary="User cancelled download",
+                    )
+                    return False
+
+            TaskManager.update_step_state(step, StepStatus.RUNNING, attempts=1)
+            TaskManager.update_task_state(task, TaskStatus.RUNNING)
+            res = browser_download_file(url, ws_name, fname)
+            if res.get("success"):
+                TaskManager.update_step_state(step, StepStatus.SUCCESS, attempts=1, output=res)
+                log_event(
+                    user_request=f"[{step.step_id}] browser_download_file {url} -> {fname}",
+                    action="browser_download_file",
+                    risk_level=risk,
+                    approval_required=True,
+                    approval_result="APPROVED",
+                    execution_status="SUCCESS",
+                    result_summary=f"Downloaded {res.get('bytes_downloaded')} bytes into {ws_name}",
+                )
+                return True
+            else:
+                TaskManager.update_step_state(
+                    step, StepStatus.FAILED, attempts=1, error_info=res.get("error")
+                )
+                log_event(
+                    user_request=f"[{step.step_id}] browser_download_file {url} -> {fname}",
+                    action="browser_download_file",
+                    risk_level=risk,
+                    approval_required=True,
+                    approval_result="APPROVED",
+                    execution_status="FAILED",
+                    result_summary=res.get("error", "Download failed"),
+                )
+                return False
+
+        # -------------------------------------------------------------
+        # M8: EMAIL TOOLS
+        # -------------------------------------------------------------
+        elif action == "email_search":
+            query = resolved_args.get("query") or ""
+            TaskManager.update_step_state(step, StepStatus.RUNNING, attempts=1)
+            TaskManager.update_task_state(task, TaskStatus.RUNNING)
+            res = email_search(query)
+            TaskManager.update_step_state(step, StepStatus.SUCCESS, attempts=1, output=res)
+            return True
+
+        elif action == "email_read":
+            mid = resolved_args.get("message_id") or ""
+            TaskManager.update_step_state(step, StepStatus.RUNNING, attempts=1)
+            TaskManager.update_task_state(task, TaskStatus.RUNNING)
+            res = email_read(mid)
+            if res.get("success"):
+                TaskManager.update_step_state(step, StepStatus.SUCCESS, attempts=1, output=res)
+                return True
+            TaskManager.update_step_state(
+                step, StepStatus.FAILED, attempts=1, error_info=res.get("error")
+            )
+            return False
+
+        elif action == "email_draft":
+            to = resolved_args.get("to") or resolved_args.get("to_address") or ""
+            subj = resolved_args.get("subject") or ""
+            body = resolved_args.get("body") or ""
+
+            if requires_approval(risk):
+                TaskManager.update_step_state(step, StepStatus.WAITING_FOR_APPROVAL, attempts=0)
+                prompt = f"Stage email draft to {to} with subject '{subj}'?"
+                approved = (
+                    confirm_callback(action, prompt, {"To": to, "Subject": subj})
+                    if confirm_callback
+                    else True
+                )
+                if not approved:
+                    TaskManager.update_step_state(
+                        step, StepStatus.FAILED, attempts=0, error_info="Approval denied by user"
+                    )
+                    return False
+
+            TaskManager.update_step_state(step, StepStatus.RUNNING, attempts=1)
+            res = email_draft(to, subj, body)
+            if res.get("success"):
+                TaskManager.update_step_state(step, StepStatus.SUCCESS, attempts=1, output=res)
+                return True
+            TaskManager.update_step_state(
+                step, StepStatus.FAILED, attempts=1, error_info=res.get("error")
+            )
+            return False
+
+        elif action == "email_send":
+            to = resolved_args.get("to") or resolved_args.get("to_address") or ""
+            subj = resolved_args.get("subject") or ""
+            body = resolved_args.get("body") or ""
+
+            # HIGH risk: mandatory explicit approval
+            TaskManager.update_step_state(step, StepStatus.WAITING_FOR_APPROVAL, attempts=0)
+            prompt = f"CRITICAL: Send email to {to} with subject '{subj}'?"
+            approved = (
+                confirm_callback(
+                    action, prompt, {"To": to, "Subject": subj, "Body Preview": body[:100]}
+                )
+                if confirm_callback
+                else True
+            )
+            if not approved:
+                TaskManager.update_step_state(
+                    step, StepStatus.FAILED, attempts=0, error_info="Approval denied by user"
+                )
+                log_event(
+                    user_request=f"[{step.step_id}] email_send {to}",
+                    action="email_send",
+                    risk_level=risk,
+                    approval_required=True,
+                    approval_result="DENIED",
+                    execution_status="CANCELLED",
+                    result_summary="User cancelled email dispatch",
+                )
+                return False
+
+            TaskManager.update_step_state(step, StepStatus.RUNNING, attempts=1)
+            res = email_send(to, subj, body)
+            if res.get("success"):
+                TaskManager.update_step_state(step, StepStatus.SUCCESS, attempts=1, output=res)
+                log_event(
+                    user_request=f"[{step.step_id}] email_send {to}",
+                    action="email_send",
+                    risk_level=risk,
+                    approval_required=True,
+                    approval_result="APPROVED",
+                    execution_status="SUCCESS",
+                    result_summary=f"Sent email to {to}",
+                )
+                return True
+            else:
+                TaskManager.update_step_state(
+                    step, StepStatus.FAILED, attempts=1, error_info=res.get("error")
+                )
+                return False
+
+        # -------------------------------------------------------------
+        # M8: CALENDAR TOOLS
+        # -------------------------------------------------------------
+        elif action == "calendar_list_events":
+            TaskManager.update_step_state(step, StepStatus.RUNNING, attempts=1)
+            res = calendar_list_events(
+                resolved_args.get("start_date"), resolved_args.get("end_date")
+            )
+            TaskManager.update_step_state(step, StepStatus.SUCCESS, attempts=1, output=res)
+            return True
+
+        elif action == "calendar_check_conflict":
+            start = resolved_args.get("start_time") or ""
+            end = resolved_args.get("end_time") or ""
+            TaskManager.update_step_state(step, StepStatus.RUNNING, attempts=1)
+            res = calendar_check_conflict(start, end)
+            TaskManager.update_step_state(step, StepStatus.SUCCESS, attempts=1, output=res)
+            return True
+
+        elif action == "calendar_create_event":
+            title = resolved_args.get("title") or ""
+            start = resolved_args.get("start_time") or ""
+            end = resolved_args.get("end_time") or ""
+            desc = resolved_args.get("description") or ""
+
+            if requires_approval(risk):
+                TaskManager.update_step_state(step, StepStatus.WAITING_FOR_APPROVAL, attempts=0)
+                prompt = f"Create calendar event '{title}' from {start} to {end}?"
+                approved = (
+                    confirm_callback(action, prompt, {"Title": title, "Start": start, "End": end})
+                    if confirm_callback
+                    else True
+                )
+                if not approved:
+                    TaskManager.update_step_state(
+                        step, StepStatus.FAILED, attempts=0, error_info="Approval denied by user"
+                    )
+                    return False
+
+            TaskManager.update_step_state(step, StepStatus.RUNNING, attempts=1)
+            res = calendar_create_event(title, start, end, desc)
+            if res.get("success"):
+                TaskManager.update_step_state(step, StepStatus.SUCCESS, attempts=1, output=res)
+                return True
+            TaskManager.update_step_state(
+                step, StepStatus.FAILED, attempts=1, error_info=res.get("error")
+            )
+            return False
+
+        # -------------------------------------------------------------
+        # M8: GITHUB TOOLS
+        # -------------------------------------------------------------
+        elif action == "github_list_issues":
+            repo = resolved_args.get("repo") or ""
+            state_val = resolved_args.get("state") or "open"
+            TaskManager.update_step_state(step, StepStatus.RUNNING, attempts=1)
+            res = github_list_issues(repo, state=state_val)
+            TaskManager.update_step_state(step, StepStatus.SUCCESS, attempts=1, output=res)
+            return True
+
+        elif action == "github_inspect_pr":
+            repo = resolved_args.get("repo") or ""
+            pr_num = int(resolved_args.get("pr_number") or resolved_args.get("number") or 1)
+            TaskManager.update_step_state(step, StepStatus.RUNNING, attempts=1)
+            res = github_inspect_pr(repo, pr_num)
+            TaskManager.update_step_state(step, StepStatus.SUCCESS, attempts=1, output=res)
+            return True
+
+        elif action == "github_create_issue":
+            repo = resolved_args.get("repo") or ""
+            title = resolved_args.get("title") or ""
+            body = resolved_args.get("body") or ""
+            labels = resolved_args.get("labels")
+
+            if requires_approval(risk):
+                TaskManager.update_step_state(step, StepStatus.WAITING_FOR_APPROVAL, attempts=0)
+                prompt = f"Create GitHub issue on {repo}: '{title}'?"
+                approved = (
+                    confirm_callback(action, prompt, {"Repo": repo, "Title": title})
+                    if confirm_callback
+                    else True
+                )
+                if not approved:
+                    TaskManager.update_step_state(
+                        step, StepStatus.FAILED, attempts=0, error_info="Approval denied by user"
+                    )
+                    return False
+
+            TaskManager.update_step_state(step, StepStatus.RUNNING, attempts=1)
+            res = github_create_issue(repo, title, body, labels=labels)
+            if res.get("success"):
+                TaskManager.update_step_state(step, StepStatus.SUCCESS, attempts=1, output=res)
+                return True
+            TaskManager.update_step_state(
+                step, StepStatus.FAILED, attempts=1, error_info=res.get("error")
+            )
+            return False
 
         # -------------------------------------------------------------
         # UNRECOGNIZED ACTION

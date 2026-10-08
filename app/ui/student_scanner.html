@@ -1,0 +1,1074 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Student Attendance Scanner - Live Dynamic Verification</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-page: #f8fafc;
+      --card-bg: #ffffff;
+      --border-subtle: #e2e8f0;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --brand-blue: #2563eb;
+      --brand-hover: #1d4ed8;
+      --success-green: #059669;
+      --success-bg: #ecfdf5;
+      --success-border: #a7f3d0;
+      --error-red: #dc2626;
+      --error-bg: #fef2f2;
+      --error-border: #fecaca;
+      --warning-amber: #d97706;
+      --warning-bg: #fffbeb;
+      --font-heading: 'Plus Jakarta Sans', -apple-system, sans-serif;
+      --font-body: 'Inter', -apple-system, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font-body);
+      background-color: var(--bg-page);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 16px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 480px;
+      margin: 0 auto;
+    }
+
+    .header-bar {
+      text-align: center;
+      margin: 12px 0 20px 0;
+    }
+
+    .header-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #eff6ff;
+      color: var(--brand-blue);
+      font-size: 11.5px;
+      font-weight: 700;
+      padding: 4px 12px;
+      border-radius: 9999px;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .live-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--brand-blue);
+      box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+    }
+
+    .page-title {
+      font-family: var(--font-heading);
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: var(--text-main);
+      margin-bottom: 4px;
+    }
+
+    .page-subtitle {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    /* Cards */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-subtle);
+      border-radius: 18px;
+      padding: 22px 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+      transition: all 0.2s ease;
+    }
+
+    .card-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .card-title {
+      font-family: var(--font-heading);
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card-action-btn {
+      background: transparent;
+      border: none;
+      color: var(--brand-blue);
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 2px 6px;
+    }
+
+    /* Form Fields */
+    .form-group {
+      margin-bottom: 14px;
+      text-align: left;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: #334155;
+      margin-bottom: 6px;
+    }
+
+    .form-input {
+      width: 100%;
+      height: 44px;
+      padding: 0 14px;
+      border: 1.5px solid var(--border-subtle);
+      border-radius: 12px;
+      font-size: 14px;
+      color: var(--text-main);
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    .form-input:focus {
+      border-color: var(--brand-blue);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    }
+
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 8px;
+    }
+
+    .checkbox-row input {
+      accent-color: var(--brand-blue);
+      width: 15px;
+      height: 15px;
+    }
+
+    /* Saved Profile Badge */
+    .saved-profile-box {
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .profile-details {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .profile-name {
+      font-weight: 700;
+      font-size: 14.5px;
+      color: var(--text-main);
+    }
+
+    .profile-id {
+      font-size: 12.5px;
+      color: var(--text-muted);
+      font-family: monospace;
+    }
+
+    /* Buttons */
+    .btn-primary {
+      width: 100%;
+      height: 48px;
+      background: #090d16;
+      color: #ffffff;
+      border: none;
+      border-radius: 13px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: background 0.15s, transform 0.15s;
+    }
+
+    .btn-primary:hover {
+      background: #1e293b;
+      transform: translateY(-1px);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn-brand {
+      background: var(--brand-blue);
+    }
+
+    .btn-brand:hover {
+      background: var(--brand-hover);
+    }
+
+    .btn-outline {
+      width: 100%;
+      height: 42px;
+      background: transparent;
+      border: 1.5px solid var(--border-subtle);
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-main);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .btn-outline:hover {
+      background: #f8fafc;
+      border-color: #cbd5e1;
+    }
+
+    /* Camera Viewfinder */
+    .scanner-panel {
+      display: none;
+      margin-top: 16px;
+    }
+
+    .viewfinder-wrap {
+      position: relative;
+      width: 100%;
+      height: 280px;
+      background: #000000;
+      border-radius: 16px;
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+
+    .viewfinder-wrap video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .viewfinder-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+
+    .target-frame {
+      width: 200px;
+      height: 200px;
+      border: 2px solid rgba(255, 255, 255, 0.4);
+      border-radius: 16px;
+      position: relative;
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
+    }
+
+    .target-frame::before {
+      content: '';
+      position: absolute;
+      top: -2px; left: -2px; right: -2px; bottom: -2px;
+      border: 3px solid #3b82f6;
+      border-radius: 16px;
+      clip-path: polygon(
+        0% 0%, 20% 0%, 20% 3px, 3px 3px, 3px 20%, 0% 20%,
+        100% 0%, 80% 0%, 80% 3px, 97% 3px, 97% 20%, 100% 20%,
+        100% 100%, 80% 100%, 80% 97%, 97% 97%, 97% 80%, 100% 80%,
+        0% 100%, 20% 100%, 20% 97%, 3px 97%, 3px 80%, 0% 80%
+      );
+    }
+
+    .laser-scan-line {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, #60a5fa, transparent);
+      box-shadow: 0 0 8px #60a5fa;
+      animation: laserScan 2s infinite ease-in-out;
+    }
+
+    @keyframes laserScan {
+      0% { top: 5%; }
+      50% { top: 92%; }
+      100% { top: 5%; }
+    }
+
+    .scanner-controls {
+      display: flex;
+      gap: 8px;
+    }
+
+    .scanner-hint {
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 8px;
+    }
+
+    /* Result Panels */
+    .status-panel {
+      display: none;
+      border-radius: 16px;
+      padding: 20px 18px;
+      text-align: center;
+      margin-bottom: 16px;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .status-panel.success {
+      background: var(--success-bg);
+      border: 1px solid var(--success-border);
+      color: #065f46;
+    }
+
+    .status-panel.error {
+      background: var(--error-bg);
+      border: 1px solid var(--error-border);
+      color: #991b1b;
+    }
+
+    .status-icon-wrap {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 12px auto;
+    }
+
+    .status-panel.success .status-icon-wrap {
+      background: #d1fae5;
+      color: #059669;
+    }
+
+    .status-panel.error .status-icon-wrap {
+      background: #fee2e2;
+      color: #dc2626;
+    }
+
+    .status-title {
+      font-family: var(--font-heading);
+      font-size: 16px;
+      font-weight: 800;
+      margin-bottom: 4px;
+    }
+
+    .status-desc {
+      font-size: 13px;
+      line-height: 1.4;
+      margin-bottom: 14px;
+    }
+
+    .receipt-box {
+      background: #ffffff;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      border-radius: 12px;
+      padding: 12px;
+      text-align: left;
+      font-size: 12px;
+      margin-bottom: 14px;
+    }
+
+    .receipt-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 0;
+      border-bottom: 1px dashed #f1f5f9;
+    }
+
+    .receipt-row:last-child {
+      border-bottom: none;
+    }
+
+    .receipt-label {
+      color: var(--text-muted);
+    }
+
+    .receipt-val {
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    .manual-entry-accordion {
+      margin-top: 14px;
+      border-top: 1px solid var(--border-subtle);
+      padding-top: 14px;
+      text-align: left;
+    }
+
+    .manual-toggle {
+      background: none;
+      border: none;
+      font-size: 12px;
+      color: var(--text-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .manual-form {
+      display: none;
+      margin-top: 12px;
+    }
+
+    .footer-note {
+      text-align: center;
+      font-size: 11.5px;
+      color: #94a3b8;
+      margin-top: 20px;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header-bar">
+      <div class="header-badge">
+        <span class="live-dot"></span>
+        <span>Classroom Verification Portal</span>
+      </div>
+      <h1 class="page-title">Live Attendance Scan</h1>
+      <p class="page-subtitle">Verify your in-person presence for this class session</p>
+    </header>
+
+    <!-- Insecure context alert (shown only when running on plain HTTP over LAN) -->
+    <div id="insecure-http-banner" style="display: none; background: #fffbeb; border: 1px solid #fde68a; border-radius: 12px; padding: 12px 14px; margin-bottom: 16px; font-size: 13px; color: #92400e;">
+      <div style="font-weight: 700; margin-bottom: 4px;">⚠️ Live Camera requires HTTPS on phones</div>
+      <p style="margin: 0 0 8px 0; font-size: 12px; color: #b45309; line-height: 1.4;">Mobile browsers block live camera on plain HTTP. You can either:</p>
+      <div style="display: flex; gap: 8px; flex-direction: column;">
+        <a id="https-switch-link" href="#" style="display: block; background: #d97706; color: #ffffff; padding: 8px 12px; border-radius: 8px; font-weight: 600; text-decoration: none; text-align: center; font-size: 12.5px;">Switch to HTTPS (Port 8443)</a>
+        <span style="font-size: 11.5px; color: #78350f;">Or tap <strong>"Use Native Camera App / Photo"</strong> below (works directly on HTTP).</span>
+      </div>
+    </div>
+
+    <!-- Verification Result Card (Shown after scanning) -->
+    <div class="status-panel success" id="status-success">
+      <div class="status-icon-wrap">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+      </div>
+      <h2 class="status-title" id="success-title">Attendance Verified</h2>
+      <p class="status-desc" id="success-desc">Your classroom check-in has been validated and recorded on the server roster.</p>
+      
+      <div class="receipt-box">
+        <div class="receipt-row">
+          <span class="receipt-label">Student:</span>
+          <span class="receipt-val" id="rec-student">--</span>
+        </div>
+        <div class="receipt-row">
+          <span class="receipt-label">Roll Number:</span>
+          <span class="receipt-val" id="rec-id">--</span>
+        </div>
+        <div class="receipt-row">
+          <span class="receipt-label">Course:</span>
+          <span class="receipt-val" id="rec-course">--</span>
+        </div>
+        <div class="receipt-row">
+          <span class="receipt-label">Time Verified:</span>
+          <span class="receipt-val" id="rec-time">--</span>
+        </div>
+        <div class="receipt-row">
+          <span class="receipt-label">Security:</span>
+          <span class="receipt-val" style="color: #059669;">Anti-Proxy Validated</span>
+        </div>
+      </div>
+
+      <button type="button" class="btn-primary" id="btn-scan-again">
+        <span>Scan Another Session</span>
+      </button>
+    </div>
+
+    <!-- Error Result Card -->
+    <div class="status-panel error" id="status-error">
+      <div class="status-icon-wrap">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="15" y1="9" x2="9" y2="15"></line>
+          <line x1="9" y1="9" x2="15" y2="15"></line>
+        </svg>
+      </div>
+      <h2 class="status-title" id="error-title">Verification Failed</h2>
+      <p class="status-desc" id="error-desc">The scanned token has expired or is invalid. Scan the live screen again.</p>
+      <button type="button" class="btn-primary" id="btn-try-again">
+        <span>Try Scanning Again</span>
+      </button>
+    </div>
+
+    <!-- Main Workflow Card -->
+    <main class="card" id="main-workflow-card">
+      <!-- Step 1: Student Profile -->
+      <div class="card-title-row">
+        <span class="card-title">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+          </svg>
+          Step 1: Your Student Identity
+        </span>
+        <button type="button" class="card-action-btn" id="btn-edit-profile" style="display: none;">Edit</button>
+      </div>
+
+      <!-- Saved Profile Preview -->
+      <div class="saved-profile-box" id="saved-profile-view" style="display: none;">
+        <div class="profile-details">
+          <span class="profile-name" id="display-profile-name">Student Name</span>
+          <span class="profile-id" id="display-profile-id">ID: 000000</span>
+        </div>
+        <span style="font-size: 11px; color: #059669; font-weight: 700; background: #ecfdf5; padding: 3px 8px; border-radius: 6px;">Saved</span>
+      </div>
+
+      <!-- Profile Form -->
+      <form id="profile-form">
+        <div class="form-group">
+          <label class="form-label" for="input-student-name">Full Name</label>
+          <input type="text" id="input-student-name" class="form-input" placeholder="e.g. Alex Rivera" required autocomplete="name">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="input-student-id">Student ID / Roll Number</label>
+          <input type="text" id="input-student-id" class="form-input" placeholder="e.g. 2024CS042" required autocomplete="off">
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="check-remember-me" checked>
+          <label for="check-remember-me">Remember my details on this phone</label>
+        </div>
+        <button type="button" class="btn-primary" id="btn-save-profile" style="margin-top: 14px;">
+          <span>Save &amp; Proceed to Scan</span>
+        </button>
+      </form>
+
+      <hr style="border: none; border-top: 1px solid var(--border-subtle); margin: 20px 0;">
+
+      <!-- Step 2: Camera QR Scanner -->
+      <div class="card-title-row">
+        <span class="card-title">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+            <circle cx="12" cy="13" r="4"></circle>
+          </svg>
+          Step 2: Scan Live Screen
+        </span>
+      </div>
+
+      <!-- Scan Trigger Button -->
+      <button type="button" class="btn-primary btn-brand" id="btn-open-scanner" disabled>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+          <circle cx="12" cy="13" r="4"></circle>
+        </svg>
+        <span>Open Camera to Scan QR Code</span>
+      </button>
+
+      <!-- Native Camera / File Fallback Button -->
+      <label for="file-camera-input" class="btn-outline" style="cursor: pointer;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="17 8 12 3 7 8"></polyline>
+          <line x1="12" y1="3" x2="12" y2="15"></line>
+        </svg>
+        <span>Use Native Camera App / Photo</span>
+      </label>
+      <input type="file" id="file-camera-input" accept="image/*" capture="environment" style="display: none;">
+
+      <!-- Active In-Browser Camera Viewfinder -->
+      <div class="scanner-panel" id="scanner-panel">
+        <div class="viewfinder-wrap">
+          <video id="scanner-video" playsinline muted></video>
+          <canvas id="scanner-canvas" style="display: none;"></canvas>
+          <div class="viewfinder-overlay">
+            <div class="target-frame">
+              <div class="laser-scan-line"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="scanner-controls">
+          <button type="button" class="btn-outline" id="btn-toggle-camera" style="margin-top: 0;">
+            <span>Flip Camera</span>
+          </button>
+          <button type="button" class="btn-outline" id="btn-close-scanner" style="margin-top: 0; color: #dc2626; border-color: #fecaca;">
+            <span>Cancel</span>
+          </button>
+        </div>
+        <p class="scanner-hint">Point your camera directly at the classroom projector screen</p>
+      </div>
+
+      <!-- Manual Code Entry Accordion (Fallback if Camera is Unavailable) -->
+      <div class="manual-entry-accordion">
+        <button type="button" class="manual-toggle" id="manual-toggle-btn">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+          <span>Camera not working? Enter link or code manually</span>
+        </button>
+
+        <div class="manual-form" id="manual-form-wrap">
+          <div class="form-group" style="margin-top: 10px;">
+            <label class="form-label" for="input-manual-url">Scanned Link or Token Nonce</label>
+            <input type="text" id="input-manual-url" class="form-input" placeholder="Paste link or token from screen...">
+          </div>
+          <button type="button" class="btn-primary" id="btn-submit-manual">
+            <span>Verify Manually</span>
+          </button>
+        </div>
+      </div>
+    </main>
+
+    <footer class="footer-note">
+      Anti-Proxy Security &bull; Requires In-Person Classroom Presence
+    </footer>
+  </div>
+
+  <!-- Pure Offline Local QR Decoder -->
+  <script src="/static/jsqr.min.js"></script>
+
+  <script>
+    // State
+    let activeStream = null;
+    let scanAnimationId = null;
+    let currentFacingMode = "environment"; // rear camera by default
+    const STORAGE_KEY = "attendance_student_profile";
+
+    // Elements
+    const profileForm = document.getElementById("profile-form");
+    const savedProfileView = document.getElementById("saved-profile-view");
+    const displayProfileName = document.getElementById("display-profile-name");
+    const displayProfileId = document.getElementById("display-profile-id");
+    const inputName = document.getElementById("input-student-name");
+    const inputId = document.getElementById("input-student-id");
+    const checkRemember = document.getElementById("check-remember-me");
+    const btnSaveProfile = document.getElementById("btn-save-profile");
+    const btnEditProfile = document.getElementById("btn-edit-profile");
+
+    const btnOpenScanner = document.getElementById("btn-open-scanner");
+    const fileCameraInput = document.getElementById("file-camera-input");
+    const scannerPanel = document.getElementById("scanner-panel");
+    const scannerVideo = document.getElementById("scanner-video");
+    const scannerCanvas = document.getElementById("scanner-canvas");
+    const btnCloseScanner = document.getElementById("btn-close-scanner");
+    const btnToggleCamera = document.getElementById("btn-toggle-camera");
+
+    const manualToggleBtn = document.getElementById("manual-toggle-btn");
+    const manualFormWrap = document.getElementById("manual-form-wrap");
+    const inputManualUrl = document.getElementById("input-manual-url");
+    const btnSubmitManual = document.getElementById("btn-submit-manual");
+
+    const mainWorkflowCard = document.getElementById("main-workflow-card");
+    const statusSuccess = document.getElementById("status-success");
+    const statusError = document.getElementById("status-error");
+    const btnScanAgain = document.getElementById("btn-scan-again");
+    const btnTryAgain = document.getElementById("btn-try-again");
+
+    // Initialize Profile
+    function initProfile() {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const profile = JSON.parse(saved);
+          if (profile.name && profile.id) {
+            inputName.value = profile.name;
+            inputId.value = profile.id;
+            displayProfileName.textContent = profile.name;
+            displayProfileId.textContent = "ID: " + profile.id;
+
+            profileForm.style.display = "none";
+            savedProfileView.style.display = "flex";
+            btnEditProfile.style.display = "block";
+            btnOpenScanner.disabled = false;
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn("Storage access failed:", e);
+      }
+
+      // Default: show form
+      profileForm.style.display = "block";
+      savedProfileView.style.display = "none";
+      btnEditProfile.style.display = "none";
+      updateScanButtonState();
+    }
+
+    function updateScanButtonState() {
+      const hasName = inputName.value.trim().length > 0;
+      const hasId = inputId.value.trim().length > 0;
+      btnOpenScanner.disabled = !(hasName && hasId);
+    }
+
+    inputName.addEventListener("input", updateScanButtonState);
+    inputId.addEventListener("input", updateScanButtonState);
+
+    btnSaveProfile.addEventListener("click", () => {
+      const name = inputName.value.trim();
+      const id = inputId.value.trim();
+      if (!name || !id) {
+        alert("Please enter both your full name and student ID.");
+        return;
+      }
+
+      if (checkRemember.checked) {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({ name, id }));
+        } catch (e) {}
+      }
+
+      displayProfileName.textContent = name;
+      displayProfileId.textContent = "ID: " + id;
+      profileForm.style.display = "none";
+      savedProfileView.style.display = "flex";
+      btnEditProfile.style.display = "block";
+      btnOpenScanner.disabled = false;
+    });
+
+    btnEditProfile.addEventListener("click", () => {
+      profileForm.style.display = "block";
+      savedProfileView.style.display = "none";
+      btnEditProfile.style.display = "none";
+    });
+
+    // Camera Live Scanner
+    async function startCamera() {
+      scannerPanel.style.display = "block";
+      btnOpenScanner.style.display = "none";
+
+      const constraints = {
+        video: {
+          facingMode: { ideal: currentFacingMode },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        audio: false,
+      };
+
+      try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          const isHttp = location.protocol === "http:" && location.hostname !== "localhost" && location.hostname !== "127.0.0.1";
+          const msg = isHttp
+            ? `Mobile browsers block live camera on plain HTTP.\n\nOption 1: Connect via HTTPS at https://${location.hostname}:8443 (accept the self-signed certificate once).\n\nOption 2: Tap 'Use Native Camera App / Photo' below to take a photo of the QR code.`
+            : "Camera API is unavailable in this browser context. Please use the photo option below.";
+          throw new Error(msg);
+        }
+
+        activeStream = await navigator.mediaDevices.getUserMedia(constraints);
+        scannerVideo.srcObject = activeStream;
+        await scannerVideo.play();
+        scanAnimationId = requestAnimationFrame(scanTick);
+      } catch (err) {
+        console.warn("Camera access error:", err);
+        scannerPanel.style.display = "none";
+        btnOpenScanner.style.display = "flex";
+        alert(err.message || "Camera stream could not start. Please use the photo button or enter code manually.");
+      }
+    }
+
+    function stopCamera() {
+      if (scanAnimationId) {
+        cancelAnimationFrame(scanAnimationId);
+        scanAnimationId = null;
+      }
+      if (activeStream) {
+        activeStream.getTracks().forEach(t => t.stop());
+        activeStream = null;
+      }
+      scannerVideo.srcObject = null;
+    }
+
+    btnOpenScanner.addEventListener("click", startCamera);
+
+    btnCloseScanner.addEventListener("click", () => {
+      stopCamera();
+      scannerPanel.style.display = "none";
+      btnOpenScanner.style.display = "flex";
+    });
+
+    btnToggleCamera.addEventListener("click", async () => {
+      currentFacingMode = currentFacingMode === "environment" ? "user" : "environment";
+      stopCamera();
+      await startCamera();
+    });
+
+    // Scan Loop (Live Stream)
+    function scanTick() {
+      if (!scannerVideo.readyState || scannerVideo.readyState < 2) {
+        scanAnimationId = requestAnimationFrame(scanTick);
+        return;
+      }
+      const w = scannerVideo.videoWidth;
+      const h = scannerVideo.videoHeight;
+      if (w === 0 || h === 0) {
+        scanAnimationId = requestAnimationFrame(scanTick);
+        return;
+      }
+      scannerCanvas.width = w;
+      scannerCanvas.height = h;
+      const ctx = scannerCanvas.getContext("2d", { willReadFrequently: true });
+      ctx.drawImage(scannerVideo, 0, 0, w, h);
+      const imgData = ctx.getImageData(0, 0, w, h);
+      try {
+        const code = (typeof jsQR !== "undefined") ? jsQR(imgData.data, w, h) : null;
+        if (code && code.data) {
+          stopCamera();
+          scannerPanel.style.display = "none";
+          btnOpenScanner.style.display = "flex";
+          handleQrData(code.data);
+          return;
+        }
+      } catch (e) {}
+      scanAnimationId = requestAnimationFrame(scanTick);
+    }
+
+    // High-accuracy multi-scale QR decoding for smartphone camera photos
+    async function decodeQrFromImage(img) {
+      // 1. Native BarcodeDetector (Chrome/Android hardware accelerated)
+      if ("BarcodeDetector" in window) {
+        try {
+          const detector = new BarcodeDetector({ formats: ["qr_code"] });
+          const barcodes = await detector.detect(img);
+          if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+            return barcodes[0].rawValue;
+          }
+        } catch (e) {
+          console.warn("BarcodeDetector fallback:", e);
+        }
+      }
+
+      // 2. Multi-scale jsQR (handles 12MP-48MP smartphone photos that overwhelm jsQR at full res)
+      if (typeof jsQR !== "undefined") {
+        const maxOrig = Math.max(img.width, img.height);
+        const scales = [1000, 750, 1300, 500];
+        if (maxOrig < 1000 && !scales.includes(maxOrig)) {
+          scales.unshift(maxOrig);
+        }
+
+        for (const targetDim of scales) {
+          let w = img.width;
+          let h = img.height;
+          if (maxOrig > targetDim) {
+            if (w >= h) {
+              h = Math.round((h * targetDim) / w);
+              w = targetDim;
+            } else {
+              w = Math.round((w * targetDim) / h);
+              h = targetDim;
+            }
+          }
+
+          const canvas = document.createElement("canvas");
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext("2d", { willReadFrequently: true });
+          ctx.drawImage(img, 0, 0, w, h);
+          const imgData = ctx.getImageData(0, 0, w, h);
+          try {
+            const code = jsQR(imgData.data, w, h, { inversionAttempts: "attemptBoth" });
+            if (code && code.data) {
+              return code.data;
+            }
+          } catch (e) {}
+        }
+      }
+      return null;
+    }
+
+    // File / Photo Upload Handler
+    fileCameraInput.addEventListener("change", (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+
+      const uploadBtn = document.querySelector("label[for='file-camera-input']");
+      const origHtml = uploadBtn ? uploadBtn.innerHTML : "";
+      if (uploadBtn) {
+        uploadBtn.innerHTML = `<span>Analyzing photo for QR code...</span>`;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const img = new Image();
+        img.onload = async () => {
+          try {
+            const qrData = await decodeQrFromImage(img);
+            if (qrData) {
+              handleQrData(qrData);
+            } else {
+              alert("Could not detect a QR code in the photo. Please ensure the QR code on the projector screen is clear, well-lit, and visible in the frame, then try again.");
+            }
+          } catch (err) {
+            alert("Error decoding image: " + err.message);
+          } finally {
+            if (uploadBtn) uploadBtn.innerHTML = origHtml;
+            fileCameraInput.value = "";
+          }
+        };
+        img.onerror = () => {
+          if (uploadBtn) uploadBtn.innerHTML = origHtml;
+          fileCameraInput.value = "";
+          alert("Failed to load selected photo.");
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // QR Data Handler
+    async function handleQrData(qrData) {
+      if (qrData.includes("attendance/checkin") || qrData.includes("token=") || qrData.includes("session_id=")) {
+        await submitAttendance(qrData);
+        return;
+      }
+      // Try active session fallback
+      try {
+        const activeRes = await fetch("/api/attendance/session/active");
+        const active = await activeRes.json();
+        if (active.success && active.active && active.checkin_url) {
+          await submitAttendance(active.checkin_url);
+          return;
+        }
+      } catch (e) {}
+      showError("Invalid QR Code", "The scanned QR code is not recognized as a valid classroom attendance code.");
+    }
+
+    async function submitAttendance(urlOrData) {
+      const sName = inputName.value.trim() || displayProfileName.textContent;
+      const sId   = inputId.value.trim()   || displayProfileId.textContent.replace("ID: ", "");
+
+      let sessionId = "";
+      let token = "";
+      try {
+        const u = new URL(urlOrData.startsWith("http") ? urlOrData : ("http://placeholder/" + urlOrData));
+        sessionId = u.searchParams.get("session_id") || "";
+        token     = u.searchParams.get("token")      || "";
+      } catch (e) {
+        token = urlOrData;
+      }
+
+      try {
+        const res = await fetch("/api/attendance/checkin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_id: sessionId,
+            token: token,
+            student_id: sId,
+            student_name: sName,
+            device_info: navigator.userAgent.substring(0, 80)
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify({ name: sName, id: sId }));
+          } catch (e) {}
+          showSuccess(data);
+        } else {
+          showError("Verification Rejected", data.error || "The server rejected this attendance token.");
+        }
+      } catch (err) {
+        showError("Network Error", "Unable to connect to the attendance server. Ensure phone is on the classroom Wi-Fi.");
+      }
+    }
+
+    // Manual Toggle
+    manualToggleBtn.addEventListener("click", () => {
+      const isOpen = manualFormWrap.style.display === "block";
+      manualFormWrap.style.display = isOpen ? "none" : "block";
+    });
+
+    btnSubmitManual.addEventListener("click", () => {
+      const val = inputManualUrl.value.trim();
+      if (!val) { alert("Please paste a valid link or token."); return; }
+      handleQrData(val);
+    });
+
+    // Result Display
+    function showSuccess(data) {
+      mainWorkflowCard.style.display = "none";
+      statusError.style.display = "none";
+      statusSuccess.style.display = "block";
+      document.getElementById("rec-student").textContent = data.student_name || inputName.value || "--";
+      document.getElementById("rec-id").textContent      = data.student_id   || inputId.value   || "--";
+      document.getElementById("rec-course").textContent  = data.course_name  || "--";
+      document.getElementById("rec-time").textContent    = data.timestamp    || new Date().toLocaleTimeString();
+    }
+
+    function showError(title, desc) {
+      mainWorkflowCard.style.display = "none";
+      statusSuccess.style.display = "none";
+      statusError.style.display = "block";
+      document.getElementById("error-title").textContent = title;
+      document.getElementById("error-desc").textContent  = desc;
+    }
+
+    function resetAll() {
+      statusSuccess.style.display = "none";
+      statusError.style.display = "none";
+      mainWorkflowCard.style.display = "block";
+      stopCamera();
+      scannerPanel.style.display = "none";
+      btnOpenScanner.style.display = "flex";
+    }
+
+    btnScanAgain.addEventListener("click", resetAll);
+    btnTryAgain.addEventListener("click", resetAll);
+
+    // Boot
+    initProfile();
+
+    // Check if running on insecure HTTP over LAN (mobile browsers block camera)
+    if (!window.isSecureContext && location.protocol === "http:" && location.hostname !== "localhost" && location.hostname !== "127.0.0.1") {
+      const banner = document.getElementById("insecure-http-banner");
+      const switchLink = document.getElementById("https-switch-link");
+      if (banner) banner.style.display = "block";
+      if (switchLink) switchLink.href = `https://${location.hostname}:8443/attendance/scanner`;
+    }
+  </script>
+</body>
+</html>

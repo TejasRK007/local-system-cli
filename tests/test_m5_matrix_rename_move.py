@@ -103,7 +103,7 @@ def test_rename_b5_quoted_names(tmp_path):
     (ws_dir / "old_doc.txt").write_text("doc", encoding="utf-8")
     WorkspaceManager.add_workspace(ws_dir, name="QuoteWs", permissions=["READ", "WRITE"])
 
-    plan = GoalPlanner.plan_goal("Rename \"old_doc.txt\" to \"new_doc.txt\" in QuoteWs")
+    plan = GoalPlanner.plan_goal('Rename "old_doc.txt" to "new_doc.txt" in QuoteWs')
     assert len(plan.steps) == 1
     assert plan.steps[0]["arguments"]["new_name"] == "new_doc.txt"
 

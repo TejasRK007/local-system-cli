@@ -65,9 +65,7 @@ def test_deterministic_goal_planning_without_groq_api_key(tmp_path, monkeypatch)
     test_file = ws_dir / "invoice.pdf"
     test_file.write_text("dummy invoice content", encoding="utf-8")
 
-    WorkspaceManager.add_workspace(
-        ws_dir, name="OfflineWs", permissions=["READ", "WRITE"]
-    )
+    WorkspaceManager.add_workspace(ws_dir, name="OfflineWs", permissions=["READ", "WRITE"])
 
     plan = GoalPlanner.plan_goal("Find invoice.pdf in OfflineWs")
 

@@ -1,0 +1,1366 @@
+"""
+FastAPI Server & REST API for the Local Agentic Automation System UI.
+Serves the web dashboard and provides endpoints for tasks, workspaces,
+audit logs, and Milestone 8 productivity tools.
+"""
+
+import os
+import re
+import time
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import secrets
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+
+import app.database as db
+from app.policy import get_action_risk
+from app.tasks.executor import StepExecutor
+from app.tasks.goal_planner import GoalPlanner
+from app.tasks.manager import TaskManager
+from app.tasks.models import Task, TaskStatus
+from app.tools.attendance_tools import (
+    attendance_checkin,
+    attendance_end_session,
+    attendance_export_csv,
+    attendance_get_active_session,
+    attendance_rotate_token,
+    attendance_start_session,
+    get_local_ip,
+)
+from app.tools.browser_tools import browser_fetch_page
+from app.tools.calendar_tools import (
+    calendar_create_event,
+    calendar_delete_event,
+    calendar_list_events,
+)
+from app.tools.document_tools import (
+    _extract_text_from_file,
+    _redact_secrets,
+    read_document,
+    summarize_document,
+)
+from app.tools.email_tools import (
+    email_draft,
+    email_generate_reply,
+    email_get_account,
+    email_link_account,
+    email_mark_all_read,
+    email_read,
+    email_search,
+    email_send,
+    email_summarize,
+    email_sync,
+)
+from app.tools.github_tools import github_list_issues
+from app.tools.system_tools import get_system_info
+from app.workspaces import WorkspaceManager
+
+# Define directories
+BASE_DIR = Path(__file__).resolve().parent
+UI_DIR = BASE_DIR / "ui"
+
+server_app = FastAPI(
+    title="Local Agentic Automation System",
+    description="Local-first agentic automation dashboard and API",
+    version="0.8.0",
+)
+app = server_app
+ACTIVE_PLANS: Dict[str, Any] = {}
+
+# CORS
+server_app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# -----------------------------------------------------------------------------
+# Request Schemas
+# -----------------------------------------------------------------------------
+class ChatAttachment(BaseModel):
+    name: str
+    size: Optional[int] = 0
+    type: Optional[str] = ""
+    data: Optional[str] = None
+
+
+class ChatRequest(BaseModel):
+    message: str
+    mode: Optional[str] = "safe"
+    workspace: Optional[str] = None
+    attachments: Optional[List[ChatAttachment]] = None
+    history: Optional[List[Dict[str, Any]]] = None
+    llm_enabled: Optional[bool] = True
+
+
+class GoalPlanRequest(BaseModel):
+    goal: str
+    workspace: Optional[str] = None
+
+
+class ExecutePlanRequest(BaseModel):
+    task_id: str
+    approved: bool = True
+
+
+class ReadDocRequest(BaseModel):
+    path: str
+    max_chars: int = 4000
+
+
+class EmailDraftRequest(BaseModel):
+    to: str
+    subject: str
+    body: str
+
+
+class EmailSendRequest(BaseModel):
+    to: str
+    subject: str
+    body: str
+    draft_id: Optional[int] = None
+
+
+class EmailSummarizeRequest(BaseModel):
+    message_id: str
+
+
+class EmailReplyRequest(BaseModel):
+    message_id: str
+    tone: Optional[str] = "professional"
+    user_notes: Optional[str] = ""
+
+
+class EmailLinkAccountRequest(BaseModel):
+    email: str
+    account_type: Optional[str] = "demo"
+    imap_host: Optional[str] = ""
+    imap_port: Optional[int] = 993
+    smtp_host: Optional[str] = ""
+    smtp_port: Optional[int] = 587
+    username: Optional[str] = ""
+    password: Optional[str] = ""
+
+
+class CalendarEventRequest(BaseModel):
+    title: str
+    start_time: str
+    end_time: str
+    description: str = ""
+
+
+class BrowserFetchRequest(BaseModel):
+    url: str
+    max_chars: int = 4000
+
+
+class AttendanceSessionStartRequest(BaseModel):
+    course_name: Optional[str] = None
+    course: Optional[str] = None
+    section: str = "Section A"
+    rotation_interval_seconds: Optional[int] = None
+    rotation_interval: Optional[int] = None
+    host_url: Optional[str] = None
+
+
+class AttendanceCheckinRequest(BaseModel):
+    session_id: str
+    token: str
+    student_id: str
+    student_name: str
+    device_info: Optional[str] = "Mobile Client"
+
+
+class AttendanceRotateRequest(BaseModel):
+    session_id: str
+    host_url: Optional[str] = None
+
+
+def _extract_request_host(request: Optional[Request] = None) -> str:
+    """Determine best external URL from client request headers or local network IP."""
+    if request:
+        host_header = request.headers.get("host")
+        if host_header:
+            scheme = request.url.scheme or "http"
+            return f"{scheme}://{host_header}"
+    lan_ip = get_local_ip()
+    return f"http://{lan_ip}:8000" if lan_ip != "127.0.0.1" else "http://127.0.0.1:8000"
+
+
+# -----------------------------------------------------------------------------
+# API Endpoints
+# -----------------------------------------------------------------------------
+@server_app.get("/api/status")
+def get_status() -> Dict[str, Any]:
+    """Return system readiness, active LLM model, and workspace metrics."""
+    workspaces = WorkspaceManager.list_workspaces()
+    sys_info = get_system_info()
+    provider = os.getenv("LLM_PROVIDER", "ollama")
+    model = (
+        os.getenv("OLLAMA_MODEL", "qwen2.5:3b")
+        if provider == "ollama"
+        else os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
+    )
+    lan_ip = get_local_ip()
+    return {
+        "status": "online",
+        "llm_provider": provider,
+        "llm_model": model,
+        "workspaces_count": len(workspaces),
+        "cpu_usage": sys_info.get("cpu_percent", 0),
+        "ram_usage": sys_info.get("memory", {}).get("percent", 0),
+        "platform": sys_info.get("platform", "Windows"),
+        "lan_ip": lan_ip,
+        "network_url": f"http://{lan_ip}:8000" if lan_ip != "127.0.0.1" else None,
+    }
+
+
+@server_app.get("/api/workspaces")
+def list_workspaces() -> List[Dict[str, Any]]:
+    """Return all configured workspaces."""
+    return [w.to_dict() for w in WorkspaceManager.list_workspaces()]
+
+
+@server_app.post("/api/workspaces")
+def add_workspace(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Add a new authorized workspace."""
+    path = payload.get("path")
+    name = payload.get("name")
+    perms = payload.get("permissions", ["READ", "WRITE"])
+    if not path or not name:
+        raise HTTPException(status_code=400, detail="Path and name are required")
+    try:
+        ws = WorkspaceManager.add_workspace(path, name=name, permissions=perms)
+        return {"success": True, "workspace": ws.to_dict()}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@server_app.get("/api/audit")
+def get_audit(limit: int = 25) -> List[Dict[str, Any]]:
+    """Return recent SQLite audit events."""
+    return db.get_recent_logs(limit=limit)
+
+
+@server_app.get("/api/tasks")
+def get_recent_tasks(limit: int = 15) -> List[Dict[str, Any]]:
+    """Return recent tasks and their step states."""
+    tasks = db.list_task_records(limit=limit)
+    out = []
+    for t in tasks:
+        t_obj = Task.from_dict(t)
+        steps = db.get_task_steps_records(t_obj.task_id)
+        out.append({**t_obj.to_dict(), "steps": steps})
+    return out
+
+
+def _analyze_attached_document(
+    file_name: str, file_path: Path, file_text: str, user_query: str
+) -> str:
+    """Analyze an attached file and generate a comprehensive executive summary."""
+    clean_text = _redact_secrets(file_text)
+    if not clean_text or len(clean_text.strip()) < 5:
+        return f"Notice: Could not extract readable text from attached file **{file_name}**."
+
+    # Attempt LLM generation
+    try:
+        from app.llm import LLMClient
+        llm = LLMClient.get_instance()
+        prompt = (
+            f"You are an expert AI document analyst assisting a developer.\n"
+            f"The user attached a document named '{file_name}'.\n"
+            f"User Question: '{user_query}'\n\n"
+            f"--- EXTRACTED CONTENT (EXCERPT) ---\n"
+            f"{clean_text[:3500]}\n"
+            f"--- END OF EXCERPT ---\n\n"
+            f"Please provide an accurate, well-structured response answering the user question. "
+            f"Include: Document title, high-level summary of what it is, core topics/milestones covered, "
+            f"and key takeaways."
+        )
+        res = llm.generate(prompt)
+        if res and len(res.strip()) > 40 and "canned" not in res.lower():
+            return res.strip()
+    except Exception:
+        pass
+
+    # Heuristic structured summary
+    lines = [l.strip() for l in clean_text.splitlines() if l.strip()]
+    title = lines[0] if lines else file_name
+    total_words = len(clean_text.split())
+
+    sections = []
+    for line in lines[:30]:
+        if any(h in line.lower() for h in [
+            "milestone", "roadmap", "purpose", "overview", "architecture", "goal",
+            "summary", "layer", "principle", "handover", "safety", "scope"
+        ]):
+            if line not in sections and len(line) < 140:
+                sections.append(line)
+
+    result = [
+        f"**Document Analysis: `{file_name}`**\n",
+        f"### Document Overview",
+    ]
+
+    intro_lines = [l for l in lines[1:8] if len(l) > 25 and not l.startswith("Page") and not l.startswith("http")][:3]
+    if intro_lines:
+        result.append(" ".join(intro_lines))
+    else:
+        result.append(f"This document is a technical reference containing ~{total_words} words detailing: **{title}**.")
+
+    if sections:
+        result.append("\n### Core Themes & Topics Identified:")
+        for s in sections[:6]:
+            result.append(f"- **{s}**")
+
+    result.append("\n### Excerpt & Content Preview:")
+    excerpts = [f"> {l}" for l in lines[3:12] if len(l) > 20 and not l.startswith("Page")][:4]
+    if excerpts:
+        result.append("\n".join(excerpts))
+    else:
+        result.append(f"> {clean_text[:280]}...")
+
+    result.append(
+        f"\n---\n"
+        f"*File Details: `{file_name}` • ~{total_words} words extracted • Ready for automation or queries.*"
+    )
+    return "\n".join(result)
+
+
+@server_app.post("/api/chat")
+def handle_chat_message(req: ChatRequest) -> Dict[str, Any]:
+    """Unified conversational and agentic planning handler."""
+    msg = req.message.strip()
+    if not msg and not req.attachments:
+        return {"success": False, "error": "Empty message"}
+
+    # 0. Attached Document Inspection
+    if req.attachments and len(req.attachments) > 0:
+        att = req.attachments[0]
+        safe_name = Path(att.name).name
+        uploads_dir = Path("uploads")
+        uploads_dir.mkdir(parents=True, exist_ok=True)
+        saved_file = uploads_dir / safe_name
+
+        if att.data and "base64," in att.data:
+            import base64
+            b64_str = att.data.split("base64,", 1)[1]
+            try:
+                saved_file.write_bytes(base64.b64decode(b64_str))
+            except Exception:
+                pass
+
+        # Check saved file or fallback to local user directories
+        target_path = saved_file
+        if not target_path.exists() or target_path.stat().st_size == 0:
+            dl_path = Path(os.path.expanduser("~/Downloads")) / safe_name
+            if dl_path.exists():
+                target_path = dl_path
+
+        if target_path.exists():
+            extracted_text = _extract_text_from_file(target_path, max_chars=8000)
+            redacted_text = _redact_secrets(extracted_text)
+
+            analysis = _analyze_attached_document(
+                file_name=safe_name,
+                file_path=target_path,
+                file_text=redacted_text,
+                user_query=msg or "What is this document?",
+            )
+            return {
+                "success": True,
+                "type": "conversation",
+                "message": analysis,
+                "file_analyzed": safe_name,
+            }
+
+    msg_lower = msg.lower()
+
+    # File search / listing guard: DO NOT trigger hardware metrics if searching or listing files/PDFs!
+    file_intent_words = ["pdf", "file", "files", "document", "documents", "folder", "folders", "find", "search", "list", "locate"]
+    is_file_search_query = any(f in msg_lower for f in file_intent_words)
+
+    # 1. Device Storage & System Metrics Inspection
+    # Only match if explicitly asking for storage capacity, hardware metrics, or system specifications
+    storage_keywords = [
+        "storage space", "disk space", "storage capacity", "hardware", "cpu usage", "ram usage",
+        "memory usage", "system specs", "hardware specs", "specs of this", "specs of device",
+        "system info", "specs", "drive space", "how much storage", "how much ram", "how much disk"
+    ]
+    is_explicit_storage = any(k in msg_lower for k in storage_keywords) or (
+        "storage" in msg_lower and not is_file_search_query
+    ) or (
+        ("cpu" in msg_lower or "ram" in msg_lower or "disk" in msg_lower) and not is_file_search_query
+    ) or (
+        "device" in msg_lower and any(w in msg_lower for w in ["storage", "spec", "metric", "hardware", "memory", "ram", "cpu", "disk"]) and not is_file_search_query
+    )
+    if is_explicit_storage and not any(k in msg_lower for k in ["delete", "remove", "clean disk"]):
+        try:
+            info = get_system_info()
+            resp_text = (
+                f"**Device & System Metrics**\n\n"
+                f"- **Operating System**: {info.get('os')} {info.get('release')} ({info.get('architecture')})\n"
+                f"- **Processor**: {info.get('processor')} ({info.get('cpu_count')} logical cores)\n"
+                f"- **RAM Memory**: {info.get('ram_percent')}% utilized ({info.get('ram_available_gb')} GB available of {info.get('ram_total_gb')} GB total)\n"
+                f"- **Device Storage**:\n"
+                f"  - **Free Space**: {info.get('disk_free_gb')} GB\n"
+                f"  - **Used Space**: {info.get('disk_used_gb')} GB ({info.get('disk_percent')}%)\n"
+                f"  - **Total Capacity**: {info.get('disk_total_gb')} GB\n\n"
+                f"Your device storage and workspace directories are accessible for local agentic automation."
+            )
+            return {
+                "success": True,
+                "type": "conversation",
+                "message": resp_text,
+            }
+        except Exception:
+            pass
+
+    # 2. Priority Email Summarization (Points-wise, Priority-wise, Uniquely numbered 1 to N)
+    is_email_summary_query = (
+        any(w in msg_lower for w in ["summarize", "summary", "brief", "digest"])
+        and any(e in msg_lower for e in ["mail", "email", "inbox", "message", "communication"])
+    ) or (
+        "priority" in msg_lower and any(e in msg_lower for e in ["mail", "email", "inbox"])
+    ) or "numbering them uniquely" in msg_lower
+
+    if is_email_summary_query:
+        try:
+            acc = email_get_account()
+            unread_res = email_search(category="unread", max_results=12)
+            msgs = unread_res.get("messages", [])
+            if not msgs:
+                all_res = email_search(category="all", max_results=10)
+                msgs = all_res.get("messages", [])
+
+            if not msgs:
+                return {
+                    "success": True,
+                    "type": "conversation",
+                    "message": "No emails found in your inbox to summarize. Sync mail or check back later.",
+                }
+
+            # Sort strictly priority-wise: URGENT/SECURITY/HIGH -> NORMAL -> LOW
+            priority_rank = {"urgent": 0, "security": 1, "high": 2, "normal": 3, "low": 4}
+            sorted_msgs = sorted(
+                msgs,
+                key=lambda m: priority_rank.get((m.get("priority") or "normal").lower(), 3)
+            )
+
+            llm_summary = None
+            try:
+                from app.llm import get_configured_llm
+                llm = get_configured_llm()
+                emails_text = "\n\n".join([
+                    f"Email #{i+1} [Priority: {(m.get('priority') or 'normal').upper()}]\n"
+                    f"From: {m.get('sender', 'Unknown')}\n"
+                    f"Subject: {m.get('subject', '(No Subject)')}\n"
+                    f"Date: {m.get('date', 'Today')}\n"
+                    f"Body:\n{m.get('body', '')[:600]}"
+                    for i, m in enumerate(sorted_msgs)
+                ])
+                summary_prompt = (
+                    f"You are an executive AI assistant. Summarize the following {len(sorted_msgs)} emails.\n"
+                    f"Organize them strictly priority-wise and uniquely number each email from 1 to {len(sorted_msgs)}.\n\n"
+                    f"STRICT REQUIREMENTS:\n"
+                    f"1. ZERO EMOJIS.\n"
+                    f"2. Number each email from 1 to {len(sorted_msgs)}.\n"
+                    f"3. For each email, provide:\n"
+                    f"   - Header: #{1..len(sorted_msgs)}. [PRIORITY] Subject — From: Sender\n"
+                    f"   - Key Points: 2 concise bullet points summarizing content.\n"
+                    f"   - Required Action: Specific follow-up or 'None (Informational)'.\n\n"
+                    f"Emails:\n{emails_text}"
+                )
+                resp = llm.invoke(summary_prompt)
+                content = str(getattr(resp, "content", resp)).strip()
+                if content:
+                    llm_summary = content
+            except Exception:
+                pass
+
+            def _clean_body_text(txt: str) -> str:
+                if not txt:
+                    return ""
+                # Strip HTML comments like <!--[if !mso]>...<![endif]-->
+                cleaned = re.sub(r"<!--[\s\S]*?-->", " ", txt)
+                # Strip HTML tags
+                cleaned = re.sub(r"<[^>]+>", " ", cleaned)
+                # Strip emojis
+                cleaned = re.sub(r"[\U00010000-\U0010ffff]|[\u2600-\u27bf]|[\u2300-\u23ff]|[\u2b50-\u2b55]|[\ufe0f]|[\u200d]", "", cleaned)
+                return re.sub(r"\s+", " ", cleaned).strip()
+
+            if not llm_summary:
+                lines = [
+                    f"### Priority-Wise Executive Email Summary ({len(sorted_msgs)} Messages)\n",
+                    f"*Organized priority-wise and uniquely numbered from 1 to {len(sorted_msgs)}.*\n",
+                ]
+                for i, m in enumerate(sorted_msgs, 1):
+                    prio = (m.get("priority") or "normal").upper()
+                    sender_clean = _clean_body_text(m.get("sender", "Unknown")).split("<")[0].strip() or "Unknown"
+                    subj = _clean_body_text(m.get("subject", "(No Subject)"))
+                    body = _clean_body_text(m.get("body", ""))
+                    summary_snippet = body[:160] + ("..." if len(body) > 160 else "")
+                    action_item = "Immediate review and response needed" if prio in ("URGENT", "SECURITY", "HIGH") else "None (Informational update)"
+
+                    lines.append(f"**#{i}. [{prio}] {subj}**")
+                    lines.append(f"- **From**: `{sender_clean}` ({m.get('date', 'Today')})")
+                    lines.append(f"- **Key Points**: {summary_snippet}")
+                    lines.append(f"- **Required Action**: {action_item}\n")
+                llm_summary = "\n".join(lines)
+
+            return {
+                "success": True,
+                "type": "conversation",
+                "message": llm_summary,
+                "quick_actions": [
+                    {"id": "open_inbox", "label": "Open Inbox Tab", "action": "switch_to_inbox"},
+                    {"id": "sync_mail", "label": "Sync Mail", "action": "sync_emails"},
+                ]
+            }
+        except Exception:
+            pass
+
+    # 3. Executive Morning Briefing & Digest
+    briefing_keywords = [
+        "morning briefing", "daily briefing", "email briefing", "mail briefing",
+        "daily digest", "brief me", "morning digest", "executive briefing", "inbox briefing"
+    ]
+    is_briefing_query = any(k in msg_lower for k in briefing_keywords) or (
+        ("briefing" in msg_lower or "digest" in msg_lower)
+        and any(e in msg_lower for e in ["mail", "email", "inbox", "today"])
+    )
+    if is_briefing_query:
+        try:
+            acc = email_get_account()
+            unread_res = email_search(category="unread", max_results=6)
+            msgs = unread_res.get("messages", [])
+            if not msgs:
+                all_res = email_search(category="all", max_results=4)
+                msgs = all_res.get("messages", [])
+
+            cal_res = calendar_list_events()
+            cal_events = cal_res.get("events", [])[:3]
+
+            lines = [
+                "### Executive Briefing\n",
+                f"Account: `{acc.get('email', 'Sandbox')}` | Pending Communications: {len(msgs)}",
+                "",
+                "**Actionable Communications:**",
+            ]
+
+            if msgs:
+                for i, m in enumerate(msgs[:3], 1):
+                    sender_clean = m.get("sender", "Unknown").split("<")[0].strip()
+                    prio = (m.get("priority") or "normal").upper()
+                    clean_body = re.sub(r"\s+", " ", m.get("body", "")).strip()[:110]
+                    lines.append(f"{i}. [{prio}] **{m.get('subject', '(No Subject)')}**")
+                    lines.append(f"   From: `{sender_clean}`")
+                    lines.append(f"   Summary: {clean_body}...")
+                lines.append("")
+            else:
+                lines.append("No pending unread communications in your inbox.\n")
+
+            if cal_events:
+                lines.append("**Scheduled Events:**")
+                for ev in cal_events:
+                    lines.append(f"- **{ev.get('title')}** ({ev.get('start_time')} to {ev.get('end_time')})")
+                lines.append("")
+
+            lines.append("*Open the **Inbox** tab to review complete message bodies, generate deep summaries, or send replies.*")
+
+            return {
+                "success": True,
+                "type": "conversation",
+                "message": "\n".join(lines),
+            }
+        except Exception:
+            pass
+
+    # 3b. Executive Daily Tasks & Agenda Inspection (Tasks for Today / Today's Schedule)
+    is_today_tasks_query = (
+        any(p in msg_lower for p in [
+            "tasks for today", "task for today", "tasks today", "task today",
+            "today's tasks", "todays tasks", "today tasks",
+            "tasks for tomorrow", "tomorrow's tasks", "tasks tomorrow",
+            "what are the tasks", "what are my tasks", "what tasks do i have",
+            "show tasks", "show my tasks", "list tasks", "list my tasks",
+            "check tasks", "check my tasks", "any tasks", "do i have tasks",
+            "what do i have today", "what do i have scheduled", "what is on my schedule",
+            "what's on my schedule", "whats on my schedule", "what is my schedule",
+            "what's my schedule", "whats my schedule", "my schedule today",
+            "schedule today", "today's schedule", "todays schedule",
+            "today's agenda", "todays agenda", "agenda today", "agenda for today",
+            "what is on my agenda", "what's on my agenda", "whats on my agenda",
+            "what do i have planned", "what is planned for today", "what's planned today",
+            "meetings today", "today's meetings", "todays meetings", "meetings for today",
+            "what meetings do i have", "show meetings", "list meetings", "my meetings"
+        ])
+        or (
+            any(w in msg_lower for w in ["what are", "what is", "show", "list", "check", "tell me", "any", "do i have", "what do i have"])
+            and any(t in msg_lower for t in ["task", "tasks", "schedule", "agenda", "meeting", "meetings", "todo", "todos"])
+            and any(d in msg_lower for d in ["today", "upcoming", "scheduled", "planned", "tomorrow", "day"])
+            and not any(a in msg_lower for a in ["create", "add", "new", "delete", "remove", "organize", "move"])
+        )
+    )
+
+    if is_today_tasks_query:
+        try:
+            import datetime
+            is_tomorrow = "tomorrow" in msg_lower
+            now = datetime.datetime.now()
+            target_dt = (now + datetime.timedelta(days=1)) if is_tomorrow else now
+            date_iso = target_dt.strftime("%Y-%m-%d")
+            day_label = target_dt.strftime("%A, %B %d, %Y")
+            relative_label = "Tomorrow" if is_tomorrow else "Today"
+
+            cal_res = calendar_list_events()
+            all_events = cal_res.get("events", [])
+
+            # Filter events for target date
+            day_events = [ev for ev in all_events if (ev.get("start_time") or "").startswith(date_iso)]
+            other_upcoming = [
+                ev for ev in all_events
+                if not (ev.get("start_time") or "").startswith(date_iso)
+                and (ev.get("start_time") or "") >= date_iso
+            ][:3]
+
+            # Fetch actionable emails
+            actionable_emails = []
+            try:
+                mail_res = email_search(category="all", max_results=6)
+                all_msgs = mail_res.get("messages", [])
+                actionable_emails = [
+                    m for m in all_msgs
+                    if (m.get("priority") or "normal").lower() in ("urgent", "security", "high")
+                    or not m.get("is_read")
+                ][:3]
+            except Exception:
+                pass
+
+            lines = [
+                f"### Agenda & Tasks for {relative_label} ({day_label})\n",
+            ]
+
+            lines.append(f"**Scheduled Calendar Events & Meetings ({len(day_events)}):**")
+            if day_events:
+                for i, ev in enumerate(day_events, 1):
+                    raw_s = ev.get("start_time", "")
+                    raw_e = ev.get("end_time", "")
+                    s_fmt = raw_s.split("T")[-1][:5] if "T" in raw_s else raw_s
+                    e_fmt = raw_e.split("T")[-1][:5] if "T" in raw_e else raw_e
+                    span = f"{s_fmt} - {e_fmt}" if s_fmt and e_fmt else "All Day"
+                    lines.append(f"{i}. [{span}] **{ev.get('title')}** (Confirmed)")
+                    if ev.get("description"):
+                        lines.append(f"   Notes: {ev.get('description')}")
+            else:
+                lines.append(f"No calendar events scheduled for {relative_label.lower()}.")
+                if other_upcoming:
+                    lines.append("\n**Upcoming Later This Week:**")
+                    for ev in other_upcoming:
+                        lines.append(f"- **{ev.get('title')}** ({ev.get('start_time')})")
+
+            lines.append("")
+            lines.append(f"**Action Items from Communications ({len(actionable_emails)}):**")
+            if actionable_emails:
+                for i, m in enumerate(actionable_emails, 1):
+                    prio = (m.get("priority") or "normal").upper()
+                    sender_clean = m.get("sender", "Unknown").split("<")[0].strip()
+                    subj = m.get("subject", "(No Subject)")
+                    status_lbl = "Unread" if not m.get("is_read") else "Follow-up required"
+                    lines.append(f"{i}. [{prio}] **{subj}** - From `{sender_clean}` ({status_lbl})")
+            else:
+                lines.append("All inbox communications are reviewed. No urgent action items pending.")
+
+            lines.append("")
+            lines.append("*All agenda and task data is processed locally with 100% offline privacy.*")
+
+            return {
+                "success": True,
+                "type": "conversation",
+                "message": "\n".join(lines),
+                "quick_actions": [
+                    {"id": "open_calendar", "label": "Open Multi-Calendar", "action": "switch_to_calendar"},
+                    {"id": "open_inbox", "label": "Review Inbox", "action": "switch_to_inbox"},
+                    {"id": "add_event", "label": "Schedule New Event", "prompt": "Schedule meeting today at 4:00 PM"},
+                ]
+            }
+        except Exception:
+            pass
+
+    # 4. Email & Inbox Status Inspection (Single-row list + quick action buttons)
+    compound_action_words = [
+        "schedule", "shedule", "calendar", "meeting", "todo", "to-do", "reminder",
+        "draft", "compose", "send email", "send mail", "create event", "book meeting",
+        "delete email", "delete mail"
+    ]
+    is_action_flow = any(w in msg_lower for w in compound_action_words)
+
+    email_keywords = ["mail", "mails", "email", "emails", "inbox", "unread message", "unread", "read mail", "read mails", "read email", "read emails"]
+    if any(k in msg_lower for k in email_keywords) and not is_action_flow:
+        try:
+            acc = email_get_account()
+            is_unread_query = "unread" in msg_lower
+            is_urgent_query = any(w in msg_lower for w in ["urgent", "high priority", "critical", "important", "alert"])
+
+            # 1. Sender extraction (e.g. "from chatgpt", "form chatgpt", "by google", "sender alex")
+            sender_match = re.search(r"\b(?:from|form|sender|by)\s+([a-zA-Z0-9_\-\.]+)", msg_lower)
+            extracted_sender = sender_match.group(1).strip() if sender_match else ""
+            if not extracted_sender:
+                for cand in ["chatgpt", "google", "marcus", "alex", "github", "slack", "apple", "microsoft"]:
+                    if re.search(rf"\b{cand}\b", msg_lower):
+                        extracted_sender = cand
+                        break
+
+            # 2. Subject / topic extraction (e.g. "about SLA", "regarding security")
+            query_match = re.search(r"\b(?:about|regarding|topic|keyword|subject)\s+([a-zA-Z0-9_\-\.\s]+)", msg_lower)
+            extracted_query = query_match.group(1).strip() if query_match else ""
+
+            category = "unread" if (is_unread_query and not is_urgent_query) else "all"
+            search_res = email_search(
+                query=extracted_query,
+                sender=extracted_sender,
+                category=category,
+                max_results=20
+            )
+            all_msgs = search_res.get("messages", [])
+
+            # Secondary in-memory sender guard
+            if extracted_sender:
+                all_msgs = [
+                    m for m in all_msgs
+                    if extracted_sender.lower() in (m.get("sender") or "").lower()
+                ]
+
+            unread_cnt = sum(1 for m in all_msgs if not m.get("is_read"))
+
+            def _clean_body_text(txt: str) -> str:
+                if not txt:
+                    return ""
+                # Strip HTML comments like <!--[if !mso]>...<![endif]-->
+                cleaned = re.sub(r"<!--[\s\S]*?-->", " ", txt)
+                # Strip HTML tags
+                cleaned = re.sub(r"<[^>]+>", " ", cleaned)
+                # Strip emojis
+                cleaned = re.sub(r"[\U00010000-\U0010ffff]|[\u2600-\u27bf]|[\u2300-\u23ff]|[\u2b50-\u2b55]|[\ufe0f]|[\u200d]", "", cleaned)
+                return re.sub(r"\s+", " ", cleaned).strip()
+
+            if extracted_sender:
+                title_sender = extracted_sender.capitalize()
+                if all_msgs:
+                    msgs_to_show = all_msgs
+                    msg_header = (
+                        f"**Email Inbox: Messages from {title_sender}**\n\n"
+                        f"- **Account**: `{acc.get('email', 'Sandbox')}`\n"
+                        f"- **Filter**: Sender matching `{extracted_sender}` ({len(all_msgs)} matching message{'s' if len(all_msgs) != 1 else ''})"
+                    )
+                else:
+                    msgs_to_show = []
+                    msg_header = (
+                        f"**No Emails Found from {title_sender}**\n\n"
+                        f"- **Account**: `{acc.get('email', 'Sandbox')}`\n"
+                        f"- **Search Filter**: Sender matching `{extracted_sender}`\n\n"
+                        f"No messages from this sender were found in your recent inbox."
+                    )
+            elif is_urgent_query:
+                urgent_msgs = [
+                    m for m in all_msgs
+                    if (m.get("priority") or "normal").lower() in ("urgent", "high", "security")
+                    or any(w in m.get("subject", "").lower() for w in ["urgent", "security", "alert", "critical"])
+                ]
+                if urgent_msgs:
+                    msgs_to_show = urgent_msgs
+                    msg_header = f"**Urgent Communications** ({len(urgent_msgs)} urgent messages found)"
+                else:
+                    msgs_to_show = all_msgs[:8]
+                    msg_header = (
+                        f"**No Urgent Emails Found**\n\n"
+                        f"All {len(all_msgs)} current messages in your inbox are marked **NORMAL** priority. "
+                        f"There are no critical alerts or urgent deadlines pending.\n\n"
+                        f"Recent Communications:"
+                    )
+            elif is_unread_query:
+                msgs_to_show = [m for m in all_msgs if not m.get("is_read")] or all_msgs[:8]
+                msg_header = f"**Unread Messages** ({len(msgs_to_show)} total unread)"
+            else:
+                msgs_to_show = all_msgs[:12]
+                msg_header = (
+                    f"**Email Inbox Status**\n\n"
+                    f"- **Account**: `{acc.get('email', 'Sandbox')}` ({'IMAP Connected' if acc.get('account_type') == 'imap' else 'Offline Sandbox'})\n"
+                    f"- **Recent Messages**: {len(all_msgs)} total ({unread_cnt} unread)"
+                )
+
+            emails_payload = []
+            for i, m in enumerate(msgs_to_show, 1):
+                clean_body = _clean_body_text(m.get("body", ""))[:140]
+                sender_raw = _clean_body_text(m.get("sender", "Unknown"))
+                sender_clean = sender_raw.split("<")[0].strip() or sender_raw
+                emails_payload.append({
+                    "id": m.get("id", f"msg-{i}"),
+                    "index": i,
+                    "sender": sender_clean,
+                    "sender_email": sender_raw,
+                    "subject": _clean_body_text(m.get("subject", "(No Subject)")),
+                    "snippet": clean_body,
+                    "priority": (m.get("priority") or "normal").lower(),
+                    "date": m.get("date", "Today"),
+                    "is_read": bool(m.get("is_read", False)),
+                })
+
+            quick_actions = [
+                {
+                    "id": "summarize_priority",
+                    "label": "Summarize All Mails Priority-Wise (1 to N)",
+                    "prompt": "Please summarize all these emails points-wise and priority-wise, uniquely numbering each mail from 1 to N."
+                },
+                {
+                    "id": "extract_todos",
+                    "label": "Extract Action Items & Tasks",
+                    "prompt": "Extract all action items, tasks, and deadlines from these emails."
+                },
+                {
+                    "id": "open_inbox",
+                    "label": "Open in Inbox Tab",
+                    "action": "switch_to_inbox"
+                }
+            ]
+
+            return {
+                "success": True,
+                "type": "email_list",
+                "message": msg_header,
+                "emails": emails_payload,
+                "quick_actions": quick_actions
+            }
+        except Exception:
+            pass
+
+    # 4. Calendar & Schedule Operations (Event creation & Inspection)
+    is_cal_add = (
+        any(w in msg_lower for w in ["add event", "create event", "new event", "schedule event", "schedule meeting", "book meeting", "add meeting", "set reminder", "add one more event", "put an event", "schedule a call"])
+        or (
+            any(w in msg_lower for w in ["add", "create", "new", "schedule", "book", "set"])
+            and any(c in msg_lower for c in ["event", "meeting", "reminder", "appointment"])
+            and any(t in msg_lower for t in ["am", "pm", "at", "on", "tomorrow", "today", "clock", ":"])
+        )
+    )
+    if is_cal_add:
+        try:
+            from app.tools.calendar_tools import parse_calendar_event_request
+            parsed = parse_calendar_event_request(msg)
+            res = calendar_create_event(
+                title=parsed["title"],
+                start_time=parsed["start_time"],
+                end_time=parsed["end_time"],
+                description=f"Calendar event scheduled via assistant: {msg}",
+            )
+            if res.get("success"):
+                return {
+                    "success": True,
+                    "type": "conversation",
+                    "message": (
+                        f"**Calendar Event Scheduled**\n\n"
+                        f"- **Title**: {parsed['title']}\n"
+                        f"- **Start Time**: `{parsed['start_time']}`\n"
+                        f"- **End Time**: `{parsed['end_time']}`\n"
+                        f"- **Status**: Scheduled (ID: #{res.get('event_id')})\n\n"
+                        f"The event has been added to your local calendar. You can view all appointments in the **Multi-calendar** tab or ask me to list your events."
+                    ),
+                    "quick_actions": [
+                        {"id": "show_events", "label": "Show Upcoming Events", "prompt": "Show upcoming calendar events"},
+                        {"id": "open_calendar", "label": "Open Multi-Calendar Tab", "action": "switch_to_calendar"}
+                    ]
+                }
+        except Exception:
+            pass
+
+    cal_keywords = ["calendar", "meeting", "meetings", "events", "schedule", "agenda"]
+    if any(k in msg_lower for k in cal_keywords) and not is_action_flow:
+        try:
+            cal_res = calendar_list_events()
+            events = cal_res.get("events", [])
+            if events:
+                lines = [f"**Upcoming Calendar Events** ({len(events)} total):\n"]
+                for i, ev in enumerate(events[:5], 1):
+                    lines.append(f"{i}. **{ev.get('title')}** - {ev.get('start_time')} to {ev.get('end_time')}")
+                return {"success": True, "type": "conversation", "message": "\n".join(lines)}
+            else:
+                return {
+                    "success": True,
+                    "type": "conversation",
+                    "message": "No upcoming events scheduled on your local calendar. You can tell me to schedule one (e.g. *'Schedule team review at 3:00 PM tomorrow'*) or visit the Multi-calendar tab.",
+                }
+        except Exception:
+            pass
+
+    # 5. Workspaces & Directory Inspection
+    ws_keywords = ["workspace", "workspaces", "registered folder", "sandboxed folder"]
+    if any(k in msg_lower for k in ws_keywords) and not any(k in msg_lower for k in ["create workspace", "delete workspace"]):
+        try:
+            ws_list = WorkspaceManager.list_workspaces()
+            if ws_list:
+                lines = [f"**Authorized Workspaces** ({len(ws_list)} active):\n"]
+                for w in ws_list:
+                    perms = ", ".join(w.permissions)
+                    lines.append(f"- **{w.name}** (`{w.path}`) — Permissions: `[{perms}]`")
+                return {"success": True, "type": "conversation", "message": "\n".join(lines)}
+            else:
+                return {
+                    "success": True,
+                    "type": "conversation",
+                    "message": "No authorized workspaces are currently registered. Register a directory in the **Workspaces** tab to begin automating file actions safely.",
+                }
+        except Exception:
+            pass
+
+    # 6. Goal Planning & File / Productivity Automation
+    planning_keywords = [
+        "organize", "move", "delete", "remove", "copy", "archive", "zip", "unzip",
+        "read", "fetch", "browse", "draft", "send",
+        "clean", "sort", "scan", "backup", "find", "search"
+    ]
+    is_action = any(k in msg_lower for k in planning_keywords) and not is_today_tasks_query
+
+    if is_action:
+        try:
+            plan = GoalPlanner.plan_goal(msg)
+            task_id = f"task-{int(time.time())}"
+            steps_payload = []
+            for i, s in enumerate(plan.steps):
+                steps_payload.append(
+                    {
+                        "step_id": f"s{i + 1}",
+                        "step_order": s.get("step_order", i + 1),
+                        "action": s.get("action"),
+                        "arguments": s.get("arguments", {}),
+                        "risk": get_action_risk(s.get("action", "")),
+                    }
+                )
+            ACTIVE_PLANS[task_id] = {
+                "goal": msg,
+                "steps": steps_payload,
+                "requires_approval": plan.requires_approval,
+            }
+            if plan.requires_approval:
+                msg_text = (
+                    f"I have analyzed your goal ('{msg}') and synthesized an execution plan "
+                    f"consisting of {len(steps_payload)} step(s).\n\n"
+                    f"Safety Policy: Because this workflow includes modifying or external actions "
+                    f"(Risk: {plan.cumulative_risk.upper()}), explicit human approval is required before execution."
+                )
+            else:
+                is_search_intent = any(w in msg_lower for w in ["find", "search", "list", "locate", "show"]) and any(f in msg_lower for f in ["file", "files", "pdf", "pdfs", "doc", "docs", "txt", "folder", "folders"])
+                if is_search_intent:
+                    if plan.discovered_files:
+                        lines = [f"**Discovered Files ({len(plan.discovered_files)} matching found):**\n"]
+                        for idx, f in enumerate(plan.discovered_files, 1):
+                            p_str = f.get("path", "")
+                            p_name = Path(p_str).name
+                            size_kb = round(f.get("size", 0) / 1024, 1)
+                            lines.append(f"{idx}. **{p_name}** ({size_kb} KB) — `{p_str}`")
+                        msg_text = "\n".join(lines)
+                    else:
+                        ws_names = ", ".join([f"`{w.name}`" for w in WorkspaceManager.list_workspaces()])
+                        msg_text = (
+                            f"No matching files were found across your authorized workspaces ({ws_names or 'None'}).\n\n"
+                            f"Antigravity enforces directory-gated safety. To search other folders or drives on your device, "
+                            f"please register the target folder in the **Workspaces** tab with Read permission."
+                        )
+                elif any(s.get("action") == "email_search" for s in plan.steps) and len(plan.steps) == 1:
+                    is_urgent = any(w in msg_lower for w in ["urgent", "high", "security", "alert"])
+                    search_res = email_search(category="all", max_results=15)
+                    all_m = search_res.get("messages", [])
+                    if is_urgent:
+                        filtered_m = [
+                            m for m in all_m
+                            if (m.get("priority") or "normal").lower() in ("urgent", "high", "security")
+                            or any(w in m.get("subject", "").lower() for w in ["urgent", "security", "alert"])
+                        ]
+                    else:
+                        filtered_m = all_m[:8]
+
+                    if filtered_m:
+                        lines = [f"**Matching Emails ({len(filtered_m)} found):**\n"]
+                        for idx, m in enumerate(filtered_m, 1):
+                            prio = (m.get("priority") or "normal").upper()
+                            sender = m.get("sender", "Unknown").split("<")[0].strip()
+                            subj = m.get("subject", "(No Subject)")
+                            lines.append(f"{idx}. [{prio}] **{subj}** — From: `{sender}`")
+                        msg_text = "\n".join(lines)
+                    else:
+                        msg_text = "No matching urgent or high-priority emails found in your inbox."
+                else:
+                    msg_text = (
+                        f"I have analyzed your goal ('{msg}') and synthesized an execution plan "
+                        f"consisting of {len(steps_payload)} verified step(s)."
+                        if steps_payload
+                        else plan.summary
+                    )
+            return {
+                "success": True,
+                "type": "plan",
+                "task_id": task_id,
+                "goal": msg,
+                "workspace": plan.target_workspace.name if plan.target_workspace else None,
+                "discovered_files_count": len(plan.discovered_files),
+                "cumulative_risk": plan.cumulative_risk,
+                "requires_approval": plan.requires_approval,
+                "summary": plan.summary,
+                "steps": steps_payload,
+                "message": msg_text,
+            }
+        except Exception:
+            pass
+
+    # 7. Conversational Handling: Smart Offline Assistant & Local LLM
+    llm_enabled = getattr(req, "llm_enabled", True)
+    try:
+        from app.assistant import get_assistant_conversational_response
+        assistant_reply = get_assistant_conversational_response(
+            msg, getattr(req, "history", None), llm_enabled=llm_enabled
+        )
+        if assistant_reply:
+            return {
+                "success": True,
+                "type": "conversation",
+                "message": assistant_reply,
+            }
+    except Exception:
+        pass
+
+    if llm_enabled:
+        try:
+            from app.llm import get_configured_llm
+            llm = get_configured_llm()
+            resp = llm.invoke(msg)
+            content = str(getattr(resp, "content", resp)).strip()
+            if content:
+                content_clean = re.sub(
+                    r"[\U00010000-\U0010ffff]|[\u2600-\u27bf]|[\u2300-\u23ff]|[\u2b50-\u2b55]|[\ufe0f]|[\u200d]",
+                    "",
+                    content,
+                )
+                return {
+                    "success": True,
+                    "type": "conversation",
+                    "message": content_clean,
+                }
+        except Exception:
+            pass
+
+    import datetime
+    now_hour = datetime.datetime.now().hour
+    time_greeting = "Good morning" if now_hour < 12 else ("Good afternoon" if now_hour < 17 else "Good evening")
+    msg_words = msg.strip().split()
+    if len(msg_words) <= 3:
+        intro_line = f"{time_greeting}! I am standing by to assist you privately on this computer."
+    else:
+        intro_line = "I am your local, private executive assistant operating directly on this device."
+
+    return {
+        "success": True,
+        "type": "conversation",
+        "message": (
+            f"{intro_line}\n\n"
+            f"Here is how I can assist you right now:\n"
+            f"- **Emails & Communications**: Ask *\"Read mails\"*, *\"Give me today's email briefing\"*, or visit the **Inbox** tab.\n"
+            f"- **Workspaces & Files**: Ask *\"Organize all .pdf files\"* or *\"Find report files\"* in your registered workspaces.\n"
+            f"- **Device Storage & Metrics**: Ask *\"Can you see my device storage?\"* or *\"Show system specs\"*.\n"
+            f"- **Calendar & Agendas**: Ask *\"Show upcoming meetings\"* or *\"Schedule event tomorrow at 3 PM\"*.\n\n"
+            f"Let me know which task you would like to proceed with."
+        ),
+    }
+
+
+@server_app.post("/api/tasks/plan")
+def plan_goal(req: GoalPlanRequest) -> Dict[str, Any]:
+    """Plan a goal and return synthesized steps with risk classification."""
+    try:
+        plan = GoalPlanner.plan_goal(req.goal)
+        task_id = f"task-{int(time.time())}"
+        steps_payload = []
+        for i, s in enumerate(plan.steps):
+            steps_payload.append(
+                {
+                    "step_id": f"s{i + 1}",
+                    "step_order": s.get("step_order", i + 1),
+                    "action": s.get("action"),
+                    "arguments": s.get("arguments", {}),
+                    "risk": get_action_risk(s.get("action", "")),
+                }
+            )
+
+        ACTIVE_PLANS[task_id] = {
+            "goal": req.goal,
+            "steps": steps_payload,
+            "requires_approval": plan.requires_approval,
+        }
+
+        return {
+            "success": True,
+            "task_id": task_id,
+            "goal": req.goal,
+            "workspace": plan.target_workspace.name if plan.target_workspace else None,
+            "discovered_files_count": len(plan.discovered_files),
+            "cumulative_risk": plan.cumulative_risk,
+            "requires_approval": plan.requires_approval,
+            "summary": plan.summary,
+            "steps": steps_payload,
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@server_app.post("/api/tasks/execute")
+def execute_task_steps(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Execute a task's steps through StepExecutor."""
+    task_id = payload.get("task_id")
+    steps_data = payload.get("steps") or []
+    req_text = payload.get("goal") or "Web UI Execution"
+
+    if not steps_data and task_id and task_id in ACTIVE_PLANS:
+        cached = ACTIVE_PLANS[task_id]
+        steps_data = cached.get("steps", [])
+        req_text = cached.get("goal", req_text)
+
+    task = TaskManager.create_task(req_text, steps_data)
+
+    # Execute
+    executed_task = StepExecutor.execute_task(
+        task,
+        confirm_callback=lambda a, p, d: payload.get("approved", True),
+    )
+
+    return {
+        "success": executed_task.status in (TaskStatus.COMPLETED, TaskStatus.PARTIAL_FAILURE),
+        "task_id": task.task_id,
+        "status": executed_task.status.value,
+        "steps": [s.to_dict() for s in executed_task.steps],
+    }
+
+
+# -----------------------------------------------------------------------------
+# M8 Productivity Tool Endpoints
+# -----------------------------------------------------------------------------
+@server_app.post("/api/docs/read")
+def api_read_doc(req: ReadDocRequest) -> Dict[str, Any]:
+    return read_document(req.path, max_chars=req.max_chars)
+
+
+@server_app.post("/api/docs/summarize")
+def api_summarize_doc(req: ReadDocRequest) -> Dict[str, Any]:
+    return summarize_document(req.path, max_chars=req.max_chars)
+
+
+@server_app.get("/api/email/inbox")
+def api_email_inbox(query: str = "", category: str = "all") -> Dict[str, Any]:
+    return email_search(query=query, category=category)
+
+
+@server_app.get("/api/email/read")
+def api_email_read(id: str) -> Dict[str, Any]:
+    return email_read(id)
+
+
+@server_app.post("/api/email/summarize")
+def api_email_summarize(req: EmailSummarizeRequest) -> Dict[str, Any]:
+    return email_summarize(req.message_id)
+
+
+@server_app.post("/api/email/generate_reply")
+def api_email_generate_reply(req: EmailReplyRequest) -> Dict[str, Any]:
+    return email_generate_reply(
+        message_id=req.message_id,
+        tone=req.tone or "professional",
+        user_notes=req.user_notes or "",
+    )
+
+
+@server_app.get("/api/email/account")
+def api_email_account_get() -> Dict[str, Any]:
+    return email_get_account()
+
+
+@server_app.post("/api/email/account")
+def api_email_account_link(req: EmailLinkAccountRequest) -> Dict[str, Any]:
+    return email_link_account(
+        email_address=req.email,
+        account_type=req.account_type or "demo",
+        imap_host=req.imap_host or "",
+        imap_port=req.imap_port or 993,
+        smtp_host=req.smtp_host or "",
+        smtp_port=req.smtp_port or 587,
+        username=req.username or "",
+        password=req.password or "",
+    )
+
+
+@server_app.post("/api/email/sync")
+def api_email_sync() -> Dict[str, Any]:
+    return email_sync()
+
+
+@server_app.post("/api/email/mark_all_read")
+def api_email_mark_all_read() -> Dict[str, Any]:
+    return email_mark_all_read()
+
+
+@server_app.post("/api/email/draft")
+def api_email_draft(req: EmailDraftRequest) -> Dict[str, Any]:
+    return email_draft(req.to, req.subject, req.body)
+
+
+@server_app.post("/api/email/send")
+def api_email_send(req: EmailSendRequest) -> Dict[str, Any]:
+    return email_send(req.to, req.subject, req.body, req.draft_id)
+
+
+@server_app.get("/api/calendar/events")
+def api_calendar_events() -> Dict[str, Any]:
+    return calendar_list_events()
+
+
+@server_app.post("/api/calendar/create")
+def api_calendar_create(req: CalendarEventRequest) -> Dict[str, Any]:
+    return calendar_create_event(req.title, req.start_time, req.end_time, req.description)
+
+
+@server_app.delete("/api/calendar/events/{event_id}")
+def api_calendar_delete(event_id: int) -> Dict[str, Any]:
+    return calendar_delete_event(event_id)
+
+
+@server_app.get("/api/github/issues")
+def api_github_issues(
+    repo: str = "TejasRK007/local-system-cli", state: str = "open"
+) -> Dict[str, Any]:
+    return github_list_issues(repo, state=state)
+
+
+@server_app.post("/api/browser/fetch")
+def api_browser_fetch(req: BrowserFetchRequest) -> Dict[str, Any]:
+    return browser_fetch_page(req.url, max_chars=req.max_chars)
+
+
+# -----------------------------------------------------------------------------
+# Live Class Dynamic Attendance Endpoints
+# -----------------------------------------------------------------------------
+@server_app.post("/api/attendance/session/start")
+def api_attendance_start(
+    req: AttendanceSessionStartRequest, request: Request
+) -> Dict[str, Any]:
+    c_name = req.course_name or req.course or "Live Classroom"
+    rot = req.rotation_interval_seconds or req.rotation_interval or 15
+    host = req.host_url or _extract_request_host(request)
+    return attendance_start_session(
+        course_name=c_name,
+        section=req.section,
+        rotation_interval_seconds=rot,
+        host_url=host,
+    )
+
+
+@server_app.get("/api/attendance/session/active")
+def api_attendance_get_active(request: Request) -> Dict[str, Any]:
+    host = _extract_request_host(request)
+    return attendance_get_active_session(host_url=host)
+
+
+@server_app.post("/api/attendance/session/rotate")
+def api_attendance_rotate(
+    req: AttendanceRotateRequest, request: Request
+) -> Dict[str, Any]:
+    host = req.host_url or _extract_request_host(request)
+    return attendance_rotate_token(req.session_id, host_url=host)
+
+
+@server_app.post("/api/attendance/session/end")
+def api_attendance_end(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    sess_id = (payload or {}).get("session_id")
+    return attendance_end_session(sess_id)
+
+
+@server_app.post("/api/attendance/checkin")
+def api_attendance_checkin(req: AttendanceCheckinRequest) -> Dict[str, Any]:
+    return attendance_checkin(
+        session_id=req.session_id,
+        token=req.token,
+        student_id=req.student_id,
+        student_name=req.student_name,
+        device_info=req.device_info or "Mobile Client",
+    )
+
+
+@server_app.get("/api/attendance/export")
+def api_attendance_export(session_id: str) -> Response:
+    csv_data = attendance_export_csv(session_id)
+    return Response(
+        content=csv_data,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=attendance_{session_id}.csv"},
+    )
+
+
+@server_app.post("/api/attendance/simulate_scan")
+def api_attendance_simulate_scan(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Helper for instructor testing: simulates an instant student scan with the active token."""
+    active = attendance_get_active_session()
+    if not active.get("active") or not active.get("current_token"):
+        raise HTTPException(status_code=400, detail="No active attendance session.")
+
+    sample_names = ["Alex Rivera", "Priya Sharma", "Jordan Lee", "Taylor Swift", "David Chen", "Marcus Vance", "Elena Rostova", "Liam O'Connor"]
+    chosen_name = sample_names[secrets.randbelow(len(sample_names))]
+    s_id = f"STU-{secrets.randbelow(8999) + 1000}"
+
+    if payload:
+        if payload.get("student_name"):
+            chosen_name = payload["student_name"]
+        if payload.get("student_id"):
+            s_id = payload["student_id"]
+
+    return attendance_checkin(
+        session_id=active["session_id"],
+        token=active["current_token"],
+        student_id=s_id,
+        student_name=chosen_name,
+        device_info="Classroom Simulator",
+    )
+
+
+@server_app.get("/attendance/checkin", response_class=HTMLResponse)
+def serve_student_checkin():
+    checkin_file = UI_DIR / "student_checkin.html"
+    if checkin_file.exists():
+        return FileResponse(str(checkin_file))
+    return HTMLResponse("<h3>Student check-in portal under construction.</h3>")
+
+
+@server_app.get("/attendance/student", response_class=HTMLResponse)
+@server_app.get("/attendance/scan", response_class=HTMLResponse)
+def serve_student_scanner():
+    scanner_file = UI_DIR / "student_scanner.html"
+    if scanner_file.exists():
+        return FileResponse(str(scanner_file))
+    return HTMLResponse("<h3>Student scanner portal under construction.</h3>")
+
+
+# -----------------------------------------------------------------------------
+# Static UI Serving
+# -----------------------------------------------------------------------------
+if UI_DIR.exists():
+    server_app.mount("/static", StaticFiles(directory=str(UI_DIR)), name="static")
+
+
+@server_app.get("/", response_class=HTMLResponse)
+def serve_ui():
+    index_file = UI_DIR / "index.html"
+    if index_file.exists():
+        return FileResponse(str(index_file))
+    return HTMLResponse("<h1>UI files under construction. Please check back in a moment.</h1>")

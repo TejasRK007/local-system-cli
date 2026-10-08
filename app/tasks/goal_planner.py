@@ -9,6 +9,7 @@ import json
 import os
 import re
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
 
@@ -29,18 +30,22 @@ def get_llm() -> Any:
     global llm
     if llm is not None:
         return llm
-    api_key = os.getenv("GROQ_API_KEY")
-    if not api_key:
-        raise ValueError(
-            "GROQ_API_KEY environment variable is missing or empty. "
-            "Please set GROQ_API_KEY in your environment or .env file."
+    try:
+        from app.llm import get_configured_llm
+        llm = get_configured_llm()
+        return llm
+    except Exception:
+        api_key = os.getenv("GROQ_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "Neither local Ollama nor GROQ_API_KEY is configured."
+            )
+        llm = ChatGroq(
+            model="openai/gpt-oss-20b",
+            api_key=api_key,  # type: ignore[arg-type]
+            temperature=0,
         )
-    llm = ChatGroq(
-        model="openai/gpt-oss-20b",
-        api_key=api_key,  # type: ignore[arg-type]
-        temperature=0,
-    )
-    return llm
+        return llm
 
 
 @dataclass
@@ -171,9 +176,8 @@ Rules:
                     # Prefer heuristic action_type for cross-workspace moves or move goals
                     if heur.get("source_workspace_name") and heur.get("target_workspace_name"):
                         data["action_type"] = heur["action_type"]
-                    elif (
-                        data.get("action_type") in ("archive", "rename")
-                        and re.search(r"\bmove\b", goal, re.IGNORECASE)
+                    elif data.get("action_type") in ("archive", "rename") and re.search(
+                        r"\bmove\b", goal, re.IGNORECASE
                     ):
                         data["action_type"] = "move"
 
@@ -302,11 +306,86 @@ Rules:
                 "target_workspace_names": [],
             }
 
-        # 1. Handle standalone directory creation goals
-        if (
-            re.search(r"\b(?:create|make|mkdir)\b.*?\b(?:folder|directory)\b", goal_lower)
-            or re.search(r"\bmkdir\s+", goal_lower)
+        # Productivity: Compound read email & schedule todo / calendar
+        is_email_word = any(e in goal_lower for e in ["mail", "email", "inbox"])
+        is_schedule_word = any(
+            s in goal_lower
+            for s in ["schedule", "shedule", "todo", "to-do", "calendar", "task list", "event", "agenda"]
+        )
+        if is_email_word and is_schedule_word:
+            return {
+                "action_type": "email_and_schedule_todo",
+                "extension": None,
+                "filename": None,
+                "new_filename": None,
+                "keywords": [],
+                "target_directory_name": None,
+                "target_workspace_name": None,
+                "source_workspace_name": None,
+                "target_workspace_names": [],
+            }
+
+        # Standalone Calendar event creation
+        if any(w in goal_lower for w in ["schedule", "shedule", "calendar event", "book meeting", "add meeting", "set reminder", "create event", "add event", "add one more event", "new event", "put an event"]) or (
+            any(w in goal_lower for w in ["add", "create", "new", "schedule", "book", "set"]) and any(c in goal_lower for c in ["event", "meeting", "reminder", "appointment"])
         ):
+            return {
+                "action_type": "calendar_create_event",
+                "extension": None,
+                "filename": None,
+                "new_filename": None,
+                "keywords": [],
+                "target_directory_name": None,
+                "target_workspace_name": None,
+                "source_workspace_name": None,
+                "target_workspace_names": [],
+            }
+
+        # Standalone Email draft or send
+        if any(d in goal_lower for d in ["draft email", "draft reply", "compose email", "stage draft", "write email"]):
+            return {
+                "action_type": "email_draft",
+                "extension": None,
+                "filename": None,
+                "new_filename": None,
+                "keywords": [],
+                "target_directory_name": None,
+                "target_workspace_name": None,
+                "source_workspace_name": None,
+                "target_workspace_names": [],
+            }
+
+        if re.search(r"\b(?:send\s+email|send\s+mail|dispatch\s+email)\b", goal_lower):
+            return {
+                "action_type": "email_send",
+                "extension": None,
+                "filename": None,
+                "new_filename": None,
+                "keywords": [],
+                "target_directory_name": None,
+                "target_workspace_name": None,
+                "source_workspace_name": None,
+                "target_workspace_names": [],
+            }
+
+        # Standalone Email search, read, or list
+        if is_email_word and any(s in goal_lower for s in ["search", "find", "read", "inspect", "list", "check"]):
+            return {
+                "action_type": "email_search",
+                "extension": None,
+                "filename": None,
+                "new_filename": None,
+                "keywords": [],
+                "target_directory_name": None,
+                "target_workspace_name": None,
+                "source_workspace_name": None,
+                "target_workspace_names": [],
+            }
+
+        # 1. Handle standalone directory creation goals
+        if re.search(
+            r"\b(?:create|make|mkdir)\b.*?\b(?:folder|directory)\b", goal_lower
+        ) or re.search(r"\bmkdir\s+", goal_lower):
             target_ws = None
             for ws in WorkspaceManager.list_workspaces():
                 if re.search(r"\b" + re.escape(ws.name) + r"\b", goal, re.IGNORECASE):
@@ -428,9 +507,7 @@ Rules:
                                 new_filename = m_unq[1].strip().strip("\"'")
 
             ext = (
-                Path(source_filename).suffix
-                if source_filename and "." in source_filename
-                else None
+                Path(source_filename).suffix if source_filename and "." in source_filename else None
             )
 
             return {
@@ -596,17 +673,21 @@ Rules:
             )
             if m_single_ws:
                 cand = m_single_ws.group(1).strip()
-                if cand.lower() not in (
-                    "folder",
-                    "directory",
-                    "an",
-                    "the",
-                    "a",
-                    "workspace",
-                    "here",
-                    "subfolder",
-                    "dir",
-                ) and cand.lower() not in stop_words:
+                if (
+                    cand.lower()
+                    not in (
+                        "folder",
+                        "directory",
+                        "an",
+                        "the",
+                        "a",
+                        "workspace",
+                        "here",
+                        "subfolder",
+                        "dir",
+                    )
+                    and cand.lower() not in stop_words
+                ):
                     if not (target_dir and cand.lower() == target_dir.lower()):
                         target_ws = cand
                         if cand not in target_workspaces:
@@ -648,19 +729,8 @@ Rules:
     @classmethod
     def plan_goal(cls, goal: str) -> GoalPlan:
         """
-        Synthesize a validated GoalPlan grounded in real workspace files.
+        Synthesize a validated GoalPlan grounded in real workspace files or productivity tools.
         """
-        if WorkspaceManager.count_workspaces() == 0:
-            return GoalPlan(
-                goal=goal,
-                target_workspace=None,
-                discovered_files=[],
-                steps=[],
-                cumulative_risk="low",
-                requires_approval=False,
-                summary="No workspaces configured. Please configure an authorized workspace first.",
-            )
-
         analysis = cls.analyze_goal(goal)
         action_type = analysis.get("action_type", "organize")
         ext = analysis.get("extension") or ""
@@ -671,6 +741,151 @@ Rules:
         explicit_ws_name = analysis.get("target_workspace_name")
         source_ws_name = analysis.get("source_workspace_name")
         target_ws_names = analysis.get("target_workspace_names") or []
+
+        # Productivity: Compound read email & schedule todo
+        if action_type == "email_and_schedule_todo":
+            now = datetime.now()
+            start_iso = (now + timedelta(hours=1)).strftime("%Y-%m-%dT%H:00:00")
+            end_iso = (now + timedelta(hours=2)).strftime("%Y-%m-%dT%H:00:00")
+            return GoalPlan(
+                goal=goal,
+                target_workspace=None,
+                discovered_files=[],
+                steps=[
+                    {
+                        "step_order": 1,
+                        "action": "email_search",
+                        "arguments": {"category": "unread", "query": "today"},
+                        "depends_on_order": None,
+                    },
+                    {
+                        "step_order": 2,
+                        "action": "email_read",
+                        "arguments": {"message_id": "latest"},
+                        "depends_on_order": 1,
+                    },
+                    {
+                        "step_order": 3,
+                        "action": "calendar_create_event",
+                        "arguments": {
+                            "title": "Action Items from Today's Emails",
+                            "start_time": start_iso,
+                            "end_time": end_iso,
+                            "description": "Scheduled todo tasks and follow-ups extracted from incoming emails.",
+                        },
+                        "depends_on_order": 2,
+                    },
+                ],
+                cumulative_risk="medium",
+                requires_approval=True,
+                summary="Read today's unread emails, extract actionable obligations, and schedule corresponding calendar todo items.",
+            )
+
+        # Productivity: Calendar create event
+        if action_type == "calendar_create_event":
+            from app.tools.calendar_tools import parse_calendar_event_request
+            parsed = parse_calendar_event_request(goal)
+            title = parsed.get("title", "Scheduled Event")
+            start_iso = parsed.get("start_time")
+            end_iso = parsed.get("end_time")
+            return GoalPlan(
+                goal=goal,
+                target_workspace=None,
+                discovered_files=[],
+                steps=[
+                    {
+                        "step_order": 1,
+                        "action": "calendar_create_event",
+                        "arguments": {
+                            "title": title,
+                            "start_time": start_iso,
+                            "end_time": end_iso,
+                            "description": f"Calendar event requested: {goal}",
+                        },
+                        "depends_on_order": None,
+                    }
+                ],
+                cumulative_risk="medium",
+                requires_approval=True,
+                summary=f"Schedule calendar event '{title}' ({start_iso} to {end_iso}).",
+            )
+
+        # Productivity: Email draft
+        if action_type == "email_draft":
+            return GoalPlan(
+                goal=goal,
+                target_workspace=None,
+                discovered_files=[],
+                steps=[
+                    {
+                        "step_order": 1,
+                        "action": "email_draft",
+                        "arguments": {
+                            "to": "recipient@example.com",
+                            "subject": "Follow up",
+                            "body": f"Draft staged for: {goal}",
+                        },
+                        "depends_on_order": None,
+                    }
+                ],
+                cumulative_risk="medium",
+                requires_approval=True,
+                summary="Stage email draft in sandbox for human review.",
+            )
+
+        # Productivity: Email send (Irreversible: HIGH risk)
+        if action_type == "email_send":
+            return GoalPlan(
+                goal=goal,
+                target_workspace=None,
+                discovered_files=[],
+                steps=[
+                    {
+                        "step_order": 1,
+                        "action": "email_send",
+                        "arguments": {
+                            "to": "recipient@example.com",
+                            "subject": "Notice",
+                            "body": f"Automated notice: {goal}",
+                        },
+                        "depends_on_order": None,
+                    }
+                ],
+                cumulative_risk="high",
+                requires_approval=True,
+                summary="CRITICAL: Dispatch outgoing email. Irreversible external operation requires explicit human approval.",
+            )
+
+        # Productivity: Email search / read / list
+        if action_type == "email_search":
+            category = "unread" if "unread" in goal.lower() else "all"
+            return GoalPlan(
+                goal=goal,
+                target_workspace=None,
+                discovered_files=[],
+                steps=[
+                    {
+                        "step_order": 1,
+                        "action": "email_search",
+                        "arguments": {"category": category, "query": ""},
+                        "depends_on_order": None,
+                    }
+                ],
+                cumulative_risk="low",
+                requires_approval=False,
+                summary=f"Search and retrieve {category} messages from email inbox.",
+            )
+
+        if WorkspaceManager.count_workspaces() == 0:
+            return GoalPlan(
+                goal=goal,
+                target_workspace=None,
+                discovered_files=[],
+                steps=[],
+                cumulative_risk="low",
+                requires_approval=False,
+                summary="No workspaces configured. Please configure an authorized workspace first.",
+            )
 
         # 1. Determine active workspace(s)
         enabled_workspaces = WorkspaceManager.list_workspaces(enabled_only=True)
@@ -815,7 +1030,8 @@ Rules:
         # Multi-workspace search handling (when multiple workspaces are specified)
         elif action_type == "search" and len(target_ws_names) > 1:
             search_scope = [
-                w for w in enabled_workspaces
+                w
+                for w in enabled_workspaces
                 if w.name in target_ws_names and Permission.READ.value in w.permissions
             ]
             if search_scope:
@@ -1364,8 +1580,7 @@ Rules:
         if src_path_obj.is_absolute() and src_path_obj.exists() and src_path_obj.is_file():
             ws_match = WorkspaceManager.find_workspace_for_path(src_path_obj)
             if ws_match and (
-                not explicit_ws_name
-                or ws_match.name.lower() == explicit_ws_name.lower()
+                not explicit_ws_name or ws_match.name.lower() == explicit_ws_name.lower()
             ):
                 discovered_files.append(
                     {"path": str(src_path_obj.resolve()), "name": src_path_obj.name}
@@ -1483,10 +1698,9 @@ Rules:
             )
 
         # Protected system directory check
-        if (
-            WorkspaceManager.is_protected_system_path(resolved_src)
-            or WorkspaceManager.is_protected_system_path(dest_path)
-        ):
+        if WorkspaceManager.is_protected_system_path(
+            resolved_src
+        ) or WorkspaceManager.is_protected_system_path(dest_path):
             return GoalPlan(
                 goal=goal,
                 target_workspace=ws_containing,

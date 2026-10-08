@@ -6,3 +6,6 @@ typer>=0.9.0
 rich>=13.0.0
 psutil>=5.9.0
 pyperclip>=1.8.2
+fastapi>=0.110.0
+uvicorn>=0.28.0
+qrcode>=8.0.0

@@ -592,15 +592,21 @@ def test_search_uses_configured_workspaces_when_no_location_given(tmp_path, monk
     """
     from app.agent import run_agent
 
-    monkeypatch.setattr("app.agent.extract_intent", lambda _: {
-        "action": "search", "filename": "needle.txt",
-        "extension": None, "directory": None,
-    })
+    monkeypatch.setattr(
+        "app.agent.extract_intent",
+        lambda _: {
+            "action": "search",
+            "filename": "needle.txt",
+            "extension": None,
+            "directory": None,
+        },
+    )
 
     ws_dir = tmp_path / "ws_search"
     ws_dir.mkdir()
     WorkspaceManager.add_workspace(
-        ws_dir, name="SearchWs",
+        ws_dir,
+        name="SearchWs",
         permissions=["READ", "WRITE", "DELETE"],
     )
 
@@ -626,15 +632,22 @@ def test_search_with_explicit_workspace_name(tmp_path, monkeypatch):
     """
     from app.agent import run_agent
 
-    monkeypatch.setattr("app.agent.extract_intent", lambda _: {
-        "action": "search", "filename": "report.txt",
-        "extension": None, "directory": "NamedWs",
-    })
+    monkeypatch.setattr(
+        "app.agent.extract_intent",
+        lambda _: {
+            "action": "search",
+            "filename": "report.txt",
+            "extension": None,
+            "directory": "NamedWs",
+        },
+    )
 
     ws_dir = tmp_path / "named_ws"
     ws_dir.mkdir()
     WorkspaceManager.add_workspace(
-        ws_dir, name="NamedWs", permissions=["READ"],
+        ws_dir,
+        name="NamedWs",
+        permissions=["READ"],
     )
 
     target = ws_dir / "report.txt"
@@ -643,32 +656,36 @@ def test_search_with_explicit_workspace_name(tmp_path, monkeypatch):
     result = run_agent("Find report.txt in NamedWs")
 
     assert isinstance(result, dict), f"Expected dict, got: {result!r}"
-    assert result.get("found") is True, (
-        f"File not found. Result: {result}"
-    )
+    assert result.get("found") is True, f"File not found. Result: {result}"
     found_paths = [f["path"] for f in result.get("files", [])]
-    assert any(
-        "report.txt" in p for p in found_paths
-    ), f"report.txt not in results: {found_paths}"
+    assert any("report.txt" in p for p in found_paths), f"report.txt not in results: {found_paths}"
 
 
 def test_search_blocked_when_workspace_disabled(
-    tmp_path, monkeypatch,
+    tmp_path,
+    monkeypatch,
 ):
     """
     Case 3: Searching within a disabled workspace must be blocked (not searched).
     """
     from app.agent import run_agent
 
-    monkeypatch.setattr("app.agent.extract_intent", lambda _: {
-        "action": "search", "filename": "hidden.txt",
-        "extension": None, "directory": "DisabledWs",
-    })
+    monkeypatch.setattr(
+        "app.agent.extract_intent",
+        lambda _: {
+            "action": "search",
+            "filename": "hidden.txt",
+            "extension": None,
+            "directory": "DisabledWs",
+        },
+    )
 
     ws_dir = tmp_path / "disabled_ws"
     ws_dir.mkdir()
     ws = WorkspaceManager.add_workspace(
-        ws_dir, name="DisabledWs", permissions=["READ"],
+        ws_dir,
+        name="DisabledWs",
+        permissions=["READ"],
     )
     WorkspaceManager.disable_workspace(ws.workspace_id)
 
@@ -683,36 +700,37 @@ def test_search_blocked_when_workspace_disabled(
         msg = result.get("message", "").lower()
         files = result.get("files", [])
         assert (
-            result.get("found") is False
-            or "disabled" in msg
-            or "blocked" in msg
-            or len(files) == 0
-        ), (
-            f"Disabled workspace should not be searchable."
-            f" Result: {result}"
-        )
+            result.get("found") is False or "disabled" in msg or "blocked" in msg or len(files) == 0
+        ), f"Disabled workspace should not be searchable. Result: {result}"
     else:
         # UNSUPPORTED_REQUEST or string message also acceptable
         assert isinstance(result, str)
 
 
 def test_search_blocked_when_workspace_lacks_read_permission(
-    tmp_path, monkeypatch,
+    tmp_path,
+    monkeypatch,
 ):
     """
     Case 4: Workspace with WRITE+DELETE but NOT READ must not be searchable.
     """
     from app.agent import run_agent
 
-    monkeypatch.setattr("app.agent.extract_intent", lambda _: {
-        "action": "search", "filename": "private.txt",
-        "extension": None, "directory": "NoReadWs",
-    })
+    monkeypatch.setattr(
+        "app.agent.extract_intent",
+        lambda _: {
+            "action": "search",
+            "filename": "private.txt",
+            "extension": None,
+            "directory": "NoReadWs",
+        },
+    )
 
     ws_dir = tmp_path / "no_read_ws"
     ws_dir.mkdir()
     WorkspaceManager.add_workspace(
-        ws_dir, name="NoReadWs",
+        ws_dir,
+        name="NoReadWs",
         permissions=["WRITE", "DELETE"],
     )
 
@@ -726,18 +744,14 @@ def test_search_blocked_when_workspace_lacks_read_permission(
         msg = result.get("message", "").lower()
         files = result.get("files", [])
         # Should be blocked or return no files
-        assert (
-            result.get("found") is False
-            or "blocked" in msg
-            or len(files) == 0
-        ), (
-            "Non-READ workspace should not be searchable."
-            f" Result: {result}"
+        assert result.get("found") is False or "blocked" in msg or len(files) == 0, (
+            f"Non-READ workspace should not be searchable. Result: {result}"
         )
 
 
 def test_search_blocked_for_unconfigured_directory(
-    tmp_path, monkeypatch,
+    tmp_path,
+    monkeypatch,
 ):
     """
     Case 5: Searching a directory that is NOT in any configured workspace must
@@ -748,33 +762,36 @@ def test_search_blocked_for_unconfigured_directory(
     ws_dir = tmp_path / "auth_ws"
     ws_dir.mkdir()
     WorkspaceManager.add_workspace(
-        ws_dir, name="AuthWs", permissions=["READ"],
+        ws_dir,
+        name="AuthWs",
+        permissions=["READ"],
     )
 
     # This directory is NOT a configured workspace
     outside_dir = tmp_path / "outside"
     outside_dir.mkdir()
     (outside_dir / "secret.txt").write_text(
-        "secret", encoding="utf-8",
+        "secret",
+        encoding="utf-8",
     )
 
-    monkeypatch.setattr("app.agent.extract_intent", lambda _: {
-        "action": "search", "filename": "secret.txt",
-        "extension": None, "directory": str(outside_dir),
-    })
+    monkeypatch.setattr(
+        "app.agent.extract_intent",
+        lambda _: {
+            "action": "search",
+            "filename": "secret.txt",
+            "extension": None,
+            "directory": str(outside_dir),
+        },
+    )
 
     result = run_agent(f"Find secret.txt in {outside_dir}")
 
     if isinstance(result, dict):
         msg = result.get("message", "").lower()
         files = result.get("files", [])
-        assert (
-            result.get("found") is False
-            or "blocked" in msg
-            or len(files) == 0
-        ), (
-            "Unconfigured dir should not be searchable."
-            f" Result: {result}"
+        assert result.get("found") is False or "blocked" in msg or len(files) == 0, (
+            f"Unconfigured dir should not be searchable. Result: {result}"
         )
 
 
@@ -799,7 +816,8 @@ def test_search_blocked_for_traversal_attempt(tmp_path):
 
 
 def test_search_aggregates_multiple_enabled_read_workspaces(
-    tmp_path, monkeypatch,
+    tmp_path,
+    monkeypatch,
 ):
     """
     Case 7: When multiple enabled READ workspaces exist and no directory is
@@ -807,45 +825,50 @@ def test_search_aggregates_multiple_enabled_read_workspaces(
     """
     from app.agent import run_agent
 
-    monkeypatch.setattr("app.agent.extract_intent", lambda _: {
-        "action": "search", "filename": "",
-        "extension": ".txt", "directory": None,
-    })
+    monkeypatch.setattr(
+        "app.agent.extract_intent",
+        lambda _: {
+            "action": "search",
+            "filename": "",
+            "extension": ".txt",
+            "directory": None,
+        },
+    )
 
     ws1_dir = tmp_path / "ws1"
     ws2_dir = tmp_path / "ws2"
     ws1_dir.mkdir()
     ws2_dir.mkdir()
     WorkspaceManager.add_workspace(
-        ws1_dir, name="Ws1", permissions=["READ"],
+        ws1_dir,
+        name="Ws1",
+        permissions=["READ"],
     )
     WorkspaceManager.add_workspace(
-        ws2_dir, name="Ws2", permissions=["READ"],
+        ws2_dir,
+        name="Ws2",
+        permissions=["READ"],
     )
 
     (ws1_dir / "alpha.txt").write_text(
-        "alpha", encoding="utf-8",
+        "alpha",
+        encoding="utf-8",
     )
     (ws2_dir / "beta.txt").write_text(
-        "beta", encoding="utf-8",
+        "beta",
+        encoding="utf-8",
     )
 
     # Search for .txt files across all workspaces
     result = run_agent("Find all .txt files")
 
-    assert isinstance(result, dict), (
-        f"Expected dict, got: {result!r}"
-    )
-    found_paths = [
-        f["path"] for f in result.get("files", [])
-    ]
+    assert isinstance(result, dict), f"Expected dict, got: {result!r}"
+    found_paths = [f["path"] for f in result.get("files", [])]
     paths_lower = [p.lower() for p in found_paths]
     assert any("alpha.txt" in p for p in paths_lower), (
         f"alpha.txt from ws1 not found: {found_paths}"
     )
-    assert any("beta.txt" in p for p in paths_lower), (
-        f"beta.txt from ws2 not found: {found_paths}"
-    )
+    assert any("beta.txt" in p for p in paths_lower), f"beta.txt from ws2 not found: {found_paths}"
 
 
 # ---------------------------------------------------------------------------
@@ -861,17 +884,24 @@ def test_exact_filename_with_txt_extension(tmp_path, monkeypatch):
     """
     from app.agent import run_agent
 
-    monkeypatch.setattr("app.agent.extract_intent", lambda _: {
-        "action": "search", "filename": "m4_test",
-        "extension": ".txt", "directory": None,
-    })
+    monkeypatch.setattr(
+        "app.agent.extract_intent",
+        lambda _: {
+            "action": "search",
+            "filename": "m4_test",
+            "extension": ".txt",
+            "directory": None,
+        },
+    )
 
     ws_dir = tmp_path / "ws_exact"
     ws_dir.mkdir()
     sub = ws_dir / "source"
     sub.mkdir()
     WorkspaceManager.add_workspace(
-        ws_dir, name="ExactWs", permissions=["READ"],
+        ws_dir,
+        name="ExactWs",
+        permissions=["READ"],
     )
 
     target = sub / "m4_test.txt"
@@ -879,25 +909,20 @@ def test_exact_filename_with_txt_extension(tmp_path, monkeypatch):
 
     result = run_agent("Find m4_test.txt")
 
-    assert isinstance(result, dict), (
-        f"Expected dict, got: {result!r}"
+    assert isinstance(result, dict), f"Expected dict, got: {result!r}"
+    assert result.get("found") is True, f"m4_test.txt not found. Result: {result}"
+    found_paths = [f["path"] for f in result.get("files", [])]
+    assert any("m4_test.txt" in p for p in found_paths), (
+        f"m4_test.txt missing from results: {found_paths}"
     )
-    assert result.get("found") is True, (
-        f"m4_test.txt not found. Result: {result}"
+    assert not any("Downloads" in p for p in found_paths), (
+        f"Unexpectedly searched Downloads: {found_paths}"
     )
-    found_paths = [
-        f["path"] for f in result.get("files", [])
-    ]
-    assert any(
-        "m4_test.txt" in p for p in found_paths
-    ), f"m4_test.txt missing from results: {found_paths}"
-    assert not any(
-        "Downloads" in p for p in found_paths
-    ), f"Unexpectedly searched Downloads: {found_paths}"
 
 
 def test_exact_filename_in_named_workspace(
-    tmp_path, monkeypatch,
+    tmp_path,
+    monkeypatch,
 ):
     """
     Case 9: Natural-language 'Find m4_test.txt in ManualTest' — must resolve
@@ -905,42 +930,42 @@ def test_exact_filename_in_named_workspace(
     """
     from app.agent import run_agent
 
-    monkeypatch.setattr("app.agent.extract_intent", lambda _: {
-        "action": "search", "filename": "m4_test",
-        "extension": ".txt", "directory": "ManualTest",
-    })
+    monkeypatch.setattr(
+        "app.agent.extract_intent",
+        lambda _: {
+            "action": "search",
+            "filename": "m4_test",
+            "extension": ".txt",
+            "directory": "ManualTest",
+        },
+    )
 
     ws_dir = tmp_path / "manual_test"
     source_dir = ws_dir / "source"
     source_dir.mkdir(parents=True)
     WorkspaceManager.add_workspace(
-        ws_dir, name="ManualTest", permissions=["READ"],
+        ws_dir,
+        name="ManualTest",
+        permissions=["READ"],
     )
 
     target = source_dir / "m4_test.txt"
     target.write_text(
-        "milestone 4 test file", encoding="utf-8",
+        "milestone 4 test file",
+        encoding="utf-8",
     )
 
     result = run_agent("Find m4_test.txt in ManualTest")
 
-    assert isinstance(result, dict), (
-        f"Expected dict, got: {result!r}"
-    )
-    assert result.get("found") is True, (
-        f"m4_test.txt not found in ManualTest."
-        f" Result: {result}"
-    )
-    found_paths = [
-        f["path"] for f in result.get("files", [])
-    ]
-    assert any(
-        "m4_test.txt" in p for p in found_paths
-    ), f"m4_test.txt missing: {found_paths}"
+    assert isinstance(result, dict), f"Expected dict, got: {result!r}"
+    assert result.get("found") is True, f"m4_test.txt not found in ManualTest. Result: {result}"
+    found_paths = [f["path"] for f in result.get("files", [])]
+    assert any("m4_test.txt" in p for p in found_paths), f"m4_test.txt missing: {found_paths}"
 
 
 def test_exact_filename_with_pdf_extension(
-    tmp_path, monkeypatch,
+    tmp_path,
+    monkeypatch,
 ):
     """
     Case 10a: 'Find report.pdf' — LLM may extract
@@ -949,15 +974,22 @@ def test_exact_filename_with_pdf_extension(
     """
     from app.agent import run_agent
 
-    monkeypatch.setattr("app.agent.extract_intent", lambda _: {
-        "action": "search", "filename": "report",
-        "extension": ".pdf", "directory": None,
-    })
+    monkeypatch.setattr(
+        "app.agent.extract_intent",
+        lambda _: {
+            "action": "search",
+            "filename": "report",
+            "extension": ".pdf",
+            "directory": None,
+        },
+    )
 
     ws_dir = tmp_path / "ws_pdf"
     ws_dir.mkdir()
     WorkspaceManager.add_workspace(
-        ws_dir, name="PdfWs", permissions=["READ"],
+        ws_dir,
+        name="PdfWs",
+        permissions=["READ"],
     )
 
     target = ws_dir / "report.pdf"
@@ -965,22 +997,15 @@ def test_exact_filename_with_pdf_extension(
 
     result = run_agent("Find report.pdf")
 
-    assert isinstance(result, dict), (
-        f"Expected dict, got: {result!r}"
-    )
-    assert result.get("found") is True, (
-        f"report.pdf not found. Result: {result}"
-    )
-    found_paths = [
-        f["path"] for f in result.get("files", [])
-    ]
-    assert any(
-        "report.pdf" in p for p in found_paths
-    ), f"report.pdf missing: {found_paths}"
+    assert isinstance(result, dict), f"Expected dict, got: {result!r}"
+    assert result.get("found") is True, f"report.pdf not found. Result: {result}"
+    found_paths = [f["path"] for f in result.get("files", [])]
+    assert any("report.pdf" in p for p in found_paths), f"report.pdf missing: {found_paths}"
 
 
 def test_exact_filename_with_docx_extension(
-    tmp_path, monkeypatch,
+    tmp_path,
+    monkeypatch,
 ):
     """
     Case 10b: 'Find resume.docx' — normalization must
@@ -988,15 +1013,22 @@ def test_exact_filename_with_docx_extension(
     """
     from app.agent import run_agent
 
-    monkeypatch.setattr("app.agent.extract_intent", lambda _: {
-        "action": "search", "filename": "resume",
-        "extension": ".docx", "directory": None,
-    })
+    monkeypatch.setattr(
+        "app.agent.extract_intent",
+        lambda _: {
+            "action": "search",
+            "filename": "resume",
+            "extension": ".docx",
+            "directory": None,
+        },
+    )
 
     ws_dir = tmp_path / "ws_docx"
     ws_dir.mkdir()
     WorkspaceManager.add_workspace(
-        ws_dir, name="DocxWs", permissions=["READ"],
+        ws_dir,
+        name="DocxWs",
+        permissions=["READ"],
     )
 
     target = ws_dir / "resume.docx"
@@ -1004,22 +1036,15 @@ def test_exact_filename_with_docx_extension(
 
     result = run_agent("Find resume.docx")
 
-    assert isinstance(result, dict), (
-        f"Expected dict, got: {result!r}"
-    )
-    assert result.get("found") is True, (
-        f"resume.docx not found. Result: {result}"
-    )
-    found_paths = [
-        f["path"] for f in result.get("files", [])
-    ]
-    assert any(
-        "resume.docx" in p for p in found_paths
-    ), f"resume.docx missing: {found_paths}"
+    assert isinstance(result, dict), f"Expected dict, got: {result!r}"
+    assert result.get("found") is True, f"resume.docx not found. Result: {result}"
+    found_paths = [f["path"] for f in result.get("files", [])]
+    assert any("resume.docx" in p for p in found_paths), f"resume.docx missing: {found_paths}"
 
 
 def test_exact_filename_already_has_extension_not_doubled(
-    tmp_path, monkeypatch,
+    tmp_path,
+    monkeypatch,
 ):
     """
     Guard: if the LLM returns filename='my_file.txt' with
@@ -1029,15 +1054,22 @@ def test_exact_filename_already_has_extension_not_doubled(
     """
     from app.agent import run_agent
 
-    monkeypatch.setattr("app.agent.extract_intent", lambda _: {
-        "action": "search", "filename": "my_file.txt",
-        "extension": ".txt", "directory": None,
-    })
+    monkeypatch.setattr(
+        "app.agent.extract_intent",
+        lambda _: {
+            "action": "search",
+            "filename": "my_file.txt",
+            "extension": ".txt",
+            "directory": None,
+        },
+    )
 
     ws_dir = tmp_path / "ws_guard"
     ws_dir.mkdir()
     WorkspaceManager.add_workspace(
-        ws_dir, name="GuardWs", permissions=["READ"],
+        ws_dir,
+        name="GuardWs",
+        permissions=["READ"],
     )
 
     target = ws_dir / "my_file.txt"
@@ -1045,19 +1077,11 @@ def test_exact_filename_already_has_extension_not_doubled(
 
     result = run_agent("Find my_file.txt")
 
-    assert isinstance(result, dict), (
-        f"Expected dict, got: {result!r}"
-    )
-    assert result.get("found") is True, (
-        f"my_file.txt not found. Result: {result}"
-    )
-    found_paths = [
-        f["path"] for f in result.get("files", [])
-    ]
+    assert isinstance(result, dict), f"Expected dict, got: {result!r}"
+    assert result.get("found") is True, f"my_file.txt not found. Result: {result}"
+    found_paths = [f["path"] for f in result.get("files", [])]
     # File must be found exactly once with correct name
-    assert any(
-        "my_file.txt" in p for p in found_paths
-    ), f"my_file.txt missing: {found_paths}"
-    assert not any(
-        "my_file.txt.txt" in p for p in found_paths
-    ), f"Extension was doubled: {found_paths}"
+    assert any("my_file.txt" in p for p in found_paths), f"my_file.txt missing: {found_paths}"
+    assert not any("my_file.txt.txt" in p for p in found_paths), (
+        f"Extension was doubled: {found_paths}"
+    )

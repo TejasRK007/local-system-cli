@@ -247,9 +247,7 @@ def test_persist_j1_j2_task_and_steps_written_to_sqlite(tmp_path):
 
 def test_persist_j3_status_changes_correctly(tmp_path):
     """J.3: Task status changes are persisted in SQLite."""
-    steps = [
-        {"step_order": 1, "action": "search", "arguments": {}, "depends_on_order": None}
-    ]
+    steps = [{"step_order": 1, "action": "search", "arguments": {}, "depends_on_order": None}]
     task = TaskManager.create_task("Status Goal", steps)
     assert task.status == TaskStatus.PENDING
 
@@ -264,9 +262,7 @@ def test_persist_j3_status_changes_correctly(tmp_path):
 
 def test_persist_j4_task_status_command_retrieves_task(tmp_path):
     """J.4: CLI task-status command retrieves the task."""
-    steps = [
-        {"step_order": 1, "action": "search", "arguments": {}, "depends_on_order": None}
-    ]
+    steps = [{"step_order": 1, "action": "search", "arguments": {}, "depends_on_order": None}]
     task = TaskManager.create_task("CLI Status Goal", steps)
     res = runner.invoke(app, ["task-status", task.task_id])
     assert res.exit_code == 0
@@ -275,9 +271,7 @@ def test_persist_j4_task_status_command_retrieves_task(tmp_path):
 
 def test_persist_j5_task_history_survives_reconnect(tmp_path):
     """J.5: Task history survives database reconnection."""
-    steps = [
-        {"step_order": 1, "action": "search", "arguments": {}, "depends_on_order": None}
-    ]
+    steps = [{"step_order": 1, "action": "search", "arguments": {}, "depends_on_order": None}]
     task = TaskManager.create_task("Reconnect Goal", steps)
 
     # Reload from fresh DB connection
@@ -348,9 +342,7 @@ def test_persist_j9_workspace_removal_does_not_destroy_history(tmp_path):
     ws_dir.mkdir()
     ws = WorkspaceManager.add_workspace(ws_dir, name="RemoveWs", permissions=["READ"])
 
-    task_steps = [
-        {"step_order": 1, "action": "search", "arguments": {}, "depends_on_order": None}
-    ]
+    task_steps = [{"step_order": 1, "action": "search", "arguments": {}, "depends_on_order": None}]
     task = TaskManager.create_task("Task Before Removal", task_steps)
     db.log_event(
         user_request="Audit Before Removal",
