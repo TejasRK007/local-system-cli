@@ -36,7 +36,6 @@ def get_llm() -> Any:
             "GROQ_API_KEY environment variable is missing or empty. "
             "Please set GROQ_API_KEY in your environment or .env file."
         )
-    from langchain_groq import ChatGroq
 
     llm = ChatGroq(
         model=os.getenv("GROQ_MODEL", "openai/gpt-oss-20b"),
@@ -308,7 +307,16 @@ Rules:
         is_email_word = any(e in goal_lower for e in ["mail", "email", "inbox"])
         is_schedule_word = any(
             s in goal_lower
-            for s in ["schedule", "shedule", "todo", "to-do", "calendar", "task list", "event", "agenda"]
+            for s in [
+                "schedule",
+                "shedule",
+                "todo",
+                "to-do",
+                "calendar",
+                "task list",
+                "event",
+                "agenda",
+            ]
         )
         if is_email_word and is_schedule_word:
             return {
@@ -324,8 +332,24 @@ Rules:
             }
 
         # Standalone Calendar event creation
-        if any(w in goal_lower for w in ["schedule", "shedule", "calendar event", "book meeting", "add meeting", "set reminder", "create event", "add event", "add one more event", "new event", "put an event"]) or (
-            any(w in goal_lower for w in ["add", "create", "new", "schedule", "book", "set"]) and any(c in goal_lower for c in ["event", "meeting", "reminder", "appointment"])
+        if any(
+            w in goal_lower
+            for w in [
+                "schedule",
+                "shedule",
+                "calendar event",
+                "book meeting",
+                "add meeting",
+                "set reminder",
+                "create event",
+                "add event",
+                "add one more event",
+                "new event",
+                "put an event",
+            ]
+        ) or (
+            any(w in goal_lower for w in ["add", "create", "new", "schedule", "book", "set"])
+            and any(c in goal_lower for c in ["event", "meeting", "reminder", "appointment"])
         ):
             return {
                 "action_type": "calendar_create_event",
@@ -340,7 +364,10 @@ Rules:
             }
 
         # Standalone Email draft or send
-        if any(d in goal_lower for d in ["draft email", "draft reply", "compose email", "stage draft", "write email"]):
+        if any(
+            d in goal_lower
+            for d in ["draft email", "draft reply", "compose email", "stage draft", "write email"]
+        ):
             return {
                 "action_type": "email_draft",
                 "extension": None,
@@ -367,7 +394,9 @@ Rules:
             }
 
         # Standalone Email search, read, or list
-        if is_email_word and any(s in goal_lower for s in ["search", "find", "read", "inspect", "list", "check"]):
+        if is_email_word and any(
+            s in goal_lower for s in ["search", "find", "read", "inspect", "list", "check"]
+        ):
             return {
                 "action_type": "email_search",
                 "extension": None,
@@ -769,23 +798,30 @@ Rules:
                             "title": "Action Items from Today's Emails",
                             "start_time": start_iso,
                             "end_time": end_iso,
-                            "description": "Scheduled todo tasks and follow-ups extracted from incoming emails.",
+                            "description": (
+                                "Scheduled todo tasks and follow-ups "
+                                "extracted from incoming emails."
+                            ),
                         },
                         "depends_on_order": 2,
                     },
                 ],
                 cumulative_risk="medium",
                 requires_approval=True,
-                summary="Read today's unread emails, extract actionable obligations, and schedule corresponding calendar todo items.",
+                summary=(
+                    "Read today's unread emails, extract actionable obligations, "
+                    "and schedule corresponding calendar todo items."
+                ),
             )
 
         # Productivity: Calendar create event
         if action_type == "calendar_create_event":
             from app.tools.calendar_tools import parse_calendar_event_request
+
             parsed = parse_calendar_event_request(goal)
             title = parsed.get("title", "Scheduled Event")
-            start_iso = parsed.get("start_time")
-            end_iso = parsed.get("end_time")
+            start_iso = parsed.get("start_time") or ""
+            end_iso = parsed.get("end_time") or ""
             return GoalPlan(
                 goal=goal,
                 target_workspace=None,
@@ -851,7 +887,10 @@ Rules:
                 ],
                 cumulative_risk="high",
                 requires_approval=True,
-                summary="CRITICAL: Dispatch outgoing email. Irreversible external operation requires explicit human approval.",
+                summary=(
+                    "CRITICAL: Dispatch outgoing email. Irreversible external "
+                    "operation requires explicit human approval."
+                ),
             )
 
         # Productivity: Email search / read / list

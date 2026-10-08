@@ -11,16 +11,16 @@ Provides secure classroom attendance management:
 
 import csv
 import io
-import os
 import secrets
 import socket
 import sqlite3
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
-import app.database as db
 import qrcode
 import qrcode.image.svg
+
+import app.database as db
 
 
 def get_local_ip() -> str:
@@ -148,12 +148,14 @@ def attendance_start_session(
         with conn:
             # End any previously active session
             conn.execute(
-                "UPDATE attendance_sessions SET is_active = 0, ended_at = CURRENT_TIMESTAMP WHERE is_active = 1"
+                "UPDATE attendance_sessions SET is_active = 0, ended_at = CURRENT_TIMESTAMP "
+                "WHERE is_active = 1"
             )
             # Create new session
             conn.execute(
                 """
-                INSERT INTO attendance_sessions (id, course_name, section, rotation_interval, is_active)
+                INSERT INTO attendance_sessions
+                (id, course_name, section, rotation_interval, is_active)
                 VALUES (?, ?, ?, ?, 1)
                 """,
                 (session_id, course_name.strip(), section.strip(), int(rotation_interval_seconds)),
@@ -170,7 +172,9 @@ def attendance_start_session(
         conn.close()
 
     resolved_host = resolve_checkin_host_url(host_url)
-    checkin_url = f"{resolved_host}/attendance/checkin?session_id={session_id}&token={initial_token}"
+    checkin_url = (
+        f"{resolved_host}/attendance/checkin?session_id={session_id}&token={initial_token}"
+    )
     qr_svg = generate_qr_svg(checkin_url)
     lan_ip = get_local_ip()
 
@@ -201,7 +205,10 @@ def attendance_rotate_token(
     try:
         cur = conn.cursor()
         cur.execute(
-            "SELECT id, course_name, section, rotation_interval, is_active FROM attendance_sessions WHERE id = ? AND is_active = 1",
+            """
+            SELECT id, course_name, section, rotation_interval, is_active
+            FROM attendance_sessions WHERE id = ? AND is_active = 1
+            """,
             (session_id,),
         )
         sess = cur.fetchone()
@@ -219,7 +226,9 @@ def attendance_rotate_token(
             )
 
         resolved_host = resolve_checkin_host_url(host_url)
-        checkin_url = f"{resolved_host}/attendance/checkin?session_id={session_id}&token={new_token}"
+        checkin_url = (
+            f"{resolved_host}/attendance/checkin?session_id={session_id}&token={new_token}"
+        )
         qr_svg = generate_qr_svg(checkin_url)
         lan_ip = get_local_ip()
 
@@ -284,7 +293,9 @@ def attendance_get_active_session(
         else:
             current_token = token_row["token"]
             expires_at = token_row["expires_at"]
-            checkin_url = f"{resolved_host}/attendance/checkin?session_id={session_id}&token={current_token}"
+            checkin_url = (
+                f"{resolved_host}/attendance/checkin?session_id={session_id}&token={current_token}"
+            )
             qr_svg = generate_qr_svg(checkin_url)
 
         # Fetch checked in roster
@@ -337,7 +348,10 @@ def attendance_end_session(session_id: Optional[str] = None) -> Dict[str, Any]:
         cur = conn.cursor()
         target_id = session_id
         if not target_id:
-            cur.execute("SELECT id FROM attendance_sessions WHERE is_active = 1 ORDER BY created_at DESC LIMIT 1")
+            cur.execute(
+                "SELECT id FROM attendance_sessions WHERE is_active = 1 "
+                "ORDER BY created_at DESC LIMIT 1"
+            )
             row = cur.fetchone()
             if row:
                 target_id = row["id"]
@@ -345,24 +359,30 @@ def attendance_end_session(session_id: Optional[str] = None) -> Dict[str, Any]:
         with conn:
             if target_id:
                 conn.execute(
-                    "UPDATE attendance_sessions SET is_active = 0, ended_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    "UPDATE attendance_sessions SET is_active = 0, ended_at = CURRENT_TIMESTAMP "
+                    "WHERE id = ?",
                     (target_id,),
                 )
             else:
                 conn.execute(
-                    "UPDATE attendance_sessions SET is_active = 0, ended_at = CURRENT_TIMESTAMP WHERE is_active = 1"
+                    "UPDATE attendance_sessions SET is_active = 0, ended_at = CURRENT_TIMESTAMP "
+                    "WHERE is_active = 1"
                 )
 
         total_present = 0
         if target_id:
-            cur.execute("SELECT COUNT(*) as cnt FROM attendance_records WHERE session_id = ?", (target_id,))
+            cur.execute(
+                "SELECT COUNT(*) as cnt FROM attendance_records WHERE session_id = ?", (target_id,)
+            )
             cnt_row = cur.fetchone()
             if cnt_row:
                 total_present = cnt_row["cnt"]
 
         return {
             "success": True,
-            "message": f"Attendance session closed successfully ({total_present} students recorded).",
+            "message": (
+                f"Attendance session closed successfully ({total_present} students recorded)."
+            ),
             "session_id": target_id,
             "total_present": total_present,
             "export_url": f"/api/attendance/export?session_id={target_id}" if target_id else None,
@@ -396,7 +416,10 @@ def attendance_checkin(
     try:
         cur = conn.cursor()
         cur.execute(
-            "SELECT id, course_name, is_active, rotation_interval FROM attendance_sessions WHERE id = ?",
+            """
+            SELECT id, course_name, is_active, rotation_interval
+            FROM attendance_sessions WHERE id = ?
+            """,
             (session_id,),
         )
         sess = cur.fetchone()
@@ -434,7 +457,10 @@ def attendance_checkin(
 
         # Check for duplicate student check-in
         cur.execute(
-            "SELECT id, checked_in_at FROM attendance_records WHERE session_id = ? AND student_id = ?",
+            """
+            SELECT id, checked_in_at FROM attendance_records
+            WHERE session_id = ? AND student_id = ?
+            """,
             (session_id, s_id),
         )
         existing = cur.fetchone()
@@ -479,7 +505,9 @@ def attendance_export_csv(session_id: str) -> str:
     conn = _get_db_connection()
     try:
         cur = conn.cursor()
-        cur.execute("SELECT course_name, section FROM attendance_sessions WHERE id = ?", (session_id,))
+        cur.execute(
+            "SELECT course_name, section FROM attendance_sessions WHERE id = ?", (session_id,)
+        )
         sess = cur.fetchone()
         course = sess["course_name"] if sess else "Course"
         section = sess["section"] if sess else "A"
@@ -498,9 +526,19 @@ def attendance_export_csv(session_id: str) -> str:
         output = io.StringIO()
         writer = csv.writer(output)
         writer.writerow(["# Attendance Roster", f"Course: {course}", f"Section: {section}"])
-        writer.writerow(["Student ID", "Student Name", "Check-in Timestamp", "Status", "Device Info"])
+        writer.writerow(
+            ["Student ID", "Student Name", "Check-in Timestamp", "Status", "Device Info"]
+        )
         for r in rows:
-            writer.writerow([r["student_id"], r["student_name"], r["checked_in_at"], "Verified Present", r["device_info"]])
+            writer.writerow(
+                [
+                    r["student_id"],
+                    r["student_name"],
+                    r["checked_in_at"],
+                    "Verified Present",
+                    r["device_info"],
+                ]
+            )
 
         return output.getvalue()
     finally:

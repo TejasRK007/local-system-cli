@@ -6,11 +6,11 @@ audit logs, and Milestone 8 productivity tools.
 
 import os
 import re
+import secrets
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import secrets
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, Response
@@ -272,8 +272,9 @@ def _analyze_attached_document(
 
     # Attempt LLM generation
     try:
-        from app.llm import LLMClient
-        llm = LLMClient.get_instance()
+        from app.llm import get_configured_llm
+
+        llm = get_configured_llm()
         prompt = (
             f"You are an expert AI document analyst assisting a developer.\n"
             f"The user attached a document named '{file_name}'.\n"
@@ -281,9 +282,9 @@ def _analyze_attached_document(
             f"--- EXTRACTED CONTENT (EXCERPT) ---\n"
             f"{clean_text[:3500]}\n"
             f"--- END OF EXCERPT ---\n\n"
-            f"Please provide an accurate, well-structured response answering the user question. "
-            f"Include: Document title, high-level summary of what it is, core topics/milestones covered, "
-            f"and key takeaways."
+            "Please provide an accurate, well-structured response answering the user question. "
+            "Include: Document title, high-level summary of what it is, "
+            "core topics/milestones covered, and key takeaways."
         )
         res = llm.generate(prompt)
         if res and len(res.strip()) > 40 and "canned" not in res.lower():
@@ -292,29 +293,49 @@ def _analyze_attached_document(
         pass
 
     # Heuristic structured summary
-    lines = [l.strip() for l in clean_text.splitlines() if l.strip()]
+    lines = [item.strip() for item in clean_text.splitlines() if item.strip()]
     title = lines[0] if lines else file_name
     total_words = len(clean_text.split())
 
     sections = []
     for line in lines[:30]:
-        if any(h in line.lower() for h in [
-            "milestone", "roadmap", "purpose", "overview", "architecture", "goal",
-            "summary", "layer", "principle", "handover", "safety", "scope"
-        ]):
+        if any(
+            h in line.lower()
+            for h in [
+                "milestone",
+                "roadmap",
+                "purpose",
+                "overview",
+                "architecture",
+                "goal",
+                "summary",
+                "layer",
+                "principle",
+                "handover",
+                "safety",
+                "scope",
+            ]
+        ):
             if line not in sections and len(line) < 140:
                 sections.append(line)
 
     result = [
         f"**Document Analysis: `{file_name}`**\n",
-        f"### Document Overview",
+        "### Document Overview",
     ]
 
-    intro_lines = [l for l in lines[1:8] if len(l) > 25 and not l.startswith("Page") and not l.startswith("http")][:3]
+    intro_lines = [
+        item
+        for item in lines[1:8]
+        if len(item) > 25 and not item.startswith("Page") and not item.startswith("http")
+    ][:3]
     if intro_lines:
         result.append(" ".join(intro_lines))
     else:
-        result.append(f"This document is a technical reference containing ~{total_words} words detailing: **{title}**.")
+        result.append(
+            f"This document is a technical reference containing ~{total_words} words "
+            f"detailing: **{title}**."
+        )
 
     if sections:
         result.append("\n### Core Themes & Topics Identified:")
@@ -322,7 +343,9 @@ def _analyze_attached_document(
             result.append(f"- **{s}**")
 
     result.append("\n### Excerpt & Content Preview:")
-    excerpts = [f"> {l}" for l in lines[3:12] if len(l) > 20 and not l.startswith("Page")][:4]
+    excerpts = [
+        f"> {item}" for item in lines[3:12] if len(item) > 20 and not item.startswith("Page")
+    ][:4]
     if excerpts:
         result.append("\n".join(excerpts))
     else:
@@ -330,7 +353,8 @@ def _analyze_attached_document(
 
     result.append(
         f"\n---\n"
-        f"*File Details: `{file_name}` • ~{total_words} words extracted • Ready for automation or queries.*"
+        f"*File Details: `{file_name}` • ~{total_words} words extracted • "
+        f"Ready for automation or queries.*"
     )
     return "\n".join(result)
 
@@ -352,6 +376,7 @@ def handle_chat_message(req: ChatRequest) -> Dict[str, Any]:
 
         if att.data and "base64," in att.data:
             import base64
+
             b64_str = att.data.split("base64,", 1)[1]
             try:
                 saved_file.write_bytes(base64.b64decode(b64_str))
@@ -384,37 +409,78 @@ def handle_chat_message(req: ChatRequest) -> Dict[str, Any]:
 
     msg_lower = msg.lower()
 
-    # File search / listing guard: DO NOT trigger hardware metrics if searching or listing files/PDFs!
-    file_intent_words = ["pdf", "file", "files", "document", "documents", "folder", "folders", "find", "search", "list", "locate"]
+    # File search / listing guard: DO NOT trigger hardware metrics if searching files/PDFs!
+    file_intent_words = [
+        "pdf",
+        "file",
+        "files",
+        "document",
+        "documents",
+        "folder",
+        "folders",
+        "find",
+        "search",
+        "list",
+        "locate",
+    ]
     is_file_search_query = any(f in msg_lower for f in file_intent_words)
 
     # 1. Device Storage & System Metrics Inspection
-    # Only match if explicitly asking for storage capacity, hardware metrics, or system specifications
+    # Match only if explicitly asking for storage capacity, hardware metrics, or specs
     storage_keywords = [
-        "storage space", "disk space", "storage capacity", "hardware", "cpu usage", "ram usage",
-        "memory usage", "system specs", "hardware specs", "specs of this", "specs of device",
-        "system info", "specs", "drive space", "how much storage", "how much ram", "how much disk"
+        "storage space",
+        "disk space",
+        "storage capacity",
+        "hardware",
+        "cpu usage",
+        "ram usage",
+        "memory usage",
+        "system specs",
+        "hardware specs",
+        "specs of this",
+        "specs of device",
+        "system info",
+        "specs",
+        "drive space",
+        "how much storage",
+        "how much ram",
+        "how much disk",
     ]
-    is_explicit_storage = any(k in msg_lower for k in storage_keywords) or (
-        "storage" in msg_lower and not is_file_search_query
-    ) or (
-        ("cpu" in msg_lower or "ram" in msg_lower or "disk" in msg_lower) and not is_file_search_query
-    ) or (
-        "device" in msg_lower and any(w in msg_lower for w in ["storage", "spec", "metric", "hardware", "memory", "ram", "cpu", "disk"]) and not is_file_search_query
+    is_explicit_storage = (
+        any(k in msg_lower for k in storage_keywords)
+        or ("storage" in msg_lower and not is_file_search_query)
+        or (
+            ("cpu" in msg_lower or "ram" in msg_lower or "disk" in msg_lower)
+            and not is_file_search_query
+        )
+        or (
+            "device" in msg_lower
+            and any(
+                w in msg_lower
+                for w in ["storage", "spec", "metric", "hardware", "memory", "ram", "cpu", "disk"]
+            )
+            and not is_file_search_query
+        )
     )
     if is_explicit_storage and not any(k in msg_lower for k in ["delete", "remove", "clean disk"]):
         try:
             info = get_system_info()
+            os_desc = f"{info.get('os')} {info.get('release')} ({info.get('architecture')})"
+            proc_desc = f"{info.get('processor')} ({info.get('cpu_count')} logical cores)"
+            ram_desc = (
+                f"{info.get('ram_percent')}% utilized "
+                f"({info.get('ram_available_gb')} GB free of {info.get('ram_total_gb')} GB total)"
+            )
             resp_text = (
                 f"**Device & System Metrics**\n\n"
-                f"- **Operating System**: {info.get('os')} {info.get('release')} ({info.get('architecture')})\n"
-                f"- **Processor**: {info.get('processor')} ({info.get('cpu_count')} logical cores)\n"
-                f"- **RAM Memory**: {info.get('ram_percent')}% utilized ({info.get('ram_available_gb')} GB available of {info.get('ram_total_gb')} GB total)\n"
+                f"- **Operating System**: {os_desc}\n"
+                f"- **Processor**: {proc_desc}\n"
+                f"- **RAM Memory**: {ram_desc}\n"
                 f"- **Device Storage**:\n"
                 f"  - **Free Space**: {info.get('disk_free_gb')} GB\n"
                 f"  - **Used Space**: {info.get('disk_used_gb')} GB ({info.get('disk_percent')}%)\n"
                 f"  - **Total Capacity**: {info.get('disk_total_gb')} GB\n\n"
-                f"Your device storage and workspace directories are accessible for local agentic automation."
+                "Your storage and workspace directories are accessible for local automation."
             )
             return {
                 "success": True,
@@ -426,11 +492,13 @@ def handle_chat_message(req: ChatRequest) -> Dict[str, Any]:
 
     # 2. Priority Email Summarization (Points-wise, Priority-wise, Uniquely numbered 1 to N)
     is_email_summary_query = (
-        any(w in msg_lower for w in ["summarize", "summary", "brief", "digest"])
-        and any(e in msg_lower for e in ["mail", "email", "inbox", "message", "communication"])
-    ) or (
-        "priority" in msg_lower and any(e in msg_lower for e in ["mail", "email", "inbox"])
-    ) or "numbering them uniquely" in msg_lower
+        (
+            any(w in msg_lower for w in ["summarize", "summary", "brief", "digest"])
+            and any(e in msg_lower for e in ["mail", "email", "inbox", "message", "communication"])
+        )
+        or ("priority" in msg_lower and any(e in msg_lower for e in ["mail", "email", "inbox"]))
+        or "numbering them uniquely" in msg_lower
+    )
 
     if is_email_summary_query:
         try:
@@ -445,36 +513,41 @@ def handle_chat_message(req: ChatRequest) -> Dict[str, Any]:
                 return {
                     "success": True,
                     "type": "conversation",
-                    "message": "No emails found in your inbox to summarize. Sync mail or check back later.",
+                    "message": (
+                        "No emails found in your inbox to summarize. Sync mail or check back later."
+                    ),
                 }
 
             # Sort strictly priority-wise: URGENT/SECURITY/HIGH -> NORMAL -> LOW
             priority_rank = {"urgent": 0, "security": 1, "high": 2, "normal": 3, "low": 4}
             sorted_msgs = sorted(
-                msgs,
-                key=lambda m: priority_rank.get((m.get("priority") or "normal").lower(), 3)
+                msgs, key=lambda m: priority_rank.get((m.get("priority") or "normal").lower(), 3)
             )
 
             llm_summary = None
             try:
                 from app.llm import get_configured_llm
+
                 llm = get_configured_llm()
-                emails_text = "\n\n".join([
-                    f"Email #{i+1} [Priority: {(m.get('priority') or 'normal').upper()}]\n"
-                    f"From: {m.get('sender', 'Unknown')}\n"
-                    f"Subject: {m.get('subject', '(No Subject)')}\n"
-                    f"Date: {m.get('date', 'Today')}\n"
-                    f"Body:\n{m.get('body', '')[:600]}"
-                    for i, m in enumerate(sorted_msgs)
-                ])
+                emails_text = "\n\n".join(
+                    [
+                        f"Email #{i + 1} [Priority: {(m.get('priority') or 'normal').upper()}]\n"
+                        f"From: {m.get('sender', 'Unknown')}\n"
+                        f"Subject: {m.get('subject', '(No Subject)')}\n"
+                        f"Date: {m.get('date', 'Today')}\n"
+                        f"Body:\n{m.get('body', '')[:600]}"
+                        for i, m in enumerate(sorted_msgs)
+                    ]
+                )
+                num_msgs = len(sorted_msgs)
                 summary_prompt = (
-                    f"You are an executive AI assistant. Summarize the following {len(sorted_msgs)} emails.\n"
-                    f"Organize them strictly priority-wise and uniquely number each email from 1 to {len(sorted_msgs)}.\n\n"
-                    f"STRICT REQUIREMENTS:\n"
+                    f"You are an executive AI assistant. Summarize {num_msgs} emails.\n"
+                    f"Organize them by priority and uniquely number each from 1 to {num_msgs}.\n\n"
+                    "STRICT REQUIREMENTS:\n"
                     f"1. ZERO EMOJIS.\n"
-                    f"2. Number each email from 1 to {len(sorted_msgs)}.\n"
+                    f"2. Number each email from 1 to {num_msgs}.\n"
                     f"3. For each email, provide:\n"
-                    f"   - Header: #{1..len(sorted_msgs)}. [PRIORITY] Subject — From: Sender\n"
+                    f"   - Header: #1 to #{num_msgs}. [PRIORITY] Subject — From: Sender\n"
                     f"   - Key Points: 2 concise bullet points summarizing content.\n"
                     f"   - Required Action: Specific follow-up or 'None (Informational)'.\n\n"
                     f"Emails:\n{emails_text}"
@@ -494,21 +567,32 @@ def handle_chat_message(req: ChatRequest) -> Dict[str, Any]:
                 # Strip HTML tags
                 cleaned = re.sub(r"<[^>]+>", " ", cleaned)
                 # Strip emojis
-                cleaned = re.sub(r"[\U00010000-\U0010ffff]|[\u2600-\u27bf]|[\u2300-\u23ff]|[\u2b50-\u2b55]|[\ufe0f]|[\u200d]", "", cleaned)
+                emoji_re = (
+                    r"[\U00010000-\U0010ffff]|[\u2600-\u27bf]|[\u2300-\u23ff]|"
+                    r"[\u2b50-\u2b55]|[\ufe0f]|[\u200d]"
+                )
+                cleaned = re.sub(emoji_re, "", cleaned)
                 return re.sub(r"\s+", " ", cleaned).strip()
 
             if not llm_summary:
                 lines = [
                     f"### Priority-Wise Executive Email Summary ({len(sorted_msgs)} Messages)\n",
-                    f"*Organized priority-wise and uniquely numbered from 1 to {len(sorted_msgs)}.*\n",
+                    f"*Organized priority-wise and numbered from 1 to {len(sorted_msgs)}.*\n",
                 ]
                 for i, m in enumerate(sorted_msgs, 1):
                     prio = (m.get("priority") or "normal").upper()
-                    sender_clean = _clean_body_text(m.get("sender", "Unknown")).split("<")[0].strip() or "Unknown"
+                    sender_clean = (
+                        _clean_body_text(m.get("sender", "Unknown")).split("<")[0].strip()
+                        or "Unknown"
+                    )
                     subj = _clean_body_text(m.get("subject", "(No Subject)"))
                     body = _clean_body_text(m.get("body", ""))
                     summary_snippet = body[:160] + ("..." if len(body) > 160 else "")
-                    action_item = "Immediate review and response needed" if prio in ("URGENT", "SECURITY", "HIGH") else "None (Informational update)"
+                    action_item = (
+                        "Immediate review and response needed"
+                        if prio in ("URGENT", "SECURITY", "HIGH")
+                        else "None (Informational update)"
+                    )
 
                     lines.append(f"**#{i}. [{prio}] {subj}**")
                     lines.append(f"- **From**: `{sender_clean}` ({m.get('date', 'Today')})")
@@ -523,15 +607,22 @@ def handle_chat_message(req: ChatRequest) -> Dict[str, Any]:
                 "quick_actions": [
                     {"id": "open_inbox", "label": "Open Inbox Tab", "action": "switch_to_inbox"},
                     {"id": "sync_mail", "label": "Sync Mail", "action": "sync_emails"},
-                ]
+                ],
             }
         except Exception:
             pass
 
     # 3. Executive Morning Briefing & Digest
     briefing_keywords = [
-        "morning briefing", "daily briefing", "email briefing", "mail briefing",
-        "daily digest", "brief me", "morning digest", "executive briefing", "inbox briefing"
+        "morning briefing",
+        "daily briefing",
+        "email briefing",
+        "mail briefing",
+        "daily digest",
+        "brief me",
+        "morning digest",
+        "executive briefing",
+        "inbox briefing",
     ]
     is_briefing_query = any(k in msg_lower for k in briefing_keywords) or (
         ("briefing" in msg_lower or "digest" in msg_lower)
@@ -571,10 +662,14 @@ def handle_chat_message(req: ChatRequest) -> Dict[str, Any]:
             if cal_events:
                 lines.append("**Scheduled Events:**")
                 for ev in cal_events:
-                    lines.append(f"- **{ev.get('title')}** ({ev.get('start_time')} to {ev.get('end_time')})")
+                    lines.append(
+                        f"- **{ev.get('title')}** ({ev.get('start_time')} to {ev.get('end_time')})"
+                    )
                 lines.append("")
 
-            lines.append("*Open the **Inbox** tab to review complete message bodies, generate deep summaries, or send replies.*")
+            lines.append(
+                "*Open the **Inbox** tab to review messages, generate deep summaries, or reply.*"
+            )
 
             return {
                 "success": True,
@@ -585,35 +680,92 @@ def handle_chat_message(req: ChatRequest) -> Dict[str, Any]:
             pass
 
     # 3b. Executive Daily Tasks & Agenda Inspection (Tasks for Today / Today's Schedule)
-    is_today_tasks_query = (
-        any(p in msg_lower for p in [
-            "tasks for today", "task for today", "tasks today", "task today",
-            "today's tasks", "todays tasks", "today tasks",
-            "tasks for tomorrow", "tomorrow's tasks", "tasks tomorrow",
-            "what are the tasks", "what are my tasks", "what tasks do i have",
-            "show tasks", "show my tasks", "list tasks", "list my tasks",
-            "check tasks", "check my tasks", "any tasks", "do i have tasks",
-            "what do i have today", "what do i have scheduled", "what is on my schedule",
-            "what's on my schedule", "whats on my schedule", "what is my schedule",
-            "what's my schedule", "whats my schedule", "my schedule today",
-            "schedule today", "today's schedule", "todays schedule",
-            "today's agenda", "todays agenda", "agenda today", "agenda for today",
-            "what is on my agenda", "what's on my agenda", "whats on my agenda",
-            "what do i have planned", "what is planned for today", "what's planned today",
-            "meetings today", "today's meetings", "todays meetings", "meetings for today",
-            "what meetings do i have", "show meetings", "list meetings", "my meetings"
-        ])
-        or (
-            any(w in msg_lower for w in ["what are", "what is", "show", "list", "check", "tell me", "any", "do i have", "what do i have"])
-            and any(t in msg_lower for t in ["task", "tasks", "schedule", "agenda", "meeting", "meetings", "todo", "todos"])
-            and any(d in msg_lower for d in ["today", "upcoming", "scheduled", "planned", "tomorrow", "day"])
-            and not any(a in msg_lower for a in ["create", "add", "new", "delete", "remove", "organize", "move"])
+    is_today_tasks_query = any(
+        p in msg_lower
+        for p in [
+            "tasks for today",
+            "task for today",
+            "tasks today",
+            "task today",
+            "today's tasks",
+            "todays tasks",
+            "today tasks",
+            "tasks for tomorrow",
+            "tomorrow's tasks",
+            "tasks tomorrow",
+            "what are the tasks",
+            "what are my tasks",
+            "what tasks do i have",
+            "show tasks",
+            "show my tasks",
+            "list tasks",
+            "list my tasks",
+            "check tasks",
+            "check my tasks",
+            "any tasks",
+            "do i have tasks",
+            "what do i have today",
+            "what do i have scheduled",
+            "what is on my schedule",
+            "what's on my schedule",
+            "whats on my schedule",
+            "what is my schedule",
+            "what's my schedule",
+            "whats my schedule",
+            "my schedule today",
+            "schedule today",
+            "today's schedule",
+            "todays schedule",
+            "today's agenda",
+            "todays agenda",
+            "agenda today",
+            "agenda for today",
+            "what is on my agenda",
+            "what's on my agenda",
+            "whats on my agenda",
+            "what do i have planned",
+            "what is planned for today",
+            "what's planned today",
+            "meetings today",
+            "today's meetings",
+            "todays meetings",
+            "meetings for today",
+            "what meetings do i have",
+            "show meetings",
+            "list meetings",
+            "my meetings",
+        ]
+    ) or (
+        any(
+            w in msg_lower
+            for w in [
+                "what are",
+                "what is",
+                "show",
+                "list",
+                "check",
+                "tell me",
+                "any",
+                "do i have",
+                "what do i have",
+            ]
+        )
+        and any(
+            t in msg_lower
+            for t in ["task", "tasks", "schedule", "agenda", "meeting", "meetings", "todo", "todos"]
+        )
+        and any(
+            d in msg_lower for d in ["today", "upcoming", "scheduled", "planned", "tomorrow", "day"]
+        )
+        and not any(
+            a in msg_lower for a in ["create", "add", "new", "delete", "remove", "organize", "move"]
         )
     )
 
     if is_today_tasks_query:
         try:
             import datetime
+
             is_tomorrow = "tomorrow" in msg_lower
             now = datetime.datetime.now()
             target_dt = (now + datetime.timedelta(days=1)) if is_tomorrow else now
@@ -625,9 +777,12 @@ def handle_chat_message(req: ChatRequest) -> Dict[str, Any]:
             all_events = cal_res.get("events", [])
 
             # Filter events for target date
-            day_events = [ev for ev in all_events if (ev.get("start_time") or "").startswith(date_iso)]
+            day_events = [
+                ev for ev in all_events if (ev.get("start_time") or "").startswith(date_iso)
+            ]
             other_upcoming = [
-                ev for ev in all_events
+                ev
+                for ev in all_events
                 if not (ev.get("start_time") or "").startswith(date_iso)
                 and (ev.get("start_time") or "") >= date_iso
             ][:3]
@@ -638,7 +793,8 @@ def handle_chat_message(req: ChatRequest) -> Dict[str, Any]:
                 mail_res = email_search(category="all", max_results=6)
                 all_msgs = mail_res.get("messages", [])
                 actionable_emails = [
-                    m for m in all_msgs
+                    m
+                    for m in all_msgs
                     if (m.get("priority") or "normal").lower() in ("urgent", "security", "high")
                     or not m.get("is_read")
                 ][:3]
@@ -677,65 +833,113 @@ def handle_chat_message(req: ChatRequest) -> Dict[str, Any]:
                     status_lbl = "Unread" if not m.get("is_read") else "Follow-up required"
                     lines.append(f"{i}. [{prio}] **{subj}** - From `{sender_clean}` ({status_lbl})")
             else:
-                lines.append("All inbox communications are reviewed. No urgent action items pending.")
+                lines.append(
+                    "All inbox communications are reviewed. No urgent action items pending."
+                )
 
             lines.append("")
-            lines.append("*All agenda and task data is processed locally with 100% offline privacy.*")
+            lines.append(
+                "*All agenda and task data is processed locally with 100% offline privacy.*"
+            )
 
             return {
                 "success": True,
                 "type": "conversation",
                 "message": "\n".join(lines),
                 "quick_actions": [
-                    {"id": "open_calendar", "label": "Open Multi-Calendar", "action": "switch_to_calendar"},
+                    {
+                        "id": "open_calendar",
+                        "label": "Open Multi-Calendar",
+                        "action": "switch_to_calendar",
+                    },
                     {"id": "open_inbox", "label": "Review Inbox", "action": "switch_to_inbox"},
-                    {"id": "add_event", "label": "Schedule New Event", "prompt": "Schedule meeting today at 4:00 PM"},
-                ]
+                    {
+                        "id": "add_event",
+                        "label": "Schedule New Event",
+                        "prompt": "Schedule meeting today at 4:00 PM",
+                    },
+                ],
             }
         except Exception:
             pass
 
     # 4. Email & Inbox Status Inspection (Single-row list + quick action buttons)
     compound_action_words = [
-        "schedule", "shedule", "calendar", "meeting", "todo", "to-do", "reminder",
-        "draft", "compose", "send email", "send mail", "create event", "book meeting",
-        "delete email", "delete mail"
+        "schedule",
+        "shedule",
+        "calendar",
+        "meeting",
+        "todo",
+        "to-do",
+        "reminder",
+        "draft",
+        "compose",
+        "send email",
+        "send mail",
+        "create event",
+        "book meeting",
+        "delete email",
+        "delete mail",
     ]
     is_action_flow = any(w in msg_lower for w in compound_action_words)
 
-    email_keywords = ["mail", "mails", "email", "emails", "inbox", "unread message", "unread", "read mail", "read mails", "read email", "read emails"]
+    email_keywords = [
+        "mail",
+        "mails",
+        "email",
+        "emails",
+        "inbox",
+        "unread message",
+        "unread",
+        "read mail",
+        "read mails",
+        "read email",
+        "read emails",
+    ]
     if any(k in msg_lower for k in email_keywords) and not is_action_flow:
         try:
             acc = email_get_account()
             is_unread_query = "unread" in msg_lower
-            is_urgent_query = any(w in msg_lower for w in ["urgent", "high priority", "critical", "important", "alert"])
+            is_urgent_query = any(
+                w in msg_lower
+                for w in ["urgent", "high priority", "critical", "important", "alert"]
+            )
 
             # 1. Sender extraction (e.g. "from chatgpt", "form chatgpt", "by google", "sender alex")
             sender_match = re.search(r"\b(?:from|form|sender|by)\s+([a-zA-Z0-9_\-\.]+)", msg_lower)
             extracted_sender = sender_match.group(1).strip() if sender_match else ""
             if not extracted_sender:
-                for cand in ["chatgpt", "google", "marcus", "alex", "github", "slack", "apple", "microsoft"]:
+                for cand in [
+                    "chatgpt",
+                    "google",
+                    "marcus",
+                    "alex",
+                    "github",
+                    "slack",
+                    "apple",
+                    "microsoft",
+                ]:
                     if re.search(rf"\b{cand}\b", msg_lower):
                         extracted_sender = cand
                         break
 
             # 2. Subject / topic extraction (e.g. "about SLA", "regarding security")
-            query_match = re.search(r"\b(?:about|regarding|topic|keyword|subject)\s+([a-zA-Z0-9_\-\.\s]+)", msg_lower)
+            query_match = re.search(
+                r"\b(?:about|regarding|topic|keyword|subject)\s+([a-zA-Z0-9_\-\.\s]+)", msg_lower
+            )
             extracted_query = query_match.group(1).strip() if query_match else ""
 
             category = "unread" if (is_unread_query and not is_urgent_query) else "all"
             search_res = email_search(
-                query=extracted_query,
-                sender=extracted_sender,
-                category=category,
-                max_results=20
+                query=extracted_query, sender=extracted_sender, category=category, max_results=20
             )
             all_msgs = search_res.get("messages", [])
 
             # Secondary in-memory sender guard
             if extracted_sender:
                 all_msgs = [
-                    m for m in all_msgs
+                    m
+                    for m in all_msgs
                     if extracted_sender.lower() in (m.get("sender") or "").lower()
                 ]
 
@@ -749,17 +953,25 @@ def handle_chat_message(req: ChatRequest) -> Dict[str, Any]:
                 # Strip HTML tags
                 cleaned = re.sub(r"<[^>]+>", " ", cleaned)
                 # Strip emojis
-                cleaned = re.sub(r"[\U00010000-\U0010ffff]|[\u2600-\u27bf]|[\u2300-\u23ff]|[\u2b50-\u2b55]|[\ufe0f]|[\u200d]", "", cleaned)
+                emoji_re = (
+                    r"[\U00010000-\U0010ffff]|[\u2600-\u27bf]|[\u2300-\u23ff]|"
+                    r"[\u2b50-\u2b55]|[\ufe0f]|[\u200d]"
+                )
+                cleaned = re.sub(emoji_re, "", cleaned)
                 return re.sub(r"\s+", " ", cleaned).strip()
 
             if extracted_sender:
                 title_sender = extracted_sender.capitalize()
                 if all_msgs:
                     msgs_to_show = all_msgs
+                    filter_desc = (
+                        f"Sender matching `{extracted_sender}` "
+                        f"({len(all_msgs)} matching message{'s' if len(all_msgs) != 1 else ''})"
+                    )
                     msg_header = (
                         f"**Email Inbox: Messages from {title_sender}**\n\n"
                         f"- **Account**: `{acc.get('email', 'Sandbox')}`\n"
-                        f"- **Filter**: Sender matching `{extracted_sender}` ({len(all_msgs)} matching message{'s' if len(all_msgs) != 1 else ''})"
+                        f"- **Filter**: {filter_desc}"
                     )
                 else:
                     msgs_to_show = []
@@ -771,29 +983,40 @@ def handle_chat_message(req: ChatRequest) -> Dict[str, Any]:
                     )
             elif is_urgent_query:
                 urgent_msgs = [
-                    m for m in all_msgs
+                    m
+                    for m in all_msgs
                     if (m.get("priority") or "normal").lower() in ("urgent", "high", "security")
-                    or any(w in m.get("subject", "").lower() for w in ["urgent", "security", "alert", "critical"])
+                    or any(
+                        w in m.get("subject", "").lower()
+                        for w in ["urgent", "security", "alert", "critical"]
+                    )
                 ]
                 if urgent_msgs:
                     msgs_to_show = urgent_msgs
-                    msg_header = f"**Urgent Communications** ({len(urgent_msgs)} urgent messages found)"
+                    msg_header = (
+                        f"**Urgent Communications** ({len(urgent_msgs)} urgent messages found)"
+                    )
                 else:
                     msgs_to_show = all_msgs[:8]
                     msg_header = (
                         f"**No Urgent Emails Found**\n\n"
-                        f"All {len(all_msgs)} current messages in your inbox are marked **NORMAL** priority. "
-                        f"There are no critical alerts or urgent deadlines pending.\n\n"
-                        f"Recent Communications:"
+                        f"All {len(all_msgs)} current messages in your inbox are marked "
+                        "**NORMAL** priority. There are no critical alerts pending.\n\n"
+                        "Recent Communications:"
                     )
             elif is_unread_query:
                 msgs_to_show = [m for m in all_msgs if not m.get("is_read")] or all_msgs[:8]
                 msg_header = f"**Unread Messages** ({len(msgs_to_show)} total unread)"
             else:
                 msgs_to_show = all_msgs[:12]
+                conn_mode = (
+                    "IMAP Connected"
+                    if acc.get("account_type") == "imap"
+                    else "Offline Sandbox"
+                )
                 msg_header = (
                     f"**Email Inbox Status**\n\n"
-                    f"- **Account**: `{acc.get('email', 'Sandbox')}` ({'IMAP Connected' if acc.get('account_type') == 'imap' else 'Offline Sandbox'})\n"
+                    f"- **Account**: `{acc.get('email', 'Sandbox')}` ({conn_mode})\n"
                     f"- **Recent Messages**: {len(all_msgs)} total ({unread_cnt} unread)"
                 )
 
@@ -802,34 +1025,35 @@ def handle_chat_message(req: ChatRequest) -> Dict[str, Any]:
                 clean_body = _clean_body_text(m.get("body", ""))[:140]
                 sender_raw = _clean_body_text(m.get("sender", "Unknown"))
                 sender_clean = sender_raw.split("<")[0].strip() or sender_raw
-                emails_payload.append({
-                    "id": m.get("id", f"msg-{i}"),
-                    "index": i,
-                    "sender": sender_clean,
-                    "sender_email": sender_raw,
-                    "subject": _clean_body_text(m.get("subject", "(No Subject)")),
-                    "snippet": clean_body,
-                    "priority": (m.get("priority") or "normal").lower(),
-                    "date": m.get("date", "Today"),
-                    "is_read": bool(m.get("is_read", False)),
-                })
+                emails_payload.append(
+                    {
+                        "id": m.get("id", f"msg-{i}"),
+                        "index": i,
+                        "sender": sender_clean,
+                        "sender_email": sender_raw,
+                        "subject": _clean_body_text(m.get("subject", "(No Subject)")),
+                        "snippet": clean_body,
+                        "priority": (m.get("priority") or "normal").lower(),
+                        "date": m.get("date", "Today"),
+                        "is_read": bool(m.get("is_read", False)),
+                    }
+                )
 
             quick_actions = [
                 {
                     "id": "summarize_priority",
                     "label": "Summarize All Mails Priority-Wise (1 to N)",
-                    "prompt": "Please summarize all these emails points-wise and priority-wise, uniquely numbering each mail from 1 to N."
+                    "prompt": (
+                        "Please summarize all these emails points-wise and priority-wise, "
+                        "uniquely numbering each mail from 1 to N."
+                    ),
                 },
                 {
                     "id": "extract_todos",
                     "label": "Extract Action Items & Tasks",
-                    "prompt": "Extract all action items, tasks, and deadlines from these emails."
+                    "prompt": "Extract all action items, tasks, and deadlines from these emails.",
                 },
-                {
-                    "id": "open_inbox",
-                    "label": "Open in Inbox Tab",
-                    "action": "switch_to_inbox"
-                }
+                {"id": "open_inbox", "label": "Open in Inbox Tab", "action": "switch_to_inbox"},
             ]
 
             return {
@@ -837,23 +1061,36 @@ def handle_chat_message(req: ChatRequest) -> Dict[str, Any]:
                 "type": "email_list",
                 "message": msg_header,
                 "emails": emails_payload,
-                "quick_actions": quick_actions
+                "quick_actions": quick_actions,
             }
         except Exception:
             pass
 
     # 4. Calendar & Schedule Operations (Event creation & Inspection)
-    is_cal_add = (
-        any(w in msg_lower for w in ["add event", "create event", "new event", "schedule event", "schedule meeting", "book meeting", "add meeting", "set reminder", "add one more event", "put an event", "schedule a call"])
-        or (
-            any(w in msg_lower for w in ["add", "create", "new", "schedule", "book", "set"])
-            and any(c in msg_lower for c in ["event", "meeting", "reminder", "appointment"])
-            and any(t in msg_lower for t in ["am", "pm", "at", "on", "tomorrow", "today", "clock", ":"])
-        )
+    is_cal_add = any(
+        w in msg_lower
+        for w in [
+            "add event",
+            "create event",
+            "new event",
+            "schedule event",
+            "schedule meeting",
+            "book meeting",
+            "add meeting",
+            "set reminder",
+            "add one more event",
+            "put an event",
+            "schedule a call",
+        ]
+    ) or (
+        any(w in msg_lower for w in ["add", "create", "new", "schedule", "book", "set"])
+        and any(c in msg_lower for c in ["event", "meeting", "reminder", "appointment"])
+        and any(t in msg_lower for t in ["am", "pm", "at", "on", "tomorrow", "today", "clock", ":"])
     )
     if is_cal_add:
         try:
             from app.tools.calendar_tools import parse_calendar_event_request
+
             parsed = parse_calendar_event_request(msg)
             res = calendar_create_event(
                 title=parsed["title"],
@@ -871,12 +1108,21 @@ def handle_chat_message(req: ChatRequest) -> Dict[str, Any]:
                         f"- **Start Time**: `{parsed['start_time']}`\n"
                         f"- **End Time**: `{parsed['end_time']}`\n"
                         f"- **Status**: Scheduled (ID: #{res.get('event_id')})\n\n"
-                        f"The event has been added to your local calendar. You can view all appointments in the **Multi-calendar** tab or ask me to list your events."
+                        "The event has been added to your local calendar. "
+                        "You can view all appointments in the **Multi-calendar** tab."
                     ),
                     "quick_actions": [
-                        {"id": "show_events", "label": "Show Upcoming Events", "prompt": "Show upcoming calendar events"},
-                        {"id": "open_calendar", "label": "Open Multi-Calendar Tab", "action": "switch_to_calendar"}
-                    ]
+                        {
+                            "id": "show_events",
+                            "label": "Show Upcoming Events",
+                            "prompt": "Show upcoming calendar events",
+                        },
+                        {
+                            "id": "open_calendar",
+                            "label": "Open Multi-Calendar Tab",
+                            "action": "switch_to_calendar",
+                        },
+                    ],
                 }
         except Exception:
             pass
@@ -889,20 +1135,28 @@ def handle_chat_message(req: ChatRequest) -> Dict[str, Any]:
             if events:
                 lines = [f"**Upcoming Calendar Events** ({len(events)} total):\n"]
                 for i, ev in enumerate(events[:5], 1):
-                    lines.append(f"{i}. **{ev.get('title')}** - {ev.get('start_time')} to {ev.get('end_time')}")
+                    t = ev.get("title")
+                    st = ev.get("start_time")
+                    et = ev.get("end_time")
+                    lines.append(f"{i}. **{t}** - {st} to {et}")
                 return {"success": True, "type": "conversation", "message": "\n".join(lines)}
             else:
                 return {
                     "success": True,
                     "type": "conversation",
-                    "message": "No upcoming events scheduled on your local calendar. You can tell me to schedule one (e.g. *'Schedule team review at 3:00 PM tomorrow'*) or visit the Multi-calendar tab.",
+                    "message": (
+                        "No upcoming events scheduled on your local calendar. "
+                        "You can tell me to schedule one or visit the Multi-calendar tab."
+                    ),
                 }
         except Exception:
             pass
 
     # 5. Workspaces & Directory Inspection
     ws_keywords = ["workspace", "workspaces", "registered folder", "sandboxed folder"]
-    if any(k in msg_lower for k in ws_keywords) and not any(k in msg_lower for k in ["create workspace", "delete workspace"]):
+    if any(k in msg_lower for k in ws_keywords) and not any(
+        k in msg_lower for k in ["create workspace", "delete workspace"]
+    ):
         try:
             ws_list = WorkspaceManager.list_workspaces()
             if ws_list:
@@ -915,16 +1169,35 @@ def handle_chat_message(req: ChatRequest) -> Dict[str, Any]:
                 return {
                     "success": True,
                     "type": "conversation",
-                    "message": "No authorized workspaces are currently registered. Register a directory in the **Workspaces** tab to begin automating file actions safely.",
+                    "message": (
+                        "No authorized workspaces are currently registered. Register a directory "
+                        "in the **Workspaces** tab to begin automating file actions safely."
+                    ),
                 }
         except Exception:
             pass
 
     # 6. Goal Planning & File / Productivity Automation
     planning_keywords = [
-        "organize", "move", "delete", "remove", "copy", "archive", "zip", "unzip",
-        "read", "fetch", "browse", "draft", "send",
-        "clean", "sort", "scan", "backup", "find", "search"
+        "organize",
+        "move",
+        "delete",
+        "remove",
+        "copy",
+        "archive",
+        "zip",
+        "unzip",
+        "read",
+        "fetch",
+        "browse",
+        "draft",
+        "send",
+        "clean",
+        "sort",
+        "scan",
+        "backup",
+        "find",
+        "search",
     ]
     is_action = any(k in msg_lower for k in planning_keywords) and not is_today_tasks_query
 
@@ -949,17 +1222,35 @@ def handle_chat_message(req: ChatRequest) -> Dict[str, Any]:
                 "requires_approval": plan.requires_approval,
             }
             if plan.requires_approval:
+                risk_lvl = plan.cumulative_risk.upper()
                 msg_text = (
                     f"I have analyzed your goal ('{msg}') and synthesized an execution plan "
                     f"consisting of {len(steps_payload)} step(s).\n\n"
                     f"Safety Policy: Because this workflow includes modifying or external actions "
-                    f"(Risk: {plan.cumulative_risk.upper()}), explicit human approval is required before execution."
+                    f"(Risk: {risk_lvl}), explicit human approval is required before execution."
                 )
             else:
-                is_search_intent = any(w in msg_lower for w in ["find", "search", "list", "locate", "show"]) and any(f in msg_lower for f in ["file", "files", "pdf", "pdfs", "doc", "docs", "txt", "folder", "folders"])
+                is_search_intent = any(
+                    w in msg_lower for w in ["find", "search", "list", "locate", "show"]
+                ) and any(
+                    f in msg_lower
+                    for f in [
+                        "file",
+                        "files",
+                        "pdf",
+                        "pdfs",
+                        "doc",
+                        "docs",
+                        "txt",
+                        "folder",
+                        "folders",
+                    ]
+                )
                 if is_search_intent:
                     if plan.discovered_files:
-                        lines = [f"**Discovered Files ({len(plan.discovered_files)} matching found):**\n"]
+                        lines = [
+                            f"**Discovered Files ({len(plan.discovered_files)} matching found):**\n"
+                        ]
                         for idx, f in enumerate(plan.discovered_files, 1):
                             p_str = f.get("path", "")
                             p_name = Path(p_str).name
@@ -967,21 +1258,33 @@ def handle_chat_message(req: ChatRequest) -> Dict[str, Any]:
                             lines.append(f"{idx}. **{p_name}** ({size_kb} KB) — `{p_str}`")
                         msg_text = "\n".join(lines)
                     else:
-                        ws_names = ", ".join([f"`{w.name}`" for w in WorkspaceManager.list_workspaces()])
-                        msg_text = (
-                            f"No matching files were found across your authorized workspaces ({ws_names or 'None'}).\n\n"
-                            f"Antigravity enforces directory-gated safety. To search other folders or drives on your device, "
-                            f"please register the target folder in the **Workspaces** tab with Read permission."
+                        ws_names = ", ".join(
+                            [f"`{w.name}`" for w in WorkspaceManager.list_workspaces()]
                         )
-                elif any(s.get("action") == "email_search" for s in plan.steps) and len(plan.steps) == 1:
-                    is_urgent = any(w in msg_lower for w in ["urgent", "high", "security", "alert"])
+                        msg_text = (
+                            f"No matching files found across workspaces ({ws_names or 'None'}).\n\n"
+                            "Antigravity enforces directory-gated safety. To search other folders, "
+                            "please register the target folder in **Workspaces** with Read access."
+                        )
+                elif (
+                    any(s.get("action") == "email_search" for s in plan.steps)
+                    and len(plan.steps) == 1
+                ):
+                    is_urgent = any(
+                        w in msg_lower for w in ["urgent", "high", "security", "alert"]
+                    )
                     search_res = email_search(category="all", max_results=15)
                     all_m = search_res.get("messages", [])
                     if is_urgent:
                         filtered_m = [
-                            m for m in all_m
-                            if (m.get("priority") or "normal").lower() in ("urgent", "high", "security")
-                            or any(w in m.get("subject", "").lower() for w in ["urgent", "security", "alert"])
+                            m
+                            for m in all_m
+                            if (m.get("priority") or "normal").lower()
+                            in ("urgent", "high", "security")
+                            or any(
+                                w in m.get("subject", "").lower()
+                                for w in ["urgent", "security", "alert"]
+                            )
                         ]
                     else:
                         filtered_m = all_m[:8]
@@ -1023,6 +1326,7 @@ def handle_chat_message(req: ChatRequest) -> Dict[str, Any]:
     llm_enabled = getattr(req, "llm_enabled", True)
     try:
         from app.assistant import get_assistant_conversational_response
+
         assistant_reply = get_assistant_conversational_response(
             msg, getattr(req, "history", None), llm_enabled=llm_enabled
         )
@@ -1038,15 +1342,16 @@ def handle_chat_message(req: ChatRequest) -> Dict[str, Any]:
     if llm_enabled:
         try:
             from app.llm import get_configured_llm
+
             llm = get_configured_llm()
             resp = llm.invoke(msg)
             content = str(getattr(resp, "content", resp)).strip()
             if content:
-                content_clean = re.sub(
-                    r"[\U00010000-\U0010ffff]|[\u2600-\u27bf]|[\u2300-\u23ff]|[\u2b50-\u2b55]|[\ufe0f]|[\u200d]",
-                    "",
-                    content,
+                emoji_re = (
+                    r"[\U00010000-\U0010ffff]|[\u2600-\u27bf]|[\u2300-\u23ff]|"
+                    r"[\u2b50-\u2b55]|[\ufe0f]|[\u200d]"
                 )
+                content_clean = re.sub(emoji_re, "", content)
                 return {
                     "success": True,
                     "type": "conversation",
@@ -1056,24 +1361,36 @@ def handle_chat_message(req: ChatRequest) -> Dict[str, Any]:
             pass
 
     import datetime
+
     now_hour = datetime.datetime.now().hour
-    time_greeting = "Good morning" if now_hour < 12 else ("Good afternoon" if now_hour < 17 else "Good evening")
+    if now_hour < 12:
+        time_greeting = "Good morning"
+    elif now_hour < 17:
+        time_greeting = "Good afternoon"
+    else:
+        time_greeting = "Good evening"
+
     msg_words = msg.strip().split()
     if len(msg_words) <= 3:
         intro_line = f"{time_greeting}! I am standing by to assist you privately on this computer."
     else:
-        intro_line = "I am your local, private executive assistant operating directly on this device."
+        intro_line = (
+            "I am your local, private executive assistant operating directly on this device."
+        )
 
+    bullets = (
+        "- **Emails & Communications**: Ask *'Read mails'*, or visit the **Inbox** tab.\n"
+        "- **Workspaces & Files**: Ask *'Organize files'* in your registered workspaces.\n"
+        "- **Device Storage & Metrics**: Ask *'Show system specs'*.\n"
+        "- **Calendar & Agendas**: Ask *'Show upcoming meetings'*, or visit the Calendar tab."
+    )
     return {
         "success": True,
         "type": "conversation",
         "message": (
             f"{intro_line}\n\n"
             f"Here is how I can assist you right now:\n"
-            f"- **Emails & Communications**: Ask *\"Read mails\"*, *\"Give me today's email briefing\"*, or visit the **Inbox** tab.\n"
-            f"- **Workspaces & Files**: Ask *\"Organize all .pdf files\"* or *\"Find report files\"* in your registered workspaces.\n"
-            f"- **Device Storage & Metrics**: Ask *\"Can you see my device storage?\"* or *\"Show system specs\"*.\n"
-            f"- **Calendar & Agendas**: Ask *\"Show upcoming meetings\"* or *\"Schedule event tomorrow at 3 PM\"*.\n\n"
+            f"{bullets}\n\n"
             f"Let me know which task you would like to proceed with."
         ),
     }
@@ -1253,9 +1570,7 @@ def api_browser_fetch(req: BrowserFetchRequest) -> Dict[str, Any]:
 # Live Class Dynamic Attendance Endpoints
 # -----------------------------------------------------------------------------
 @server_app.post("/api/attendance/session/start")
-def api_attendance_start(
-    req: AttendanceSessionStartRequest, request: Request
-) -> Dict[str, Any]:
+def api_attendance_start(req: AttendanceSessionStartRequest, request: Request) -> Dict[str, Any]:
     c_name = req.course_name or req.course or "Live Classroom"
     rot = req.rotation_interval_seconds or req.rotation_interval or 15
     host = req.host_url or _extract_request_host(request)
@@ -1274,9 +1589,7 @@ def api_attendance_get_active(request: Request) -> Dict[str, Any]:
 
 
 @server_app.post("/api/attendance/session/rotate")
-def api_attendance_rotate(
-    req: AttendanceRotateRequest, request: Request
-) -> Dict[str, Any]:
+def api_attendance_rotate(req: AttendanceRotateRequest, request: Request) -> Dict[str, Any]:
     host = req.host_url or _extract_request_host(request)
     return attendance_rotate_token(req.session_id, host_url=host)
 
@@ -1315,7 +1628,16 @@ def api_attendance_simulate_scan(payload: Optional[Dict[str, Any]] = None) -> Di
     if not active.get("active") or not active.get("current_token"):
         raise HTTPException(status_code=400, detail="No active attendance session.")
 
-    sample_names = ["Alex Rivera", "Priya Sharma", "Jordan Lee", "Taylor Swift", "David Chen", "Marcus Vance", "Elena Rostova", "Liam O'Connor"]
+    sample_names = [
+        "Alex Rivera",
+        "Priya Sharma",
+        "Jordan Lee",
+        "Taylor Swift",
+        "David Chen",
+        "Marcus Vance",
+        "Elena Rostova",
+        "Liam O'Connor",
+    ]
     chosen_name = sample_names[secrets.randbelow(len(sample_names))]
     s_id = f"STU-{secrets.randbelow(8999) + 1000}"
 

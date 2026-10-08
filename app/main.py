@@ -2853,7 +2853,9 @@ def github_issues_command(
     help="Launch the local interactive web dashboard (FastAPI + Modern Web UI).",
 )
 def ui_command(
-    host: str = typer.Option("0.0.0.0", help="Host interface to bind (0.0.0.0 allows phone/LAN access)."),
+    host: str = typer.Option(
+        "0.0.0.0", help="Host interface to bind (0.0.0.0 allows phone/LAN access)."
+    ),
     port: int = typer.Option(8000, help="Port to run the dashboard web server on."),
     open_browser: bool = typer.Option(True, help="Automatically open browser."),
 ):
@@ -2861,6 +2863,7 @@ def ui_command(
     import webbrowser
 
     import uvicorn
+
     from app.tools.attendance_tools import get_local_ip
 
     show_header()
@@ -2873,10 +2876,11 @@ def ui_command(
         f"  Local Access:   [bold cyan]{local_url}[/bold cyan]\n"
     )
     if network_url:
-        panel_text += f"  Network Access: [bold cyan]{network_url}[/bold cyan] (Scan or visit on mobile)\n"
+        panel_text += (
+            f"  Network Access: [bold cyan]{network_url}[/bold cyan] (Scan or visit on mobile)\n"
+        )
     panel_text += (
-        f"[dim]Powered by FastAPI, Uvicorn, and Ollama (qwen2.5:3b).\n"
-        f"Press Ctrl+C to stop.[/dim]"
+        "[dim]Powered by FastAPI, Uvicorn, and Ollama (qwen2.5:3b).\nPress Ctrl+C to stop.[/dim]"
     )
 
     console.print(
@@ -2909,6 +2913,7 @@ def https_ui_command(
     import webbrowser
 
     import uvicorn
+
     from app.ssl_cert import ensure_ssl_cert
     from app.tools.attendance_tools import get_local_ip
 
@@ -2923,7 +2928,7 @@ def https_ui_command(
         raise typer.Exit(1)
 
     lan_ip = get_local_ip()
-    local_url   = f"https://127.0.0.1:{port}"
+    local_url = f"https://127.0.0.1:{port}"
     network_url = f"https://{lan_ip}:{port}" if lan_ip != "127.0.0.1" else None
 
     panel_text = (
@@ -2933,7 +2938,8 @@ def https_ui_command(
     if network_url:
         panel_text += (
             f"  Network Access: [bold cyan]{network_url}[/bold cyan]\n"
-            f"  [bold yellow]→ Open this URL on your phone, tap 'Advanced' → 'Proceed' to trust the cert.[/bold yellow]\n"
+            "  [bold yellow]→ Open on phone, tap 'Advanced' → 'Proceed' "
+            "to trust the cert.[/bold yellow]\n"
         )
     panel_text += (
         f"\n[dim]Camera access (QR scan) requires HTTPS — this is why we need the cert.\n"

@@ -7,13 +7,13 @@ account connection, AI summarization, and smart reply generation.
 """
 
 import email
-from email.header import decode_header
 import email.utils
 import imaplib
 import re
 import smtplib
 import sqlite3
 from datetime import datetime
+from email.header import decode_header
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Any, Optional
@@ -118,61 +118,65 @@ def _seed_demo_emails_if_empty(force: bool = False) -> None:
                     "marcus.vance@acme-enterprises.com",
                     "URGENT: Q4 SLA Review & Production Incident 409 Resolution",
                     "Hi Tejas,\n\nFollowing up on our sev-1 outage yesterday, our leadership "
-                    "requires an executive post-mortem and SLA credit calculation by 4:00 PM today.\n\n"
-                    "Could your team summarize the root cause and confirm if engineering "
-                    "patches are deployed in the staging sandbox? Let me know if you can hop on "
-                    "a quick coordination sync at 2:30 PM.\n\n"
+                    "requires an executive post-mortem and SLA credit calculation by 4:00 PM.\n\n"
+                    "Could your team summarize root cause and confirm if patches are deployed "
+                    "in the staging sandbox? Let me know if you can hop on a sync at 2:30 PM.\n\n"
                     "Regards,\nMarcus Vance\nDirector of Operations, Acme Corp",
                     "urgent",
                     "high",
                     0,
-                    "<div style='font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;color:#1e293b;line-height:1.6;max-width:680px;'>"
+                    "<div style='font-family:sans-serif;color:#1e293b;line-height:1.6;'>"
                     "<p>Hi Tejas,</p>"
-                    "<p>Following up on our sev-1 outage yesterday, our leadership requires an executive post-mortem and SLA credit calculation by <strong>4:00 PM today</strong>.</p>"
-                    "<p>Could your team summarize the root cause and confirm if engineering patches are deployed in the staging sandbox? Let me know if you can hop on a quick coordination sync at <strong>2:30 PM</strong>.</p>"
+                    "<p>Following up on sev-1 outage, leadership requires post-mortem "
+                    "and SLA credit calculation by <strong>4:00 PM today</strong>.</p>"
+                    "<p>Could your team confirm if engineering patches are deployed?</p>"
                     "<hr style='border:none;border-top:1px solid #e2e8f0;margin:20px 0;'>"
-                    "<p style='color:#64748b;font-size:13px;'>Regards,<br><strong style='color:#0f172a;'>Marcus Vance</strong><br>Director of Operations, Acme Corp</p>"
-                    "</div>",
+                    "<p style='color:#64748b;font-size:13px;'>Regards,<br>"
+                    "<strong style='color:#0f172a;'>Marcus Vance</strong><br>"
+                    "Director of Operations, Acme Corp</p></div>",
                 ),
                 (
                     "msg-budget-02",
                     "clara.finch@globalfinance.internal",
                     "Action Required: Sign-off for Cloud GPU Compute Budget ($4,200/mo)",
-                    "Hello Team,\n\nThe revised cloud compute budget for local agentic orchestration "
-                    "is ready for formal sign-off. Monthly allocation increases to $4,200 starting next Monday.\n\n"
-                    "We need your department head approval to release purchase orders and finalize procurement. "
-                    "Please reply confirming approval or specifying adjustments by end of day Wednesday.\n\n"
+                    "Hello Team,\n\nThe revised cloud compute budget for local orchestration "
+                    "is ready for formal sign-off. Monthly allocation increases to $4,200.\n\n"
+                    "We need your department head approval to release purchase orders. "
+                    "Please reply confirming approval by end of day Wednesday.\n\n"
                     "Thanks,\nClara Finch\nFinancial Controller",
                     "action",
                     "high",
                     0,
-                    "<div style='font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;color:#1e293b;line-height:1.6;max-width:680px;'>"
+                    "<div style='font-family:sans-serif;color:#1e293b;line-height:1.6;'>"
                     "<p>Hello Team,</p>"
-                    "<p>The revised cloud compute budget for local agentic orchestration is ready for formal sign-off. Monthly allocation increases to <strong>$4,200</strong> starting next Monday.</p>"
-                    "<p>We need your department head approval to release purchase orders and finalize procurement. Please reply confirming approval or specifying adjustments by end of day Wednesday.</p>"
+                    "<p>The revised cloud compute budget is ready for formal sign-off. "
+                    "Monthly allocation increases to <strong>$4,200</strong>.</p>"
+                    "<p>We need your department approval to release purchase orders.</p>"
                     "<hr style='border:none;border-top:1px solid #e2e8f0;margin:20px 0;'>"
-                    "<p style='color:#64748b;font-size:13px;'>Thanks,<br><strong style='color:#0f172a;'>Clara Finch</strong><br>Financial Controller</p>"
-                    "</div>",
+                    "<p style='color:#64748b;font-size:13px;'>Thanks,<br>"
+                    "<strong style='color:#0f172a;'>Clara Finch</strong><br>"
+                    "Financial Controller</p></div>",
                 ),
                 (
                     "msg-product-03",
                     "elena.rostova@techinnovate.io",
                     "Follow-up: Qwen2.5:3b Local LLM Benchmark Results & Next Steps",
-                    "Hi Tejas,\n\nWe completed latency benchmarking with the 3B parameter model on "
-                    "16GB non-GPU hardware. Execution speed averaged 32 tokens/second with under 4GB "
-                    "RAM utilization. Everything looks great for offline workstation deployment!\n\n"
-                    "When you have a moment, could you send over the updated API endpoints so we can "
-                    "test the UI integration?\n\nBest,\nElena Rostova",
+                    "Hi Tejas,\n\nWe completed latency benchmarking with the 3B model on "
+                    "16GB non-GPU hardware. Execution speed averaged 32 tokens/second with "
+                    "under 4GB RAM utilization. Everything looks great for offline deployment!\n\n"
+                    "Could you send over the updated API endpoints to test the UI?\n\n"
+                    "Best,\nElena Rostova",
                     "inbox",
                     "normal",
                     1,
-                    "<div style='font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;color:#1e293b;line-height:1.6;max-width:680px;'>"
+                    "<div style='font-family:sans-serif;color:#1e293b;line-height:1.6;'>"
                     "<p>Hi Tejas,</p>"
-                    "<p>We completed latency benchmarking with the 3B parameter model on 16GB non-GPU hardware. Execution speed averaged <strong>32 tokens/second</strong> with under 4GB RAM utilization. Everything looks great for offline workstation deployment!</p>"
-                    "<p>When you have a moment, could you send over the updated API endpoints so we can test the UI integration?</p>"
+                    "<p>We completed latency benchmarking on 16GB non-GPU hardware. "
+                    "Speed averaged <strong>32 tokens/second</strong>.</p>"
+                    "<p>Could you send over updated API endpoints?</p>"
                     "<hr style='border:none;border-top:1px solid #e2e8f0;margin:20px 0;'>"
-                    "<p style='color:#64748b;font-size:13px;'>Best,<br><strong style='color:#0f172a;'>Elena Rostova</strong></p>"
-                    "</div>",
+                    "<p style='color:#64748b;font-size:13px;'>Best,<br>"
+                    "<strong style='color:#0f172a;'>Elena Rostova</strong></p></div>",
                 ),
                 (
                     "msg-sec-04",
@@ -185,12 +189,12 @@ def _seed_demo_emails_if_empty(force: bool = False) -> None:
                     "inbox",
                     "low",
                     1,
-                    "<div style='font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;color:#1e293b;line-height:1.6;max-width:680px;'>"
-                    "<p>All engineering personnel are requested to review local sandbox workspace permissions before Friday.</p>"
-                    "<p>Verify that all CLI directories have strict read/write authorization gates and credential masking enabled.</p>"
+                    "<div style='font-family:sans-serif;color:#1e293b;line-height:1.6;'>"
+                    "<p>All engineering personnel are requested to review sandbox workspace "
+                    "permissions before Friday.</p>"
+                    "<p>Verify that CLI directories have authorization gates enabled.</p>"
                     "<hr style='border:none;border-top:1px solid #e2e8f0;margin:20px 0;'>"
-                    "<p style='color:#64748b;font-size:13px;'>Infosec Security Team</p>"
-                    "</div>",
+                    "<p style='color:#64748b;font-size:13px;'>Infosec Security Team</p></div>",
                 ),
             ]
             with conn:
@@ -198,7 +202,8 @@ def _seed_demo_emails_if_empty(force: bool = False) -> None:
                     conn.execute(
                         """
                         INSERT OR REPLACE INTO email_inbox
-                        (id, sender, subject, body, category, priority, is_read, raw_html, received_at)
+                        (id, sender, subject, body, category, priority,
+                         is_read, raw_html, received_at)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now', '-1 hours'))
                         """,
                         item,
@@ -311,14 +316,16 @@ def email_read(message_id: str = "latest") -> dict[str, Any]:
         if not message_id or str(message_id).lower().strip() in ("latest", "recent"):
             cur.execute(
                 """
-                SELECT id, sender, subject, body, received_at, category, priority, is_read, summary, raw_html
+                SELECT id, sender, subject, body, received_at, category,
+                       priority, is_read, summary, raw_html
                 FROM email_inbox ORDER BY received_at DESC LIMIT 1
                 """
             )
         else:
             cur.execute(
                 """
-                SELECT id, sender, subject, body, received_at, category, priority, is_read, summary, raw_html
+                SELECT id, sender, subject, body, received_at, category,
+                       priority, is_read, summary, raw_html
                 FROM email_inbox WHERE id = ?
                 """,
                 (message_id,),
@@ -388,7 +395,10 @@ def email_summarize(message_id: str) -> dict[str, Any]:
         # Cached summary check (ignore stale summaries corrupted by legal disclaimer boilerplate)
         if row["summary"] and len(row["summary"].strip()) > 10:
             cached_sum = row["summary"]
-            if not any(bad in cached_sum.lower() for bad in ["privileged information", "dissemination", "retransmission", "bmsit"]):
+            if not any(
+                bad in cached_sum.lower()
+                for bad in ["privileged information", "dissemination", "retransmission", "bmsit"]
+            ):
                 return {
                     "success": True,
                     "message_id": message_id,
@@ -420,32 +430,58 @@ def email_summarize(message_id: str) -> dict[str, Any]:
             summary_content = res.content.strip()
         except Exception:
             lines = [ln.strip() for ln in clean_body.split("\n") if ln.strip()]
-            
+
             # Avoid single greeting words like "Hi" as the whole executive summary
             meaningful_lines = [
-                ln for ln in lines
-                if len(ln.split()) > 2 and not ln.lower().startswith(("hi ", "hello ", "dear ", "hey "))
+                ln
+                for ln in lines
+                if len(ln.split()) > 2
+                and not ln.lower().startswith(("hi ", "hello ", "dear ", "hey "))
             ]
-            first_line = meaningful_lines[0] if meaningful_lines else (lines[0] if lines else f"Communication regarding {subject}.")
-            
+            first_line = (
+                meaningful_lines[0]
+                if meaningful_lines
+                else (lines[0] if lines else f"Communication regarding {subject}.")
+            )
+
             actions = [
                 ln
                 for ln in meaningful_lines
                 if any(
                     w in ln.lower()
-                    for w in ["please", "need", "confirm", "review", "approve", "call", "urgent", "test", "check"]
+                    for w in [
+                        "please",
+                        "need",
+                        "confirm",
+                        "review",
+                        "approve",
+                        "call",
+                        "urgent",
+                        "test",
+                        "check",
+                    ]
                 )
             ]
-            action_desc = actions[0] if actions else "None (Acknowledge receipt and follow up as needed)."
-            core_intent = lines[1] if len(lines) > 1 and lines[1] != first_line else (meaningful_lines[0] if meaningful_lines else "Information update")
-            
+            action_desc = (
+                actions[0] if actions else "None (Acknowledge receipt and follow up as needed)."
+            )
+            core_intent = (
+                lines[1]
+                if len(lines) > 1 and lines[1] != first_line
+                else (meaningful_lines[0] if meaningful_lines else "Information update")
+            )
+
+            is_high = any(
+                w in subject.lower()
+                for w in ["urgent", "hacked", "security alert", "critical"]
+            )
             summary_content = (
                 f"Executive Summary: {first_line}\n\n"
                 "Key Takeaways:\n"
                 f"- Message from {sender} concerning {subject}.\n"
                 f"- Core intent: {core_intent}.\n\n"
                 f"Action Items: {action_desc}\n"
-                f"Urgency Level: {'High' if any(w in subject.lower() for w in ['urgent', 'hacked', 'security alert', 'critical']) else 'Medium'}"
+                f"Urgency Level: {'High' if is_high else 'Medium'}"
             )
 
         with conn:
@@ -464,7 +500,7 @@ def email_summarize(message_id: str) -> dict[str, Any]:
 
 
 def _extract_display_name_and_email(sender_raw: str) -> tuple[str, str]:
-    """Extract a clean human display name and email address from an RFC header or raw email string."""
+    """Extract display name and email address from an RFC header or raw email."""
     if not sender_raw:
         return ("there", "")
 
@@ -473,8 +509,10 @@ def _extract_display_name_and_email(sender_raw: str) -> tuple[str, str]:
     email = match.group(1).strip() if match else ""
 
     if "<" in sender_clean:
-        display = sender_clean.split("<")[0].strip().strip('"\'')
-        display = re.sub(r"\b(CSE|ISE|ECE|EEE|MECH|CIVIL|AIML)-\d+\b", "", display, flags=re.IGNORECASE).strip()
+        display = sender_clean.split("<")[0].strip().strip("\"'")
+        display = re.sub(
+            r"\b(CSE|ISE|ECE|EEE|MECH|CIVIL|AIML)-\d+\b", "", display, flags=re.IGNORECASE
+        ).strip()
         display = re.sub(r"\s+", " ", display).strip()
         if display:
             return (display, email or sender_clean)
@@ -541,41 +579,51 @@ def email_generate_reply(
             if "decline" in tone.lower() or "decline" in instruction_lower:
                 body_message = (
                     f"Thank you for reaching out regarding {subject}.\n\n"
-                    "At this moment, we are unable to proceed with this request due to current commitments and scheduling constraints. "
+                    "At this moment, we are unable to proceed due to scheduling constraints. "
                     "We appreciate your understanding."
                 )
             elif "concise" in tone.lower():
                 if "acknowledge" in instruction_lower:
-                    body_message = "Thank you for the update. I acknowledge receipt of your message and will review it."
+                    body_message = (
+                        "Thank you for the update. I acknowledge receipt and will review it."
+                    )
                 elif "approve" in instruction_lower or "confirm" in instruction_lower:
-                    body_message = "Thank you for the details. This is confirmed and approved to proceed."
+                    body_message = (
+                        "Thank you for the details. This is confirmed and approved to proceed."
+                    )
                 elif "detail" in instruction_lower or "ask" in instruction_lower:
-                    body_message = "Thank you for reaching out. Could you please share more specific details or context?"
+                    body_message = (
+                        "Thank you for reaching out. Could you please share more specific details?"
+                    )
                 elif instruction:
                     body_message = instruction
                 else:
-                    body_message = f"Thank you for the update regarding {subject}. Noted and acknowledged."
+                    body_message = (
+                        f"Thank you for the update regarding {subject}. Noted and acknowledged."
+                    )
             else:
                 if "acknowledge" in instruction_lower:
                     body_message = (
-                        "Thank you for reaching out. I have acknowledged receipt of your message and will review the details. "
-                        "I will keep you updated if any further action is required."
+                        "Thank you for reaching out. I have acknowledged receipt of your message "
+                        "and will review the details. I will keep you updated on next steps."
                     )
                 elif "approve" in instruction_lower or "confirm" in instruction_lower:
                     body_message = (
-                        "Thank you for the detailed update. Everything looks good from my side, and this is confirmed to proceed."
+                        "Thank you for the update. Everything looks good from my side, "
+                        "and this is confirmed to proceed."
                     )
                 elif "detail" in instruction_lower or "ask" in instruction_lower:
                     body_message = (
-                        "Thank you for your message. Could you please provide additional details and context so we can best address this?"
+                        "Thank you for your message. Could you please provide additional "
+                        "details and context so we can address this?"
                     )
                 elif instruction:
-                    body_message = f"Thank you for the update regarding {subject}.\n\n{instruction}"
+                    body_message = f"Thank you for update regarding {subject}.\n\n{instruction}"
                 else:
                     body_message = (
                         f"Thank you for the update regarding {subject}.\n\n"
-                        "I have reviewed the information provided and am aligned with the next steps. "
-                        "Please let me know if you need anything further from my end."
+                        "I have reviewed the information provided and am aligned with next steps. "
+                        "Please let me know if you need anything further."
                     )
 
             closing = "Thanks,\nTejas" if "concise" in tone.lower() else "Best regards,\nTejas"
@@ -692,7 +740,10 @@ def _sync_imap_emails(account: dict[str, Any]) -> dict[str, Any]:
     if not password:
         return {
             "success": False,
-            "error": "No password or Google App Password provided for IMAP connection. Please re-link your account with your 16-character App Password.",
+            "error": (
+                "No password provided for IMAP. Please re-link with your "
+                "16-character Google App Password."
+            ),
         }
 
     try:
@@ -753,24 +804,38 @@ def _sync_imap_emails(account: dict[str, Any]) -> dict[str, Any]:
             text_for_category = (subject + " " + body).lower()
             category = "inbox"
             priority = "normal"
-            if any(k in text_for_category for k in ["urgent", "emergency", "critical", "incident", "asap"]):
+            if any(
+                k in text_for_category
+                for k in ["urgent", "emergency", "critical", "incident", "asap"]
+            ):
                 category = "urgent"
                 priority = "high"
-            elif any(k in text_for_category for k in ["action required", "action needed", "sign-off", "approval", "review required"]):
+            elif any(
+                k in text_for_category
+                for k in [
+                    "action required",
+                    "action needed",
+                    "sign-off",
+                    "approval",
+                    "review required",
+                ]
+            ):
                 category = "action"
                 priority = "high"
 
-            new_messages.append((
-                clean_id,
-                sender,
-                subject,
-                sanitized_body,
-                date_str,
-                category,
-                priority,
-                0,
-                sanitized_html,
-            ))
+            new_messages.append(
+                (
+                    clean_id,
+                    sender,
+                    subject,
+                    sanitized_body,
+                    date_str,
+                    category,
+                    priority,
+                    0,
+                    sanitized_html,
+                )
+            )
 
         mail.close()
         mail.logout()
@@ -785,7 +850,8 @@ def _sync_imap_emails(account: dict[str, Any]) -> dict[str, Any]:
                         conn.execute(
                             """
                             INSERT OR REPLACE INTO email_inbox
-                            (id, sender, subject, body, received_at, category, priority, is_read, raw_html)
+                            (id, sender, subject, body, received_at,
+                             category, priority, is_read, raw_html)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """,
                             msg,
@@ -800,10 +866,18 @@ def _sync_imap_emails(account: dict[str, Any]) -> dict[str, Any]:
         }
     except imaplib.IMAP4.error as err:
         err_msg = str(err)
-        if "AUTHENTICATIONFAILED" in err_msg or "Invalid credentials" in err_msg or "Application-specific password" in err_msg:
+        if (
+            "AUTHENTICATIONFAILED" in err_msg
+            or "Invalid credentials" in err_msg
+            or "Application-specific password" in err_msg
+        ):
             return {
                 "success": False,
-                "error": "IMAP Authentication Failed. For Gmail, Google requires a 16-character App Password (not your normal Google password). Ensure 2-Step Verification is active, generate an App Password at myaccount.google.com/apppasswords, and re-link.",
+                "error": (
+                    "IMAP Authentication Failed. Google requires a 16-character App Password. "
+                    "Enable 2-Step Verification, generate an App Password at "
+                    "myaccount.google.com/apppasswords, and re-link."
+                ),
             }
         return {"success": False, "error": f"IMAP Error: {err_msg}"}
     except Exception as exc:
@@ -830,7 +904,8 @@ def email_get_account() -> dict[str, Any]:
                 "connected": bool(row["is_connected"]),
                 "email": row["email"],
                 "account_type": row["account_type"],
-                "imap_host": row["imap_host"] or ("imap.gmail.com" if "@gmail.com" in row["email"] else "Local Gateway"),
+                "imap_host": row["imap_host"]
+                or ("imap.gmail.com" if "@gmail.com" in row["email"] else "Local Gateway"),
                 "last_synced": row["last_synced"],
                 "has_password": has_password,
             }
@@ -894,7 +969,8 @@ def email_link_account(
             conn.execute(
                 """
                 INSERT INTO email_accounts
-                (email, account_type, imap_host, imap_port, smtp_host, smtp_port, username, password, is_connected, last_synced)
+                (email, account_type, imap_host, imap_port, smtp_host,
+                 smtp_port, username, password, is_connected, last_synced)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
                 """,
                 (
@@ -929,7 +1005,8 @@ def email_sync() -> dict[str, Any]:
         cur = conn.cursor()
         cur.execute(
             """
-            SELECT email, account_type, imap_host, imap_port, smtp_host, smtp_port, username, password, is_connected
+            SELECT email, account_type, imap_host, imap_port, smtp_host,
+                   smtp_port, username, password, is_connected
             FROM email_accounts WHERE is_connected = 1 ORDER BY id DESC LIMIT 1
             """
         )
@@ -952,7 +1029,8 @@ def email_sync() -> dict[str, Any]:
 
         with conn:
             conn.execute(
-                "UPDATE email_accounts SET last_synced = ? WHERE id = (SELECT MAX(id) FROM email_accounts)",
+                "UPDATE email_accounts SET last_synced = ? "
+                "WHERE id = (SELECT MAX(id) FROM email_accounts)",
                 (now_str,),
             )
 
@@ -1036,7 +1114,9 @@ def email_send(
         acc = dict(row) if row else None
 
         if acc and acc.get("account_type") == "imap" and acc.get("password"):
-            smtp_host = acc.get("smtp_host") or ("smtp.gmail.com" if "@gmail.com" in acc.get("email", "") else "")
+            smtp_host = acc.get("smtp_host") or (
+                "smtp.gmail.com" if "@gmail.com" in acc.get("email", "") else ""
+            )
             smtp_port = int(acc.get("smtp_port") or 587)
             username = acc.get("username") or acc.get("email")
             password = acc.get("password")

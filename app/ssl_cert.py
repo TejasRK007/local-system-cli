@@ -11,9 +11,9 @@ It covers both 'localhost' and the detected LAN IP address.
 
 import datetime
 import ipaddress
-import os
 import socket
 from pathlib import Path
+from typing import Any
 
 CERT_DIR = Path(__file__).resolve().parent.parent / "ssl"
 CERT_FILE = CERT_DIR / "server.crt"
@@ -49,12 +49,14 @@ def generate_self_signed_cert(lan_ip: str) -> tuple[str, str]:
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 
     # Build certificate
-    subject = issuer = x509.Name([
-        x509.NameAttribute(NameOID.COMMON_NAME, "LocalAttendanceServer"),
-        x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Local Classroom System"),
-    ])
+    subject = issuer = x509.Name(
+        [
+            x509.NameAttribute(NameOID.COMMON_NAME, "LocalAttendanceServer"),
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Local Classroom System"),
+        ]
+    )
 
-    san_entries = [
+    san_entries: list[Any] = [
         x509.DNSName("localhost"),
     ]
     try:
@@ -87,11 +89,13 @@ def generate_self_signed_cert(lan_ip: str) -> tuple[str, str]:
 
     # Write key
     with open(KEY_FILE, "wb") as f:
-        f.write(key.private_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.TraditionalOpenSSL,
-            encryption_algorithm=serialization.NoEncryption(),
-        ))
+        f.write(
+            key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.TraditionalOpenSSL,
+                encryption_algorithm=serialization.NoEncryption(),
+            )
+        )
 
     # Write cert
     with open(CERT_FILE, "wb") as f:

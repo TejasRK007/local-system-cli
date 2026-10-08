@@ -161,7 +161,11 @@ def test_api_chat_check_mails() -> None:
 def test_api_chat_with_attachment() -> None:
     """Ensure /api/chat analyzes attached documents."""
     import base64
-    fake_txt = "Local Agentic System\nDeveloper handover roadmap from M1 to M10.\nPurpose and operating principle."
+
+    fake_txt = (
+        "Local Agentic System\nDeveloper handover roadmap from M1 to M10.\n"
+        "Purpose and operating principle."
+    )
     b64_content = base64.b64encode(fake_txt.encode("utf-8")).decode("utf-8")
     payload = {
         "message": "what is this",
@@ -183,6 +187,7 @@ def test_api_chat_with_attachment() -> None:
 def test_api_chat_morning_briefing() -> None:
     """Ensure /api/chat synthesizes an executive morning briefing without emojis."""
     import re
+
     response = client.post("/api/chat", json={"message": "Give me today's morning briefing"})
     assert response.status_code == 200
     data = response.json()
@@ -214,7 +219,7 @@ def test_api_email_read_raw_html() -> None:
 
 
 def test_api_chat_tasks_today() -> None:
-    """Ensure conversational queries about tasks for today return agenda and events without false workflow planning."""
+    """Ensure conversational queries about tasks for today return agenda and events."""
     response = client.post("/api/chat", json={"message": "hey, what are the tasks for today"})
     assert response.status_code == 200
     data = response.json()
@@ -226,13 +231,13 @@ def test_api_chat_tasks_today() -> None:
     assert "Action Items from Communications" in msg
     # Verify no emojis exist
     import re
+
     emoji_pattern = re.compile(r"[\U00010000-\U0010ffff\u2600-\u27bf]")
     assert not emoji_pattern.search(msg), f"Emojis found: {msg}"
 
 
-
 def test_api_attendance_workflow() -> None:
-    """Ensure attendance session creation, token rotation, checkin, validation, and CSV export work properly."""
+    """Ensure attendance session creation, rotation, checkin, validation, and CSV export work."""
     # 1. Start a session
     start_res = client.post(
         "/api/attendance/session/start",
@@ -355,7 +360,3 @@ def test_api_attendance_workflow() -> None:
     # 11. Active session is now null
     active_after = client.get("/api/attendance/session/active").json()
     assert active_after.get("active") is False
-
-
-
-

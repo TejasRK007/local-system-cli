@@ -189,10 +189,30 @@ def parse_calendar_event_request(text: str) -> dict[str, str]:
     # 1. Date parsing
     target_date = now.date()
     months = {
-        "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
-        "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12,
-        "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6, "jul": 7, "aug": 8,
-        "sep": 9, "sept": 9, "oct": 10, "nov": 11, "dec": 12,
+        "january": 1,
+        "february": 2,
+        "march": 3,
+        "april": 4,
+        "may": 5,
+        "june": 6,
+        "july": 7,
+        "august": 8,
+        "september": 9,
+        "october": 10,
+        "november": 11,
+        "december": 12,
+        "jan": 1,
+        "feb": 2,
+        "mar": 3,
+        "apr": 4,
+        "jun": 6,
+        "jul": 7,
+        "aug": 8,
+        "sep": 9,
+        "sept": 9,
+        "oct": 10,
+        "nov": 11,
+        "dec": 12,
     }
 
     month_keys = "|".join(sorted(months.keys(), key=len, reverse=True))
@@ -239,13 +259,23 @@ def parse_calendar_event_request(text: str) -> dict[str, str]:
     title = "Scheduled Event"
     m_title = re.search(r"\b(?:called|named|titled)\s+[\"']?([^\"'\n]+)[\"']?", text, re.IGNORECASE)
     if not m_title:
-        m_title = re.search(r"\b(?:meeting|event)\s+(?:with|for|about)\s+([a-zA-Z0-9_\s]+?)(?:\s+(?:on|at|tomorrow|today|\d)|$)", text, re.IGNORECASE)
+        pattern = (
+            r"\b(?:meeting|event)\s+(?:with|for|about)\s+"
+            r"([a-zA-Z0-9_\s]+?)(?:\s+(?:on|at|tomorrow|today|\d)|$)"
+        )
+        m_title = re.search(pattern, text, re.IGNORECASE)
     if not m_title:
-        m_title = re.search(r"\b(?:schedule|add|create)\s+([a-zA-Z0-9_\s]+?)(?:\s+(?:on|at|tomorrow|today|\d)|$)", text, re.IGNORECASE)
+        m_title = re.search(
+            r"\b(?:schedule|add|create)\s+([a-zA-Z0-9_\s]+?)(?:\s+(?:on|at|tomorrow|today|\d)|$)",
+            text,
+            re.IGNORECASE,
+        )
 
     if m_title and len(m_title.group(1).strip()) > 2:
         extracted = m_title.group(1).strip()
-        cleaned_cand = re.sub(r"^(?:one\s+more\s+|an?\s+|new\s+)", "", extracted, flags=re.I).strip()
+        cleaned_cand = re.sub(
+            r"^(?:one\s+more\s+|an?\s+|new\s+)", "", extracted, flags=re.I
+        ).strip()
         if cleaned_cand.lower() not in ["event", "meeting", "reminder", "appointment"]:
             title = cleaned_cand.title()
         elif "on" in text_lower:

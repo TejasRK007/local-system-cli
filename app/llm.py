@@ -27,7 +27,10 @@ class OllamaChatWrapper:
     ):
         self.model = model
         self.temperature = temperature
-        self.host = (host or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")).rstrip("/")
+        resolved_host = (
+            host if host is not None else os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        )
+        self.host = str(resolved_host or "http://localhost:11434").rstrip("/")
 
     def invoke(self, messages_or_prompt: Any) -> Any:
         """Invokes the Ollama model with messages or a prompt string via native REST API."""
@@ -35,7 +38,8 @@ class OllamaChatWrapper:
         import urllib.request
 
         system_persona = (
-            "You are a local, private AI Executive Assistant operating directly on the user's computer. "
+            "You are a local, private AI Executive Assistant "
+            "operating directly on the user's computer. "
             "You maintain complete offline privacy. Never use emojis. "
             "Be polite, professional, concise, and helpful."
         )
@@ -131,7 +135,11 @@ def is_ollama_online(host: Optional[str] = None) -> bool:
     """Checks whether the local Ollama daemon port is open and responsive."""
     import socket
     from urllib.parse import urlparse
-    h = (host or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")).rstrip("/")
+
+    resolved_host = (
+        host if host is not None else os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    )
+    h = str(resolved_host or "http://localhost:11434").rstrip("/")
     try:
         parsed = urlparse(h)
         hostname = parsed.hostname or "127.0.0.1"
@@ -140,3 +148,7 @@ def is_ollama_online(host: Optional[str] = None) -> bool:
             return True
     except OSError:
         return False
+
+
+get_chat_model = get_configured_llm
+LLMClient = OllamaChatWrapper

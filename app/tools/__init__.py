@@ -49,6 +49,7 @@ __all__ = [
     "email_generate_reply",
     "email_get_account",
     "email_link_account",
+    "email_mark_all_read",
     "email_sync",
     "calendar_list_events",
     "calendar_check_conflict",
