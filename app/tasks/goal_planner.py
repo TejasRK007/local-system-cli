@@ -30,22 +30,20 @@ def get_llm() -> Any:
     global llm
     if llm is not None:
         return llm
-    try:
-        from app.llm import get_configured_llm
-        llm = get_configured_llm()
-        return llm
-    except Exception:
-        api_key = os.getenv("GROQ_API_KEY")
-        if not api_key:
-            raise ValueError(
-                "Neither local Ollama nor GROQ_API_KEY is configured."
-            )
-        llm = ChatGroq(
-            model="openai/gpt-oss-20b",
-            api_key=api_key,  # type: ignore[arg-type]
-            temperature=0,
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        raise ValueError(
+            "GROQ_API_KEY environment variable is missing or empty. "
+            "Please set GROQ_API_KEY in your environment or .env file."
         )
-        return llm
+    from langchain_groq import ChatGroq
+
+    llm = ChatGroq(
+        model=os.getenv("GROQ_MODEL", "openai/gpt-oss-20b"),
+        api_key=api_key,  # type: ignore[arg-type]
+        temperature=0,
+    )
+    return llm
 
 
 @dataclass
