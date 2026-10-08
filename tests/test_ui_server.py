@@ -73,16 +73,26 @@ def test_api_chat_conversation() -> None:
     assert "message" in data
 
 
-def test_api_document_read_safe() -> None:
+def test_api_document_read_safe(tmp_path) -> None:
     """Ensure /api/docs/read endpoint correctly handles safe read."""
+    from app.workspaces import WorkspaceManager
+
+    ws_dir = tmp_path / "DocsWs"
+    ws_dir.mkdir(exist_ok=True)
+    WorkspaceManager.add_workspace(ws_dir, name="DocsWs", permissions=["READ"])
+
+    sample_doc = ws_dir / "sample.md"
+    sample_doc.write_text("# Test Document\n\nSafe read content.", encoding="utf-8")
+
     response = client.post(
         "/api/docs/read",
-        json={"path": "README.md", "max_chars": 4000},
+        json={"path": str(sample_doc), "max_chars": 4000},
     )
     assert response.status_code == 200
     data = response.json()
     assert data["success"] is True
     assert "content" in data
+    assert "Safe read content" in data["content"]
 
 
 def test_api_browser_fetch() -> None:
