@@ -155,6 +155,9 @@ class CalendarEventRequest(BaseModel):
     start_time: str
     end_time: str
     description: str = ""
+    sync_to_google: bool = False
+    calendar_id: Optional[str] = "primary"
+    access_token: Optional[str] = None
 
 
 class BrowserFetchRequest(BaseModel):
@@ -207,7 +210,7 @@ def get_status() -> Dict[str, Any]:
     model = (
         os.getenv("OLLAMA_MODEL", "qwen2.5:3b")
         if provider == "ollama"
-        else os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
+        else os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
     )
     lan_ip = get_local_ip()
     return {
@@ -229,6 +232,35 @@ def list_workspaces() -> List[Dict[str, Any]]:
     return [w.to_dict() for w in WorkspaceManager.list_workspaces()]
 
 
+@server_app.get("/api/workspaces/presets")
+def get_workspace_presets() -> Dict[str, Any]:
+    """Return common user directory presets with local paths."""
+    from pathlib import Path
+    home = Path.home()
+    return {
+        "downloads": {
+            "name": "Downloads",
+            "path": str(home / "Downloads"),
+            "exists": (home / "Downloads").exists(),
+        },
+        "documents": {
+            "name": "Documents",
+            "path": str(home / "Documents"),
+            "exists": (home / "Documents").exists(),
+        },
+        "desktop": {
+            "name": "Desktop",
+            "path": str(home / "Desktop"),
+            "exists": (home / "Desktop").exists(),
+        },
+        "project": {
+            "name": "Project Root",
+            "path": str(Path.cwd().resolve()),
+            "exists": True,
+        },
+    }
+
+
 @server_app.post("/api/workspaces")
 def add_workspace(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Add a new authorized workspace."""
@@ -242,6 +274,542 @@ def add_workspace(payload: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": True, "workspace": ws.to_dict()}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@server_app.delete("/api/workspaces/{workspace_id}")
+def delete_workspace(workspace_id: str) -> Dict[str, Any]:
+    """Unregister an authorized workspace."""
+    success = WorkspaceManager.remove_workspace(workspace_id)
+    if not success:
+        ws = WorkspaceManager.get_workspace_by_name(workspace_id)
+        if ws:
+            success = WorkspaceManager.remove_workspace(ws.workspace_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    return {"success": True, "workspace_id": workspace_id}
+
+
+@server_app.patch("/api/workspaces/{workspace_id}/toggle")
+def toggle_workspace(workspace_id: str) -> Dict[str, Any]:
+    """Toggle workspace enabled/disabled."""
+    ws = WorkspaceManager.get_workspace(workspace_id)
+    if not ws:
+        ws = WorkspaceManager.get_workspace_by_name(workspace_id)
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    if ws.enabled:
+        WorkspaceManager.disable_workspace(ws.workspace_id)
+    else:
+        WorkspaceManager.enable_workspace(ws.workspace_id)
+    updated = WorkspaceManager.get_workspace(ws.workspace_id)
+    return {"success": True, "workspace": updated.to_dict() if updated else {}}
+
+
+@server_app.get("/api/system/access_mode")
+def get_system_access_mode() -> Dict[str, Any]:
+    """Inspect whether All Files mode or Sandboxed Workspaces mode is active."""
+    all_files = WorkspaceManager.is_all_files_mode()
+    return {
+        "all_files_mode": all_files,
+        "mode_label": "All Files Access" if all_files else "Sandboxed Workspaces",
+    }
+
+
+@server_app.post("/api/system/access_mode")
+def set_system_access_mode(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Dynamically toggle All Files access mode."""
+    enable = bool(payload.get("all_files_mode", True))
+    WorkspaceManager.set_all_files_mode(enable)
+    return {
+        "success": True,
+        "all_files_mode": WorkspaceManager.is_all_files_mode(),
+        "mode_label": (
+            "All Files Access"
+            if WorkspaceManager.is_all_files_mode()
+            else "Sandboxed Workspaces"
+        ),
+    }
+
+
+@server_app.get("/api/llm/status")
+def api_llm_status() -> Dict[str, Any]:
+    """Return real-time status of local Ollama and Groq cloud configurations."""
+    from app.llm import is_ollama_online
+    ollama_ok = is_ollama_online()
+    groq_key = os.getenv("GROQ_API_KEY", "").strip()
+    provider = os.getenv("LLM_PROVIDER", "ollama").lower()
+    model_name = os.getenv("OLLAMA_MODEL", "qwen2.5:3b")
+
+    models: list[str] = []
+    if ollama_ok:
+        try:
+            import json
+            import urllib.request
+            req = urllib.request.Request("http://127.0.0.1:11434/api/tags")
+            with urllib.request.urlopen(req, timeout=2) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                models = [m.get("name") for m in data.get("models", [])]
+        except Exception:
+            pass
+
+    is_available = ollama_ok if provider == "ollama" else bool(groq_key)
+    return {
+        "provider": provider,
+        "ollama_online": ollama_ok,
+        "ollama_model": model_name,
+        "ollama_models_installed": models,
+        "groq_configured": bool(groq_key),
+        "groq_model": os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+        "groq_key_preview": f"{groq_key[:6]}...{groq_key[-4:]}" if len(groq_key) > 10 else "",
+        "llm_available": is_available,
+    }
+
+
+def fetch_groq_models(api_key: str) -> list[str]:
+    """Fetch active chat models from Groq using provided API key."""
+    import groq
+
+    client = groq.Client(api_key=api_key.strip(), timeout=10.0)
+    data = client.models.list().data
+    ids = [m.id for m in data if hasattr(m, "id")]
+    # Filter for chat/completion models, excluding whisper/guard/embedding models
+    non_chat = ("whisper", "guard", "embedding", "moderation", "tts", "stt")
+    chat_models = [mid for mid in ids if not any(k in mid.lower() for k in non_chat)]
+    return chat_models if chat_models else ids
+
+
+@server_app.post("/api/llm/groq/models")
+def api_groq_models(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Fetch list of accessible models directly from Groq for the given API key."""
+    groq_key = str(payload.get("groq_api_key") or os.getenv("GROQ_API_KEY", "") or "").strip()
+    if not groq_key:
+        return {"success": False, "error": "Groq API key is required."}
+    try:
+        models = fetch_groq_models(groq_key)
+        return {"success": True, "models": models}
+    except Exception as e:
+        err_msg = str(e)
+        if "401" in err_msg or "invalid_api_key" in err_msg.lower():
+            return {"success": False, "error": "Invalid Groq API key. Check console.groq.com."}
+        return {"success": False, "error": f"Failed to fetch Groq models: {err_msg}"}
+
+
+@server_app.post("/api/llm/config")
+def api_llm_config(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Configure active LLM provider (Ollama or Groq) and update credentials."""
+    provider = payload.get("provider", "").lower().strip()
+    groq_key = payload.get("groq_api_key")
+    groq_model = payload.get("groq_model")
+    ollama_model = payload.get("ollama_model")
+
+    env_path = Path(".env")
+    env_lines = env_path.read_text(encoding="utf-8").splitlines() if env_path.exists() else []
+
+    def _set_env_key(key: str, val: str) -> list[str]:
+        os.environ[key] = val
+        found = False
+        new_lines = []
+        for line in env_lines:
+            if line.startswith(f"{key}=") or line.startswith(f"{key} ="):
+                new_lines.append(f"{key}={val}")
+                found = True
+            else:
+                new_lines.append(line)
+        if not found:
+            new_lines.append(f"{key}={val}")
+        return new_lines
+
+    active_groq_model = None
+    if groq_key is not None:
+        groq_clean = groq_key.strip()
+        if groq_clean:
+            import groq
+
+            try:
+                client = groq.Client(api_key=groq_clean, timeout=10.0)
+                available = fetch_groq_models(groq_clean)
+            except Exception as e:
+                err_msg = str(e)
+                if "401" in err_msg or "invalid_api_key" in err_msg.lower():
+                    clean_err = "Invalid Groq API key. Please check your key from console.groq.com."
+                else:
+                    clean_err = f"Groq authentication error: {err_msg}"
+                return {"success": False, "error": clean_err}
+
+            def _model_priority(name: str) -> int:
+                n = name.lower()
+                if "qwen" in n:
+                    return 1
+                if "gpt-oss" in n:
+                    return 2
+                if "llama" in n:
+                    return 3
+                if "english" in n:
+                    return 4
+                if "allam" in n or "arabic" in n:
+                    return 10
+                return 5
+
+            available.sort(key=_model_priority)
+            req_model = (groq_model or "").strip()
+            target_model = (
+                req_model
+                if req_model
+                else (available[0] if available else "qwen/qwen3.8-27b")
+            )
+
+            # Try requested model, and fallback to any available model from the account
+            candidates = [target_model] + [m for m in available if m != target_model]
+            working_model = None
+            last_err = ""
+
+            for candidate in candidates:
+                try:
+                    client.chat.completions.create(
+                        model=candidate,
+                        messages=[{"role": "user", "content": "hi"}],
+                        max_tokens=3,
+                    )
+                    working_model = candidate
+                    break
+                except Exception as ex:
+                    last_err = str(ex)
+                    continue
+
+            if not working_model:
+                return {
+                    "success": False,
+                    "error": f"Groq test invocation failed for '{target_model}': {last_err}",
+                    "available_models": available,
+                }
+
+            active_groq_model = working_model
+            env_lines = _set_env_key("GROQ_API_KEY", groq_clean)
+            env_lines = _set_env_key("GROQ_MODEL", working_model)
+    elif groq_model:
+        env_lines = _set_env_key("GROQ_MODEL", groq_model.strip())
+
+    if ollama_model:
+        env_lines = _set_env_key("OLLAMA_MODEL", ollama_model.strip())
+
+    if "cpu_mode" in payload:
+        cpu_m = bool(payload["cpu_mode"])
+        env_lines = _set_env_key("OLLAMA_CPU_MODE", "1" if cpu_m else "0")
+        if cpu_m:
+            os.environ["OLLAMA_GPU_OVERHEAD"] = "0"
+            os.environ["CUDA_VISIBLE_DEVICES"] = ""
+        else:
+            os.environ.pop("OLLAMA_GPU_OVERHEAD", None)
+            os.environ.pop("CUDA_VISIBLE_DEVICES", None)
+
+    if provider in ("ollama", "groq"):
+        env_lines = _set_env_key("LLM_PROVIDER", provider)
+
+    env_path.write_text("\n".join(env_lines) + "\n", encoding="utf-8")
+
+    from app.llm import is_ollama_online
+
+    active_prov = os.getenv("LLM_PROVIDER", "ollama")
+    is_avail = is_ollama_online() if active_prov == "ollama" else bool(os.getenv("GROQ_API_KEY"))
+
+    msg = f"LLM provider updated to {active_prov}."
+    if active_groq_model:
+        msg = f"Connected to Groq using model: {active_groq_model}."
+
+    model_key = "GROQ_MODEL" if active_prov == "groq" else "OLLAMA_MODEL"
+    return {
+        "success": True,
+        "provider": active_prov,
+        "model": active_groq_model or os.getenv(model_key),
+        "llm_available": is_avail,
+        "message": msg,
+    }
+
+
+@server_app.post("/api/llm/start_ollama")
+def api_start_ollama(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """
+    Attempt to launch the local Ollama background server if installed.
+
+    Accepts optional JSON body:
+      { "cpu_mode": true }   — forces CPU-only by setting OLLAMA_GPU_OVERHEAD=0
+                               and CUDA_VISIBLE_DEVICES="" before launching.
+    """
+    import shutil
+    import subprocess
+    import time
+
+    from app.llm import is_ollama_online
+
+    if payload is None:
+        payload = {}
+
+    cpu_mode = bool(payload.get("cpu_mode", False))
+
+    if is_ollama_online():
+        return {
+            "success": True,
+            "message": "Ollama is already online and listening on port 11434.",
+            "cpu_mode": cpu_mode,
+        }
+
+    ollama_path = shutil.which("ollama") or ""
+    if not ollama_path:
+        import platform as _platform
+        _sys = _platform.system()
+        if _sys == "Windows":
+            _local = os.environ.get("LOCALAPPDATA", "")
+            _candidate = os.path.join(_local, "Programs", "Ollama", "ollama.exe") if _local else ""
+            ollama_path = _candidate if _candidate and Path(_candidate).exists() else ""
+        elif _sys == "Darwin":
+            _candidate = "/Applications/Ollama.app/Contents/Resources/ollama"
+            ollama_path = _candidate if Path(_candidate).exists() else ""
+        else:
+            ollama_path = "/usr/local/bin/ollama" if Path("/usr/local/bin/ollama").exists() else ""
+    if not ollama_path or not Path(ollama_path).exists():
+        return {
+            "success": False,
+            "error": "Ollama executable not found. Please install from ollama.com.",
+        }
+
+    try:
+        env = os.environ.copy()
+        if cpu_mode:
+            # Force CPU-only: disable GPU overhead and hide CUDA/ROCm devices
+            env["OLLAMA_GPU_OVERHEAD"] = "0"
+            env["CUDA_VISIBLE_DEVICES"] = ""
+            env["HIP_VISIBLE_DEVICES"] = ""
+            env["ROCR_VISIBLE_DEVICES"] = ""
+            # Also persist these to the .env file so subsequent launches use CPU
+            env_path = Path(".env")
+            env_lines = (
+                env_path.read_text(encoding="utf-8").splitlines()
+                if env_path.exists()
+                else []
+            )
+
+            def _set_or_update(lines: list, key: str, val: str) -> list:
+                found = False
+                result = []
+                for line in lines:
+                    if line.startswith(f"{key}=") or line.startswith(f"{key} ="):
+                        result.append(f"{key}={val}")
+                        found = True
+                    else:
+                        result.append(line)
+                if not found:
+                    result.append(f"{key}={val}")
+                return result
+
+            env_lines = _set_or_update(env_lines, "OLLAMA_GPU_OVERHEAD", "0")
+            env_lines = _set_or_update(env_lines, "CUDA_VISIBLE_DEVICES", "")
+            env_lines = _set_or_update(env_lines, "HIP_VISIBLE_DEVICES", "")
+            env_lines = _set_or_update(env_lines, "ROCR_VISIBLE_DEVICES", "")
+            env_path.write_text("\n".join(env_lines) + "\n", encoding="utf-8")
+            # Also set in current process env
+            os.environ["OLLAMA_GPU_OVERHEAD"] = "0"
+            os.environ["CUDA_VISIBLE_DEVICES"] = ""
+            os.environ["HIP_VISIBLE_DEVICES"] = ""
+            os.environ["ROCR_VISIBLE_DEVICES"] = ""
+
+        subprocess.Popen(
+            [ollama_path, "serve"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env=env,
+        )
+        # Give it up to 5 seconds to come online
+        for _ in range(5):
+            time.sleep(1)
+            if is_ollama_online():
+                mode_label = "CPU-only mode" if cpu_mode else "GPU-accelerated mode"
+                return {
+                    "success": True,
+                    "message": f"Ollama started successfully in {mode_label}.",
+                    "cpu_mode": cpu_mode,
+                }
+
+        return {
+            "success": False,
+            "message": (
+                "Ollama launched but is still starting up. Wait a few seconds and try again."
+            ),
+            "cpu_mode": cpu_mode,
+        }
+    except Exception as e:
+        return {"success": False, "error": f"Failed to start Ollama: {e}"}
+
+
+_GPU_STATUS_CACHE: Optional[Dict[str, Any]] = None
+
+
+@server_app.get("/api/llm/gpu_status")
+def api_gpu_status(force: bool = False) -> Dict[str, Any]:
+    """
+    Detect whether a GPU suitable for LLM inference is available.
+
+    Detection order:
+      1. Apple Silicon (arm64 Darwin) - always Metal-capable, treated as gpu_available=True
+      2. nvidia-smi (NVIDIA, all platforms)
+      3. rocm-smi (AMD ROCm, Linux)
+      4. WMI via PowerShell (Windows fallback)
+      5. lspci (Linux fallback when no driver tools found)
+    Intel integrated graphics are treated as cpu-only.
+    """
+    global _GPU_STATUS_CACHE
+    forced_cpu = (
+        os.getenv("OLLAMA_CPU_MODE", "0") == "1"
+        or os.getenv("OLLAMA_GPU_OVERHEAD", "") == "0"
+    )
+    if _GPU_STATUS_CACHE is not None and not force:
+        cached = dict(_GPU_STATUS_CACHE)
+        cached["forced_cpu_mode"] = forced_cpu
+        return cached
+    import platform
+    import subprocess
+
+    gpu_available = False
+    gpu_name = ""
+    gpu_type = "none"
+    _sys = platform.system()
+
+    # 1. Apple Silicon: arm64 Darwin always has Metal GPU support in Ollama
+    if _sys == "Darwin" and platform.machine() == "arm64":
+        try:
+            result = subprocess.run(
+                ["system_profiler", "SPHardwareDataType"],
+                capture_output=True, text=True, timeout=5
+            )
+            chip = ""
+            for line in result.stdout.splitlines():
+                if "Chip" in line or "Processor" in line:
+                    chip = line.split(":")[-1].strip()
+                    break
+            gpu_name = chip if chip else "Apple Silicon"
+        except Exception:
+            gpu_name = "Apple Silicon"
+        gpu_available = True
+        gpu_type = "apple_metal"
+
+    # 2. NVIDIA via nvidia-smi (works on Linux, Windows, occasionally Mac with eGPU)
+    if not gpu_available:
+        try:
+            result = subprocess.run(
+                ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+                capture_output=True, text=True, timeout=3
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                gpu_name = result.stdout.strip().splitlines()[0].strip()
+                gpu_available = True
+                gpu_type = "nvidia"
+        except Exception:
+            pass
+
+    # 3. AMD via rocm-smi (Linux)
+    if not gpu_available:
+        try:
+            result = subprocess.run(
+                ["rocm-smi", "--showproductname"],
+                capture_output=True, text=True, timeout=3
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                for line in result.stdout.splitlines():
+                    if "GPU" in line.upper() and ":" in line:
+                        gpu_name = line.split(":")[-1].strip()
+                        break
+                gpu_name = gpu_name or "AMD GPU (ROCm)"
+                gpu_available = True
+                gpu_type = "amd"
+        except Exception:
+            pass
+
+    # 4. Windows WMI via PowerShell
+    if not gpu_available and _sys == "Windows":
+        try:
+            cmd = (
+                "(Get-CimInstance Win32_VideoController | "
+                "Select-Object -ExpandProperty Name) -join ','"
+            )
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-Command", cmd],
+                capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0:
+                names = [n.strip() for n in result.stdout.strip().split(",") if n.strip()]
+                for name in names:
+                    n_lower = name.lower()
+                    nvidia_keys = ("nvidia", "geforce", "quadro", "tesla", "rtx", "gtx")
+                    intel_keys = ("iris", "uhd", "hd graphics", "arc")
+                    if any(k in n_lower for k in nvidia_keys):
+                        gpu_name = name
+                        gpu_available = True
+                        gpu_type = "nvidia"
+                        break
+                    elif any(k in n_lower for k in ("amd", "radeon", "rx ")):
+                        gpu_name = name
+                        gpu_available = True
+                        gpu_type = "amd"
+                        break
+                    elif "intel" in n_lower and any(k in n_lower for k in intel_keys):
+                        # Intel Arc is discrete and capable; Iris/UHD is integrated
+                        if "arc" in n_lower:
+                            gpu_name = name
+                            gpu_available = True
+                            gpu_type = "intel_arc"
+                            break
+                        else:
+                            gpu_name = gpu_name or name
+                            gpu_type = "intel_integrated"
+                if not gpu_name and names:
+                    gpu_name = names[0]
+        except Exception:
+            pass
+
+    # 5. Linux fallback: lspci
+    if not gpu_available and _sys == "Linux":
+        try:
+            result = subprocess.run(
+                ["lspci"],
+                capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0:
+                for line in result.stdout.splitlines():
+                    l_lower = line.lower()
+                    if "vga" in l_lower or "3d controller" in l_lower or "display" in l_lower:
+                        device = line.split(":")[-1].strip() if ":" in line else line.strip()
+                        if any(k in l_lower for k in ("nvidia",)):
+                            gpu_name = device
+                            gpu_available = True
+                            gpu_type = "nvidia"
+                            break
+                        elif any(k in l_lower for k in ("amd", "radeon")):
+                            gpu_name = device
+                            gpu_available = True
+                            gpu_type = "amd"
+                            break
+                        elif "intel" in l_lower:
+                            gpu_name = gpu_name or device
+                            gpu_type = "intel_integrated"
+        except Exception:
+            pass
+
+    forced_cpu = os.getenv("OLLAMA_GPU_OVERHEAD", "") == "0"
+
+    res = {
+        "gpu_available": gpu_available,
+        "gpu_name": gpu_name or "Unknown",
+        "gpu_type": gpu_type,
+        "platform": _sys,
+        "forced_cpu_mode": forced_cpu,
+        "recommend_cpu_mode": not gpu_available,
+        "recommendation": (
+            f"GPU detected: {gpu_name} ({gpu_type}). GPU-accelerated inference available."
+            if gpu_available
+            else f"No capable GPU detected ({gpu_name or 'none'}). CPU mode recommended."
+        ),
+    }
+    _GPU_STATUS_CACHE = res
+    return res
 
 
 @server_app.get("/api/audit")
@@ -1198,6 +1766,9 @@ def handle_chat_message(req: ChatRequest) -> Dict[str, Any]:
         "backup",
         "find",
         "search",
+        "list",
+        "show",
+        "locate",
     ]
     is_action = any(k in msg_lower for k in planning_keywords) and not is_today_tasks_query
 
@@ -1230,42 +1801,99 @@ def handle_chat_message(req: ChatRequest) -> Dict[str, Any]:
                     f"(Risk: {risk_lvl}), explicit human approval is required before execution."
                 )
             else:
-                is_search_intent = any(
-                    w in msg_lower for w in ["find", "search", "list", "locate", "show"]
-                ) and any(
-                    f in msg_lower
-                    for f in [
-                        "file",
-                        "files",
-                        "pdf",
-                        "pdfs",
-                        "doc",
-                        "docs",
-                        "txt",
-                        "folder",
-                        "folders",
-                    ]
+                search_triggers = (
+                    "find", "search", "list", "locate", "show",
+                    "what is in", "whats in", "view", "display",
                 )
+                search_targets = (
+                    "file", "files", "fils", "fls", "pdf", "pdfs",
+                    "doc", "docs", "txt", "folder", "folders",
+                    "download", "desktop", "document", "directory",
+                    "item", "items",
+                )
+                is_search_intent = (
+                    any(w in msg_lower for w in search_triggers)
+                    and any(f in msg_lower for f in search_targets)
+                ) or any(s.get("action") == "search" for s in plan.steps)
                 if is_search_intent:
                     if plan.discovered_files:
                         lines = [
                             f"**Discovered Files ({len(plan.discovered_files)} matching found):**\n"
                         ]
-                        for idx, f in enumerate(plan.discovered_files, 1):
+                        max_to_show = 30
+                        for idx, f in enumerate(plan.discovered_files[:max_to_show], 1):
                             p_str = f.get("path", "")
                             p_name = Path(p_str).name
                             size_kb = round(f.get("size", 0) / 1024, 1)
                             lines.append(f"{idx}. **{p_name}** ({size_kb} KB) — `{p_str}`")
+                        if len(plan.discovered_files) > max_to_show:
+                            rem = len(plan.discovered_files) - max_to_show
+                            lines.append(f"\n*...and {rem} more files.*")
                         msg_text = "\n".join(lines)
                     else:
                         ws_names = ", ".join(
                             [f"`{w.name}`" for w in WorkspaceManager.list_workspaces()]
                         )
-                        msg_text = (
-                            f"No matching files found across workspaces ({ws_names or 'None'}).\n\n"
-                            "Antigravity enforces directory-gated safety. To search other folders, "
-                            "please register the target folder in **Workspaces** with Read access."
-                        )
+                        # Check if user was asking about a common standard folder
+                        standard_folder = None
+                        if "download" in msg_lower:
+                            standard_folder = "Downloads"
+                        elif "desktop" in msg_lower:
+                            standard_folder = "Desktop"
+                        elif "document" in msg_lower:
+                            standard_folder = "Documents"
+
+                        if standard_folder:
+                            standard_path = Path.home() / standard_folder
+                            if WorkspaceManager.is_all_files_mode() and standard_path.exists():
+                                found_items = []
+                                try:
+                                    for entry in standard_path.iterdir():
+                                        if not entry.name.startswith("."):
+                                            found_items.append(entry)
+                                except Exception:
+                                    pass
+                                if found_items:
+                                    item_cnt = len(found_items)
+                                    hdr = (
+                                        f"**Files in {standard_folder} "
+                                        f"({item_cnt} items found):**\n"
+                                    )
+                                    lines = [hdr]
+                                    for idx, p in enumerate(
+                                        sorted(found_items, key=lambda x: x.name)[:30], 1
+                                    ):
+                                        sz = round(p.stat().st_size / 1024, 1) if p.is_file() else 0
+                                        sz_str = f"({sz} KB)" if p.is_file() else "[Folder]"
+                                        lines.append(f"{idx}. **{p.name}** {sz_str} — `{p}`")
+                                    msg_text = "\n".join(lines)
+                                else:
+                                    msg_text = (
+                                        f"The **{standard_folder}** directory "
+                                        f"(`{standard_path}`) is currently empty."
+                                    )
+                            elif not any(
+                                w.name.lower() == standard_folder.lower()
+                                for w in WorkspaceManager.list_workspaces()
+                            ):
+                                msg_text = (
+                                    f"The **{standard_folder}** folder (`{standard_path}`) "
+                                    "is not yet registered in your authorized workspaces.\n\n"
+                                    "Security Policy: The agent is restricted to authorized "
+                                    "directories only.\n\n"
+                                    "To authorize it, open the **Workspaces** tab and click "
+                                    f"the **{standard_folder}** quick preset to grant "
+                                    "`READ` permission."
+                                )
+                            else:
+                                msg_text = f"No matching files found in **{standard_folder}**."
+                        else:
+                            ws_label = ws_names or "None"
+                            msg_text = (
+                                f"No matching files found across workspaces ({ws_label}).\n\n"
+                                "To search a specific folder, mention it by name "
+                                "(e.g. 'list files in downloads')."
+                            )
                 elif (
                     any(s.get("action") == "email_search" for s in plan.steps)
                     and len(plan.steps) == 1
@@ -1339,6 +1967,7 @@ def handle_chat_message(req: ChatRequest) -> Dict[str, Any]:
     except Exception:
         pass
 
+    llm_error_reason = None
     if llm_enabled:
         try:
             from app.llm import get_configured_llm
@@ -1357,8 +1986,32 @@ def handle_chat_message(req: ChatRequest) -> Dict[str, Any]:
                     "type": "conversation",
                     "message": content_clean,
                 }
-        except Exception:
-            pass
+        except Exception as e:
+            llm_error_reason = str(e)
+
+    # If LLM was enabled but was offline or failed:
+    if llm_enabled:
+        from app.llm import is_ollama_online
+        provider = os.getenv("LLM_PROVIDER", "ollama").lower()
+        err_msg = llm_error_reason or (
+            "Local Ollama is not responding on port 11434."
+            if provider == "ollama" and not is_ollama_online()
+            else "LLM service is currently unavailable."
+        )
+        return {
+            "success": True,
+            "type": "conversation",
+            "message": (
+                "**LLM is not available.**\n\n"
+                f"- Diagnosis: {err_msg}\n\n"
+                "**How to enable:**\n"
+                "1. **Cloud Fast Inference**: Click the **LLM On/Off** button in the header "
+                "and enter your **Groq API Key** (from `console.groq.com`).\n"
+                "2. **Local Private Model**: Open a terminal and run `ollama serve`, "
+                "then `ollama pull qwen2.5:3b`.\n\n"
+                "You can also toggle the LLM switch OFF to run in instant offline rule mode."
+            ),
+        }
 
     import datetime
 
@@ -1546,12 +2199,32 @@ def api_calendar_events() -> Dict[str, Any]:
 
 @server_app.post("/api/calendar/create")
 def api_calendar_create(req: CalendarEventRequest) -> Dict[str, Any]:
+    if req.sync_to_google:
+        from app.tools.calendar_tools import calendar_create_google_event
+        return calendar_create_google_event(
+            req.title,
+            req.start_time,
+            req.end_time,
+            req.description,
+            calendar_id=req.calendar_id or "primary",
+            access_token=req.access_token,
+        )
     return calendar_create_event(req.title, req.start_time, req.end_time, req.description)
 
 
 @server_app.delete("/api/calendar/events/{event_id}")
 def api_calendar_delete(event_id: int) -> Dict[str, Any]:
     return calendar_delete_event(event_id)
+
+
+@server_app.post("/api/calendar/google/sync")
+def api_calendar_google_sync(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Sync events from Google Calendar (REST API or iCal feed)."""
+    from app.tools.calendar_tools import calendar_sync_google
+    cal_id = payload.get("calendar_id_or_url") or payload.get("calendar_id") or "primary"
+    api_key = payload.get("api_key")
+    token = payload.get("access_token")
+    return calendar_sync_google(cal_id, api_key=api_key, access_token=token)
 
 
 @server_app.get("/api/github/issues")

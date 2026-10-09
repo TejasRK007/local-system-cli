@@ -370,3 +370,117 @@ def test_api_attendance_workflow() -> None:
     # 11. Active session is now null
     active_after = client.get("/api/attendance/session/active").json()
     assert active_after.get("active") is False
+
+
+def test_api_workspace_presets_and_management(tmp_path):
+    # Presets
+    presets_res = client.get("/api/workspaces/presets")
+    assert presets_res.status_code == 200
+    data = presets_res.json()
+    assert "downloads" in data
+    assert "documents" in data
+    assert "desktop" in data
+    assert "project" in data
+
+    # Add workspace
+    custom_ws = tmp_path / "MySpecialWs"
+    custom_ws.mkdir()
+    add_res = client.post(
+        "/api/workspaces",
+        json={"name": "MySpecialWs", "path": str(custom_ws), "permissions": ["READ", "WRITE"]},
+    )
+    assert add_res.status_code == 200
+    ws_obj = add_res.json()["workspace"]
+    ws_id = ws_obj["workspace_id"]
+
+    # Toggle workspace
+    toggle_res = client.patch(f"/api/workspaces/{ws_id}/toggle")
+    assert toggle_res.status_code == 200
+    assert toggle_res.json()["workspace"]["enabled"] is False
+
+    # Delete workspace
+    del_res = client.delete(f"/api/workspaces/{ws_id}")
+    assert del_res.status_code == 200
+    assert del_res.json()["success"] is True
+
+
+def test_api_google_calendar_sync():
+    from unittest.mock import MagicMock, patch
+
+    ics_content = (
+        "BEGIN:VCALENDAR\n"
+        "BEGIN:VEVENT\n"
+        "SUMMARY:Executive Review\n"
+        "DTSTART:20261015T110000Z\n"
+        "DTEND:20261015T120000Z\n"
+        "DESCRIPTION:Quarterly goals\n"
+        "END:VEVENT\n"
+        "END:VCALENDAR"
+    )
+    mock_resp = MagicMock()
+    mock_resp.read.return_value = ics_content.encode("utf-8")
+    mock_resp.__enter__.return_value = mock_resp
+
+    with patch("urllib.request.urlopen", return_value=mock_resp):
+        res = client.post(
+            "/api/calendar/google/sync",
+            json={"calendar_id_or_url": "https://calendar.google.com/calendar/ical/test/basic.ics"},
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["success"] is True
+        assert data["synced_count"] == 1
+        assert data["events"][0]["title"] == "Executive Review"
+
+
+def test_unregistered_workspace_chat_guidance():
+    # Ensure sandbox isolation is active for this test
+    client.post("/api/system/access_mode", json={"all_files_mode": False})
+    res = client.post(
+        "/api/chat",
+        json={"message": "list the files in downloads", "llm_enabled": False},
+    )
+    assert res.status_code == 200
+    msg = res.json().get("message", "")
+    assert "Downloads" in msg
+    assert "Workspaces tab" in msg or "authorized" in msg
+
+
+def test_all_files_access_mode_toggle_and_direct_listing():
+    res = client.post("/api/system/access_mode", json={"all_files_mode": True})
+    assert res.status_code == 200
+    assert res.json()["all_files_mode"] is True
+
+    res_get = client.get("/api/system/access_mode")
+    assert res_get.status_code == 200
+    assert res_get.json()["all_files_mode"] is True
+
+    # In all files mode, asking for downloads directly inspects the directory
+    res_chat = client.post(
+        "/api/chat",
+        json={"message": "list the files in downloads", "llm_enabled": False},
+    )
+    assert res_chat.status_code == 200
+    msg = res_chat.json().get("message", "")
+    assert "Downloads" in msg
+
+    # Reset state to default for other test modules
+    from app.workspaces import WorkspaceManager
+    WorkspaceManager.reset_all_files_mode()
+
+
+def test_llm_status_and_config_endpoints():
+    res = client.get("/api/llm/status")
+    assert res.status_code == 200
+    data = res.json()
+    assert "provider" in data
+    assert "ollama_online" in data
+    assert "llm_available" in data
+
+    # Test config update
+    cfg_res = client.post(
+        "/api/llm/config",
+        json={"provider": "ollama", "ollama_model": "qwen2.5:3b"},
+    )
+    assert cfg_res.status_code == 200
+    assert cfg_res.json()["success"] is True

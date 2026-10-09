@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/index.css?v=25">
+  <link rel="stylesheet" href="/static/index.css?v=28">
 </head>
 <body>
   <div class="layout-container">
@@ -237,14 +237,20 @@
         </div>
 
         <div class="top-right-actions">
-          <!-- Top Row LLM Engine Toggle Switch -->
-          <div class="header-llm-toggle-wrap" id="header-llm-toggle-wrap" title="Toggle local LLM inference on or off. When OFF, the assistant runs in instant 100% offline rule mode.">
+          <!-- Top Row LLM Engine Toggle Switch & Setup Modal Trigger -->
+          <div class="header-llm-toggle-wrap" id="header-llm-toggle-wrap" title="Configure LLM provider or toggle inference">
             <span class="llm-toggle-status-dot offline" id="llm-toggle-dot"></span>
             <span class="llm-toggle-text" id="llm-toggle-text">LLM Off</span>
-            <label class="llm-switch" for="llm-toggle-checkbox">
+            <label class="llm-switch" for="llm-toggle-checkbox" title="Toggle LLM on/off">
               <input type="checkbox" id="llm-toggle-checkbox">
               <span class="llm-switch-slider"></span>
             </label>
+            <button type="button" class="btn-llm-gear" id="btn-open-llm-modal" title="Configure Model & Groq API Key" style="background:none; border:none; color:#64748b; cursor:pointer; padding:2px 4px; display:flex; align-items:center;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
+            </button>
           </div>
 
           <!-- Chat / Default Tools -->
@@ -917,6 +923,15 @@
             <span class="cal-total-badge" id="cal-total-count">0 Events</span>
           </div>
           <div class="cal-view-header-actions">
+            <button class="pill-btn pill-btn-outline" id="btn-open-gcal-sync" title="Sync Google Calendar">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                <path d="M3 3v5h5"></path>
+                <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path>
+                <path d="M16 16h5v5"></path>
+              </svg>
+              <span>Sync Google Calendar</span>
+            </button>
             <button class="pill-btn pill-btn-outline" id="btn-refresh-calendar" title="Refresh Schedule">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M23 4v6h-6"></path><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
@@ -1073,8 +1088,12 @@
       <!-- TAB 9: WORKSPACES -->
       <section class="view-pane" id="tab-workspaces">
         <div class="view-header-bar">
-          <h1 class="view-title">Authorized Workspaces</h1>
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <h1 class="view-title">File Access & Workspaces</h1>
+            <span class="risk-badge risk-low" id="badge-file-access-mode">ALL FILES ACCESS: ACTIVE</span>
+          </div>
           <div class="view-header-actions">
+            <button class="pill-btn pill-btn-outline" id="btn-toggle-access-mode" title="Switch between All Files and Sandboxed Workspaces">Mode: All Files</button>
             <button class="pill-btn pill-btn-dark" id="btn-open-add-ws-modal">+ Add Workspace</button>
           </div>
         </div>
@@ -1120,7 +1139,236 @@
     </main>
   </div>
 
-  <!-- HUMAN APPROVAL MODAL -->
+  <!-- ADD WORKSPACE MODAL -->
+  <div class="modal-backdrop hidden" id="add-workspace-modal">
+    <div class="modern-modal-card" style="max-width: 540px;">
+      <div class="modal-badge-row">
+        <span class="risk-badge risk-low">WORKSPACE AUTHORIZATION</span>
+      </div>
+      <h3 class="modal-title">Authorize Directory Workspace</h3>
+      <p class="modal-desc">Authorize a safe local directory for the assistant to inspect, read, and manage files.</p>
+
+      <!-- Quick Presets -->
+      <div style="margin-bottom: 16px;">
+        <label style="display:block; font-size:11.5px; font-weight:600; text-transform:uppercase; color:#64748b; margin-bottom:8px; letter-spacing:0.5px;">Quick Presets</label>
+        <div style="display:flex; flex-wrap:wrap; gap:8px;" id="ws-presets-container">
+          <button type="button" class="pill-btn pill-btn-outline" style="font-size:12px; padding:6px 12px;" data-preset="downloads">Downloads</button>
+          <button type="button" class="pill-btn pill-btn-outline" style="font-size:12px; padding:6px 12px;" data-preset="documents">Documents</button>
+          <button type="button" class="pill-btn pill-btn-outline" style="font-size:12px; padding:6px 12px;" data-preset="desktop">Desktop</button>
+          <button type="button" class="pill-btn pill-btn-outline" style="font-size:12px; padding:6px 12px;" data-preset="project">Project Root</button>
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-bottom: 12px;">
+        <label for="ws-input-name" style="font-size: 12px; font-weight: 600; color: #334155;">Workspace Name</label>
+        <input type="text" id="ws-input-name" placeholder="e.g. Downloads" style="width:100%; padding:10px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13px;">
+      </div>
+
+      <div class="form-group" style="margin-bottom: 14px;">
+        <label for="ws-input-path" style="font-size: 12px; font-weight: 600; color: #334155;">Directory Path</label>
+        <input type="text" id="ws-input-path" placeholder="e.g. C:\Users\Admin\Downloads" style="width:100%; padding:10px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13px; font-family:var(--font-mono);">
+        <span id="ws-path-status-hint" style="display:block; font-size:11.5px; color:#64748b; margin-top:4px;">Enter an absolute directory path on this machine.</span>
+      </div>
+
+      <div class="form-group" style="margin-bottom: 20px;">
+        <label style="font-size: 12px; font-weight: 600; color: #334155; margin-bottom: 6px; display:block;">Permissions</label>
+        <div style="display:flex; gap:16px; font-size:12.5px; color:#334155;">
+          <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+            <input type="checkbox" id="ws-perm-read" checked disabled> READ (Search & Read)
+          </label>
+          <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+            <input type="checkbox" id="ws-perm-write" checked> WRITE (Move & Organize)
+          </label>
+          <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+            <input type="checkbox" id="ws-perm-delete"> DELETE (Remove Files)
+          </label>
+        </div>
+      </div>
+
+      <div class="modal-actions-row">
+        <button class="pill-btn pill-btn-outline" id="btn-cancel-add-ws">Cancel</button>
+        <button class="pill-btn pill-btn-dark" id="btn-submit-add-ws">Authorize Workspace</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- GOOGLE CALENDAR SYNC MODAL -->
+  <div class="modal-backdrop hidden" id="gcal-sync-modal">
+    <div class="modern-modal-card" style="max-width: 540px;">
+      <div class="modal-badge-row">
+        <span class="risk-badge risk-low">CALENDAR INTEGRATION</span>
+      </div>
+      <h3 class="modal-title">Sync Google Calendar</h3>
+      <p class="modal-desc">Synchronize appointments between your Google Calendar and local private schedule.</p>
+
+      <!-- Protocol Selection Chips -->
+      <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+        <button type="button" class="pill-btn pill-btn-dark btn-sm" id="gcal-mode-ical" style="font-size: 12px;">Secret iCal Feed (Recommended)</button>
+        <button type="button" class="pill-btn pill-btn-outline btn-sm" id="gcal-mode-rest" style="font-size: 12px;">Google REST API v3</button>
+      </div>
+
+      <!-- iCal Mode Section -->
+      <div id="gcal-section-ical">
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label for="gcal-input-source" style="font-size: 12px; font-weight: 600; color: #334155;">Google Calendar Secret iCal Address</label>
+          <input type="text" id="gcal-input-source" placeholder="https://calendar.google.com/calendar/ical/.../basic.ics" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:12.5px; font-family:var(--font-mono);">
+          <span style="display:block; font-size:11px; color:#64748b; margin-top:5px; line-height: 1.4;">
+            Obtain from: <strong>Google Calendar &rarr; Settings &rarr; Integrate calendar &rarr; Secret address in iCal format</strong>. No API key or cloud console setup required.
+          </span>
+        </div>
+      </div>
+
+      <!-- REST API v3 Section -->
+      <div id="gcal-section-rest" style="display: none;">
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label for="gcal-input-calid" style="font-size: 12px; font-weight: 600; color: #334155;">Calendar ID</label>
+          <input type="text" id="gcal-input-calid" value="primary" placeholder="primary or your-email@gmail.com" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:12.5px; font-family:var(--font-mono);">
+        </div>
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label for="gcal-input-apikey" style="font-size: 12px; font-weight: 600; color: #334155;">Google Cloud API Key (Read-only)</label>
+          <input type="password" id="gcal-input-apikey" placeholder="AIzaSy..." style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:12.5px; font-family:var(--font-mono);">
+        </div>
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label for="gcal-input-token" style="font-size: 12px; font-weight: 600; color: #334155;">OAuth Access Token (Optional for Read/Write)</label>
+          <input type="password" id="gcal-input-token" placeholder="Bearer ya29..." style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:12.5px; font-family:var(--font-mono);">
+        </div>
+      </div>
+
+      <div class="checkbox-row" style="margin-top: 10px; margin-bottom: 14px; display: flex; align-items: center; gap: 8px;">
+        <input type="checkbox" id="gcal-remember-settings" checked style="accent-color: #2563eb; width: 15px; height: 15px; cursor: pointer;">
+        <label for="gcal-remember-settings" style="font-size: 12px; color: #475569; cursor: pointer;">Save source configuration locally for future syncs</label>
+      </div>
+
+      <div id="gcal-sync-feedback" style="display:none; font-size:12px; padding:10px; border-radius:8px; margin-bottom:14px;"></div>
+
+      <div class="modal-actions-row">
+        <button class="pill-btn pill-btn-outline" id="btn-cancel-gcal-sync">Cancel</button>
+        <button class="pill-btn pill-btn-dark" id="btn-submit-gcal-sync">Sync Schedule</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LLM CONFIGURATION & GROQ API KEY MODAL -->
+  <div class="modal-backdrop hidden" id="llm-config-modal">
+    <div class="modern-modal-card" style="max-width: 530px; max-height: calc(100vh - 40px); overflow-y: auto; padding: 22px;">
+      <div style="display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 10px;">
+        <div>
+          <div class="modal-badge-row" style="margin-bottom: 6px;">
+            <span class="risk-badge risk-low">AI INFERENCE SETTINGS</span>
+          </div>
+          <h3 class="modal-title" style="margin-bottom: 3px; font-size: 18px;">LLM Configuration &amp; Providers</h3>
+          <p class="modal-desc" style="margin-bottom: 0; font-size: 12px;">Connect cloud Groq API for instant fast responses, or run 100% private local Ollama.</p>
+        </div>
+        <button class="modal-close-icon-btn" id="btn-close-llm-modal-x" title="Close modal" style="background: transparent; border: 1px solid var(--border-subtle); border-radius: 8px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-muted); flex-shrink: 0; margin-left: 12px;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Live Diagnostics Status Card -->
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; font-size: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <span style="color: #64748b; font-weight: 600;">Active Provider:</span>
+          <span id="llm-cfg-active-prov" style="font-weight: 700; color: #0f172a; text-transform: uppercase;">Ollama</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <span style="color: #64748b;">Local Ollama Daemon:</span>
+          <span id="llm-cfg-ollama-status" class="risk-badge risk-high" style="font-size: 10.5px;">OFFLINE</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="color: #64748b;">Cloud Groq API:</span>
+          <span id="llm-cfg-groq-status" class="risk-badge risk-med" style="font-size: 10.5px;">NOT CONFIGURED</span>
+        </div>
+      </div>
+
+      <!-- Provider Tabs -->
+      <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+        <button type="button" class="pill-btn pill-btn-dark btn-sm" id="llm-tab-btn-groq" style="font-size: 12px;">Cloud Groq API (Fast)</button>
+        <button type="button" class="pill-btn pill-btn-outline btn-sm" id="llm-tab-btn-ollama" style="font-size: 12px;">Local Ollama (Private)</button>
+      </div>
+
+      <!-- SECTION: Groq Cloud -->
+      <div id="llm-section-groq">
+        <div class="form-group" style="margin-bottom: 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <label for="cfg-groq-key" style="font-size: 12px; font-weight: 600; color: #334155; margin-bottom: 0;">Groq API Key</label>
+            <button type="button" id="btn-fetch-groq-models" class="pill-btn pill-btn-outline btn-sm" style="font-size: 11px; padding: 2px 8px;">Fetch Account Models</button>
+          </div>
+          <input type="password" id="cfg-groq-key" placeholder="gsk_..." style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:12.5px; font-family:var(--font-mono);">
+          <span style="display:block; font-size:11px; color:#64748b; margin-top:5px; line-height: 1.4;">
+            Get a free API key at <strong>console.groq.com</strong>. Provides ultra-fast cloud inference with zero local RAM usage.
+          </span>
+        </div>
+        <div class="form-group" style="margin-bottom: 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <label for="cfg-groq-model" style="font-size: 12px; font-weight: 600; color: #334155; margin-bottom: 0;">Groq Model</label>
+            <span id="cfg-groq-models-count" style="font-size: 11px; color: #64748b;"></span>
+          </div>
+          <select id="cfg-groq-model" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:12.5px; font-family:var(--font-mono); background:#fff;">
+            <option value="llama-3.3-70b-versatile" selected>llama-3.3-70b-versatile (Recommended - High Quality)</option>
+            <option value="llama-3.1-8b-instant">llama-3.1-8b-instant (Fast - Low Latency)</option>
+            <option value="deepseek-r1-distill-llama-70b">deepseek-r1-distill-llama-70b (Reasoning)</option>
+            <option value="qwen/qwen3.8-27b">qwen/qwen3.8-27b (Multimodal)</option>
+            <option value="mixtral-8x7b-32768">mixtral-8x7b-32768</option>
+            <option value="__custom__">Custom Model (Enter below)...</option>
+          </select>
+          <input type="text" id="cfg-groq-model-custom" placeholder="e.g. meta-llama/llama-4-scout-17b-16e-instruct" style="display:none; width:100%; margin-top:8px; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:12px; font-family:var(--font-mono);">
+        </div>
+        <div style="display: flex; justify-content: flex-end; margin-top: 14px;">
+          <button type="button" class="pill-btn pill-btn-dark" id="btn-save-groq-cfg">Connect & Activate Groq</button>
+        </div>
+      </div>
+
+      <!-- SECTION: Local Ollama -->
+      <div id="llm-section-ollama" style="display: none;">
+        <div style="background: #f1f5f9; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; font-size: 11.5px; color: #334155; line-height: 1.4;">
+          <strong style="color: #0f172a; display: block; margin-bottom: 6px;">How to install &amp; run local models:</strong>
+          <ol style="margin: 0; padding-left: 18px;">
+            <li>Download &amp; install from <strong>ollama.com</strong></li>
+            <li>Open a terminal and run: <code style="background: #e2e8f0; padding: 2px 5px; border-radius: 4px;">ollama serve</code></li>
+            <li>Pull a model: <code style="background: #e2e8f0; padding: 2px 5px; border-radius: 4px;">ollama pull qwen2.5:3b</code></li>
+          </ol>
+        </div>
+
+        <!-- Inline GPU status row (updates dynamically, matches diagnostics card style) -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 12px;">
+          <span style="color: #64748b;">Compute Hardware:</span>
+          <span id="ollama-gpu-badge" class="risk-badge risk-med" style="font-size: 10.5px;">DETECTING...</span>
+        </div>
+
+        <!-- Compute Mode: plain segmented select, no emoji, no custom card UI -->
+        <div class="form-group" style="margin-bottom: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <label style="font-size: 12px; font-weight: 600; color: #334155;">Compute Mode</label>
+            <span id="ollama-gpu-detect-sub" style="font-size: 11px; color: #64748b;"></span>
+          </div>
+          <select id="ollama-compute-select" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:12.5px; background:#fff; color:#334155;">
+            <option value="cpu">CPU — Works on any hardware (slower)</option>
+            <option value="gpu">GPU — Requires NVIDIA / AMD / Apple Silicon</option>
+          </select>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 10px;">
+          <label for="cfg-ollama-model" style="font-size: 12px; font-weight: 600; color: #334155;">Ollama Model Name</label>
+          <input type="text" id="cfg-ollama-model" value="qwen2.5:3b" placeholder="qwen2.5:3b or llama3.2" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:12.5px; font-family:var(--font-mono);">
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px;">
+          <button type="button" class="pill-btn pill-btn-outline btn-sm" id="btn-start-local-ollama">Start Ollama</button>
+          <button type="button" class="pill-btn pill-btn-dark" id="btn-save-ollama-cfg">Use Local Ollama</button>
+        </div>
+      </div>
+
+      <div id="llm-cfg-feedback" style="display:none; font-size:12px; padding:10px; border-radius:8px; margin-top:14px;"></div>
+
+      <div class="modal-actions-row" style="margin-top: 12px; border-top: 1px solid #f1f5f9; padding-top: 10px;">
+        <button class="pill-btn pill-btn-outline" id="btn-close-llm-modal">Close</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-backdrop hidden" id="approval-modal">
     <div class="modern-modal-card">
       <div class="modal-badge-row">
@@ -1234,7 +1482,17 @@
       </div>
 
       <div class="account-tab-pane hidden" id="pane-account-imap">
-        <div style="background: rgba(37,99,235,0.08); border: 1px solid rgba(37,99,235,0.25); border-radius: 8px; padding: 10px 12px; margin-top: 12px; font-size: 12px; line-height: 1.4; color: var(--text-secondary);">
+        <!-- Email Provider Selector Chips -->
+        <div style="margin-top: 10px; margin-bottom: 8px;">
+          <label style="display:block; font-size:11px; font-weight:600; text-transform:uppercase; color:#64748b; margin-bottom:6px; letter-spacing:0.5px;">Select Provider</label>
+          <div style="display:flex; gap:6px;" id="email-provider-chips">
+            <button type="button" class="tab-chip active" id="btn-provider-google" style="font-size:11.5px; padding:4px 10px;">Google / Gmail</button>
+            <button type="button" class="tab-chip" id="btn-provider-outlook" style="font-size:11.5px; padding:4px 10px;">Outlook / Office 365</button>
+            <button type="button" class="tab-chip" id="btn-provider-custom" style="font-size:11.5px; padding:4px 10px;">Custom IMAP</button>
+          </div>
+        </div>
+
+        <div id="email-provider-notice" style="background: rgba(37,99,235,0.08); border: 1px solid rgba(37,99,235,0.25); border-radius: 8px; padding: 10px 12px; margin-top: 10px; font-size: 12px; line-height: 1.4; color: var(--text-secondary);">
           <strong style="color: #2563eb;">Gmail Configuration:</strong> Google requires a <strong>16-character App Password</strong> (not your standard password). Generate one at <a href="https://myaccount.google.com/apppasswords" target="_blank" style="color: #2563eb; text-decoration: underline;">myaccount.google.com/apppasswords</a> with 2-Step Verification turned on.
         </div>
         <div class="form-group-compact" style="margin-top: 12px;">
@@ -1365,6 +1623,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=31"></script>
+  <script src="/static/app.js?v=38"></script>
 </body>
 </html>

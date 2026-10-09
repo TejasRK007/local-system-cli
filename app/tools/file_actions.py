@@ -23,7 +23,7 @@ def is_allowed_path(file_path: Path, permission: Optional[str] = None) -> bool:
         resolved_path = file_path.resolve()
 
         # Primary authorization: WorkspaceManager
-        if WorkspaceManager.count_workspaces() > 0:
+        if WorkspaceManager.count_workspaces() > 0 or WorkspaceManager.is_all_files_mode():
             perm = permission if permission is not None else Permission.READ.value
             ok, _, _ = WorkspaceManager.check_workspace_authorization(resolved_path, perm)
             return ok

@@ -19,7 +19,7 @@ from langchain_groq import ChatGroq
 from app.policy import get_action_risk
 from app.tasks.validator import PlanValidator
 from app.tools.filesystem import search_files
-from app.workspaces import Permission, Workspace, WorkspaceManager
+from app.workspaces import ALL_PERMISSIONS, Permission, Workspace, WorkspaceManager
 
 load_dotenv()
 
@@ -38,7 +38,7 @@ def get_llm() -> Any:
         )
 
     llm = ChatGroq(
-        model=os.getenv("GROQ_MODEL", "openai/gpt-oss-20b"),
+        model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
         api_key=api_key,  # type: ignore[arg-type]
         temperature=0,
     )
@@ -1112,6 +1112,83 @@ Rules:
                 target_workspace = ws_found
                 search_scope = [ws_found]
             else:
+                std_names = {
+                    "downloads": "Downloads",
+                    "documents": "Documents",
+                    "desktop": "Desktop",
+                }
+                std_match = std_names.get(explicit_ws_name.lower())
+                cand_path = None
+                if std_match:
+                    cand_path = Path.home() / std_match
+                else:
+                    p = Path(explicit_ws_name).expanduser()
+                    if p.exists() and p.is_dir():
+                        cand_path = p
+                    else:
+                        cand_home = (Path.home() / explicit_ws_name).resolve()
+                        if cand_home.exists() and cand_home.is_dir():
+                            cand_path = cand_home
+
+                if cand_path and cand_path.exists() and WorkspaceManager.is_all_files_mode():
+                    target_workspace = Workspace(
+                        workspace_id=f"ws_{cand_path.name.lower()}",
+                        name=cand_path.name,
+                        path=str(cand_path),
+                        enabled=True,
+                        permissions=set(ALL_PERMISSIONS),
+                    )
+                    search_scope = [target_workspace]
+                else:
+                    if std_match:
+                        sum_text = (
+                            f"Workspace '{std_match}' is not yet registered. "
+                            f"To authorize it, open the Workspaces tab and click the "
+                            f"'{std_match}' preset button."
+                        )
+                    else:
+                        sum_text = (
+                            f"Workspace '{explicit_ws_name}' is not configured or unauthorized."
+                        )
+                    return GoalPlan(
+                        goal=goal,
+                        target_workspace=None,
+                        discovered_files=[],
+                        steps=[],
+                        cumulative_risk="low",
+                        requires_approval=False,
+                        summary=sum_text,
+                    )
+        elif not read_workspaces:
+            if WorkspaceManager.is_all_files_mode():
+                std_dirs = [
+                    Path.home() / "Downloads",
+                    Path.home() / "Documents",
+                    Path.home() / "Desktop",
+                ]
+                search_scope = [
+                    Workspace(
+                        workspace_id=f"ws_{d.name.lower()}",
+                        name=d.name,
+                        path=str(d),
+                        enabled=True,
+                        permissions=set(ALL_PERMISSIONS),
+                    )
+                    for d in std_dirs
+                    if d.exists()
+                ]
+                if not search_scope:
+                    search_scope = [
+                        Workspace(
+                            workspace_id="ws_user_home",
+                            name="Home",
+                            path=str(Path.home()),
+                            enabled=True,
+                            permissions=set(ALL_PERMISSIONS),
+                        )
+                    ]
+                target_workspace = search_scope[0]
+            else:
                 return GoalPlan(
                     goal=goal,
                     target_workspace=None,
@@ -1119,18 +1196,8 @@ Rules:
                     steps=[],
                     cumulative_risk="low",
                     requires_approval=False,
-                    summary=f"Workspace '{explicit_ws_name}' is not configured or unauthorized.",
+                    summary="No enabled workspaces with READ permission are available.",
                 )
-        elif not read_workspaces:
-            return GoalPlan(
-                goal=goal,
-                target_workspace=None,
-                discovered_files=[],
-                steps=[],
-                cumulative_risk="low",
-                requires_approval=False,
-                summary="No enabled workspaces with READ permission are available.",
-            )
         else:
             search_scope = read_workspaces
             target_workspace = read_workspaces[0]

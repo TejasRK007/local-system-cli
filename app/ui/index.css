@@ -2193,16 +2193,21 @@ html, body {
   align-items: center;
   justify-content: center;
   z-index: 1000;
+  padding: 16px;
+  box-sizing: border-box;
 }
 
 .modern-modal-card {
   background: #ffffff;
   border-radius: 20px;
-  padding: 28px;
+  padding: 24px;
   max-width: 520px;
   width: 90%;
   box-shadow: var(--shadow-modal);
   border: 1px solid var(--border-subtle);
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  box-sizing: border-box;
 }
 
 .modal-badge-row {

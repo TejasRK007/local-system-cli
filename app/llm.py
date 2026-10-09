@@ -85,7 +85,7 @@ class OllamaChatWrapper:
             data=json.dumps(payload).encode("utf-8"),
             headers={"Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(req, timeout=5) as resp:
+        with urllib.request.urlopen(req, timeout=60) as resp:
             data = json.loads(resp.read().decode("utf-8"))
 
         reply_content = data.get("message", {}).get("content", "")
@@ -125,7 +125,7 @@ def get_configured_llm() -> Any:
     from langchain_groq import ChatGroq
 
     return ChatGroq(
-        model=os.getenv("GROQ_MODEL", "openai/gpt-oss-20b"),
+        model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
         api_key=api_key,  # type: ignore[arg-type]
         temperature=0,
     )

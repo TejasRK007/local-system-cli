@@ -2858,6 +2858,7 @@ def ui_command(
     ),
     port: int = typer.Option(8000, help="Port to run the dashboard web server on."),
     open_browser: bool = typer.Option(True, help="Automatically open browser."),
+    reload: bool = typer.Option(False, help="Enable auto-reload on code change."),
 ):
     """Launch the Web Dashboard."""
     import webbrowser
@@ -2897,7 +2898,7 @@ def ui_command(
         except Exception:
             pass
 
-    uvicorn.run("app.server:server_app", host=host, port=port, log_level="info")
+    uvicorn.run("app.server:server_app", host=host, port=port, reload=reload, log_level="info")
 
 
 @app.command(
