@@ -20,9 +20,16 @@ llm: Any = None
 llm_with_tools: Any = None
 
 
+from app.llm import get_configured_llm, is_ollama_online
+
+
 def get_llm() -> Any:
     global llm
     if llm is not None:
+        return llm
+    provider = os.getenv("LLM_PROVIDER", "").lower()
+    if provider == "ollama" and is_ollama_online():
+        llm = get_configured_llm()
         return llm
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
@@ -538,7 +545,18 @@ UNSUPPORTED_REQUEST
         HumanMessage(content=request),
     ]
 
-    response = get_llm_with_tools().invoke(messages)
+    try:
+        response = get_llm_with_tools().invoke(messages)
+    except ValueError:
+        raise
+    except Exception as e:
+        err_str = str(e)
+        if "429" in err_str or "rate_limit" in err_str.lower():
+            return (
+                "Rate limit reached on cloud LLM provider. "
+                "Please try again in a few minutes or run 'ollama serve' to use offline local AI."
+            )
+        return f"AI assistant could not complete request: {err_str}"
 
     if not response.tool_calls:
         response_text = str(response.content).strip()

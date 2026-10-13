@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -49,6 +49,7 @@ from app.tools.email_tools import (
     email_generate_reply,
     email_get_account,
     email_link_account,
+    email_link_google_oauth,
     email_mark_all_read,
     email_read,
     email_search,
@@ -172,6 +173,7 @@ class AttendanceSessionStartRequest(BaseModel):
     rotation_interval_seconds: Optional[int] = None
     rotation_interval: Optional[int] = None
     host_url: Optional[str] = None
+    use_tunnel: Optional[bool] = True
 
 
 class AttendanceCheckinRequest(BaseModel):
@@ -180,6 +182,7 @@ class AttendanceCheckinRequest(BaseModel):
     student_id: str
     student_name: str
     device_info: Optional[str] = "Mobile Client"
+    device_id: Optional[str] = None
 
 
 class AttendanceRotateRequest(BaseModel):
@@ -188,7 +191,15 @@ class AttendanceRotateRequest(BaseModel):
 
 
 def _extract_request_host(request: Optional[Request] = None) -> str:
-    """Determine best external URL from client request headers or local network IP."""
+    """Determine best external URL from active Cloudflare tunnel, client request headers, or local network IP."""
+    try:
+        from app.tunnel import get_tunnel_url
+        tunnel_url = get_tunnel_url()
+        if tunnel_url:
+            return tunnel_url
+    except Exception:
+        pass
+
     if request:
         host_header = request.headers.get("host")
         if host_header:
@@ -1156,6 +1167,8 @@ def handle_chat_message(req: ChatRequest) -> Dict[str, Any]:
                     subj = _clean_body_text(m.get("subject", "(No Subject)"))
                     body = _clean_body_text(m.get("body", ""))
                     summary_snippet = body[:160] + ("..." if len(body) > 160 else "")
+                    if not summary_snippet.strip():
+                        summary_snippet = "Automated notification or social feed update from sender."
                     action_item = (
                         "Immediate review and response needed"
                         if prio in ("URGENT", "SECURITY", "HIGH")
@@ -1749,6 +1762,12 @@ def handle_chat_message(req: ChatRequest) -> Dict[str, Any]:
     planning_keywords = [
         "organize",
         "move",
+        "rename",
+        "create",
+        "make",
+        "mkdir",
+        "touch",
+        "generate",
         "delete",
         "remove",
         "copy",
@@ -1801,6 +1820,12 @@ def handle_chat_message(req: ChatRequest) -> Dict[str, Any]:
                     f"(Risk: {risk_lvl}), explicit human approval is required before execution."
                 )
             else:
+                modifying_verbs = (
+                    "move", "rename", "delete", "remove", "copy",
+                    "archive", "clean", "organize", "zip", "unzip",
+                    "create", "make", "mkdir", "touch", "generate",
+                )
+                has_modifying_intent = any(v in msg_lower for v in modifying_verbs)
                 search_triggers = (
                     "find", "search", "list", "locate", "show",
                     "what is in", "whats in", "view", "display",
@@ -1811,10 +1836,13 @@ def handle_chat_message(req: ChatRequest) -> Dict[str, Any]:
                     "download", "desktop", "document", "directory",
                     "item", "items",
                 )
-                is_search_intent = (
-                    any(w in msg_lower for w in search_triggers)
-                    and any(f in msg_lower for f in search_targets)
-                ) or any(s.get("action") == "search" for s in plan.steps)
+                is_search_intent = not has_modifying_intent and (
+                    (
+                        any(w in msg_lower for w in search_triggers)
+                        and any(f in msg_lower for f in search_targets)
+                    )
+                    or any(s.get("action") == "search" for s in plan.steps)
+                )
                 if is_search_intent:
                     if plan.discovered_files:
                         lines = [
@@ -2172,6 +2200,110 @@ def api_email_account_link(req: EmailLinkAccountRequest) -> Dict[str, Any]:
     )
 
 
+@server_app.get("/api/auth/google/status")
+def api_auth_google_status() -> Dict[str, Any]:
+    client_id = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+    client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
+    return {
+        "configured": bool(client_id and client_secret),
+        "client_id": client_id,
+        "redirect_uri": os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/api/auth/google/callback"),
+    }
+
+
+@server_app.get("/api/auth/google/login")
+def api_auth_google_login() -> RedirectResponse:
+    import urllib.parse
+    client_id = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+    redirect_uri = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/api/auth/google/callback").strip()
+
+    if not client_id:
+        raise HTTPException(status_code=400, detail="GOOGLE_CLIENT_ID is not configured in .env")
+
+    params = {
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": "openid email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send",
+        "access_type": "offline",
+        "prompt": "consent",
+    }
+    url = "https://accounts.google.com/o/oauth2/v2/auth?" + urllib.parse.urlencode(params)
+    return RedirectResponse(url=url, status_code=302)
+
+
+@server_app.get("/api/auth/google/callback")
+def api_auth_google_callback(
+    code: Optional[str] = None,
+    error: Optional[str] = None,
+) -> RedirectResponse:
+    import json
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+
+    if error:
+        return RedirectResponse(url=f"/?google_error={urllib.parse.quote(error)}#email", status_code=302)
+
+    if not code:
+        return RedirectResponse(url="/?google_error=missing_code#email", status_code=302)
+
+    client_id = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+    client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
+    redirect_uri = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/api/auth/google/callback").strip()
+
+    try:
+        token_data = urllib.parse.urlencode({
+            "code": code,
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "redirect_uri": redirect_uri,
+            "grant_type": "authorization_code",
+        }).encode("utf-8")
+
+        req = urllib.request.Request(
+            "https://oauth2.googleapis.com/token",
+            data=token_data,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            token_json = json.loads(resp.read().decode("utf-8"))
+
+        access_token = token_json.get("access_token")
+        refresh_token = token_json.get("refresh_token", "")
+        expires_in = int(token_json.get("expires_in", 3600))
+
+        if not access_token:
+            return RedirectResponse(url="/?google_error=token_exchange_failed#email", status_code=302)
+
+        userinfo_req = urllib.request.Request(
+            "https://www.googleapis.com/oauth2/v2/userinfo",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        with urllib.request.urlopen(userinfo_req, timeout=12) as u_resp:
+            userinfo = json.loads(u_resp.read().decode("utf-8"))
+
+        email_address = userinfo.get("email") or "user@gmail.com"
+
+        email_link_google_oauth(
+            email_address=email_address,
+            access_token=access_token,
+            refresh_token=refresh_token,
+            expires_in=expires_in,
+        )
+
+        try:
+            email_sync()
+        except Exception:
+            pass
+
+        return RedirectResponse(url=f"/?google_auth=success&email={urllib.parse.quote(email_address)}#email", status_code=302)
+    except Exception as exc:
+        err_msg = urllib.parse.quote(str(exc))
+        return RedirectResponse(url=f"/?google_error={err_msg}#email", status_code=302)
+
+
 @server_app.post("/api/email/sync")
 def api_email_sync() -> Dict[str, Any]:
     return email_sync()
@@ -2245,13 +2377,16 @@ def api_browser_fetch(req: BrowserFetchRequest) -> Dict[str, Any]:
 @server_app.post("/api/attendance/session/start")
 def api_attendance_start(req: AttendanceSessionStartRequest, request: Request) -> Dict[str, Any]:
     c_name = req.course_name or req.course or "Live Classroom"
-    rot = req.rotation_interval_seconds or req.rotation_interval or 15
+    rot_val = req.rotation_interval_seconds if req.rotation_interval_seconds is not None else (req.rotation_interval if req.rotation_interval is not None else 1)
+    rot = max(1, int(rot_val))
     host = req.host_url or _extract_request_host(request)
+    use_tun = req.use_tunnel if req.use_tunnel is not None else True
     return attendance_start_session(
         course_name=c_name,
         section=req.section,
         rotation_interval_seconds=rot,
         host_url=host,
+        use_tunnel=use_tun,
     )
 
 
@@ -2270,17 +2405,44 @@ def api_attendance_rotate(req: AttendanceRotateRequest, request: Request) -> Dic
 @server_app.post("/api/attendance/session/end")
 def api_attendance_end(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     sess_id = (payload or {}).get("session_id")
-    return attendance_end_session(sess_id)
+    stop_tun = (payload or {}).get("stop_tunnel", True)
+    return attendance_end_session(sess_id, stop_tunnel=stop_tun)
+
+
+# -----------------------------------------------------------------------------
+# Cloudflare Public Tunnel Control Endpoints
+# -----------------------------------------------------------------------------
+@server_app.get("/api/tunnel/status")
+def api_tunnel_status() -> Dict[str, Any]:
+    from app.tunnel import get_tunnel_status
+    return get_tunnel_status()
+
+
+@server_app.post("/api/tunnel/start")
+def api_tunnel_start(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    from app.tunnel import get_tunnel_status, start_cloudflare_tunnel
+    timeout = float((payload or {}).get("timeout", 14.0))
+    url = start_cloudflare_tunnel(port=8000, timeout=timeout)
+    return {"success": url is not None, "url": url, "status": get_tunnel_status()}
+
+
+@server_app.post("/api/tunnel/stop")
+def api_tunnel_stop() -> Dict[str, Any]:
+    from app.tunnel import get_tunnel_status, stop_cloudflare_tunnel
+    stopped = stop_cloudflare_tunnel()
+    return {"success": True, "stopped": stopped, "status": get_tunnel_status()}
 
 
 @server_app.post("/api/attendance/checkin")
-def api_attendance_checkin(req: AttendanceCheckinRequest) -> Dict[str, Any]:
+def api_attendance_checkin(req: AttendanceCheckinRequest, request: Request) -> Dict[str, Any]:
+    dev_id = req.device_id or request.headers.get("x-device-id") or request.cookies.get("device_id")
     return attendance_checkin(
         session_id=req.session_id,
         token=req.token,
         student_id=req.student_id,
         student_name=req.student_name,
         device_info=req.device_info or "Mobile Client",
+        device_id=dev_id,
     )
 
 

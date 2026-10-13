@@ -22,6 +22,8 @@ _ACTION_RISK_MAP: dict[str, str] = {
     "list": "low",
     "create_directory": "medium",
     "mkdir": "medium",
+    "create_file": "medium",
+    "touch": "medium",
     "rename": "medium",
     "move": "medium",
     "delete": "high",

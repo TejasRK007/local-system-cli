@@ -3,6 +3,7 @@
 from fastapi.testclient import TestClient
 
 from app.server import app
+from app.workspaces import WorkspaceManager
 
 client = TestClient(app)
 
@@ -277,6 +278,7 @@ def test_api_attendance_workflow() -> None:
             "student_id": "STU-9901",
             "student_name": "Alice Tester",
             "device_info": "TestDevice 1.0",
+            "device_id": "DEV-TEST-PHONE-1",
         },
     )
     assert checkin_res.status_code == 200
@@ -284,7 +286,7 @@ def test_api_attendance_workflow() -> None:
     assert checkin_data["success"] is True
     assert "checked_in_at" in checkin_data["record"]
 
-    # 4. Duplicate check-in rejection
+    # 4. Duplicate check-in rejection (same student)
     dup_res = client.post(
         "/api/attendance/checkin",
         json={
@@ -293,12 +295,30 @@ def test_api_attendance_workflow() -> None:
             "student_id": "STU-9901",
             "student_name": "Alice Tester",
             "device_info": "TestDevice 1.0",
+            "device_id": "DEV-TEST-PHONE-1",
         },
     )
     assert dup_res.status_code == 200
     dup_data = dup_res.json()
     assert dup_data["success"] is False
     assert "already checked in" in dup_data["error"].lower()
+
+    # 4b. Device duplicate rejection (different student on same phone)
+    dev_dup_res = client.post(
+        "/api/attendance/checkin",
+        json={
+            "session_id": session_id,
+            "token": active_token,
+            "student_id": "STU-9902",
+            "student_name": "Bob Proxy",
+            "device_info": "TestDevice 1.0",
+            "device_id": "DEV-TEST-PHONE-1",
+        },
+    )
+    assert dev_dup_res.status_code == 200
+    dev_dup_data = dev_dup_res.json()
+    assert dev_dup_data["success"] is False
+    assert "device has already checked in" in dev_dup_data["error"].lower()
 
     # 5. Invalid / expired token rejection
     invalid_res = client.post(
@@ -436,14 +456,23 @@ def test_api_google_calendar_sync():
 def test_unregistered_workspace_chat_guidance():
     # Ensure sandbox isolation is active for this test
     client.post("/api/system/access_mode", json={"all_files_mode": False})
-    res = client.post(
-        "/api/chat",
-        json={"message": "list the files in downloads", "llm_enabled": False},
-    )
-    assert res.status_code == 200
-    msg = res.json().get("message", "")
-    assert "Downloads" in msg
-    assert "Workspaces tab" in msg or "authorized" in msg
+    ws_dl = WorkspaceManager.get_workspace_by_name("Downloads")
+    if ws_dl:
+        WorkspaceManager.remove_workspace(ws_dl.workspace_id)
+    try:
+        res = client.post(
+            "/api/chat",
+            json={"message": "list the files in downloads", "llm_enabled": False},
+        )
+        assert res.status_code == 200
+        msg = res.json().get("message", "")
+        assert "Downloads" in msg
+        assert "Workspaces tab" in msg or "authorized" in msg
+    finally:
+        if ws_dl:
+            WorkspaceManager.add_workspace(
+                ws_dl.path, name=ws_dl.name, permissions=list(ws_dl.permissions)
+            )
 
 
 def test_all_files_access_mode_toggle_and_direct_listing():
@@ -484,3 +513,17 @@ def test_llm_status_and_config_endpoints():
     )
     assert cfg_res.status_code == 200
     assert cfg_res.json()["success"] is True
+
+
+def test_api_tunnel_endpoints():
+    """Ensure Cloudflare tunnel status, start, and stop endpoints return proper schema."""
+    res = client.get("/api/tunnel/status")
+    assert res.status_code == 200
+    data = res.json()
+    assert "installed" in data
+    assert "active" in data
+    assert "url" in data
+
+    stop_res = client.post("/api/tunnel/stop")
+    assert stop_res.status_code == 200
+    assert stop_res.json()["success"] is True

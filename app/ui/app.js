@@ -440,7 +440,11 @@ function loadChatSession(sessionId) {
   }
 
   renderSidebarThreads();
-  scrollToBottom();
+  scrollToBottom(true);
+  requestAnimationFrame(() => {
+    const vp = document.getElementById("chat-viewport");
+    if (vp) vp.scrollTop = vp.scrollHeight;
+  });
 }
 
 // ----------------------------------------------------------------------------
@@ -462,8 +466,167 @@ function escapeHtml(text) {
     .replace(/'/g, "&#039;");
 }
 
+function formatBasicMarkdown(str) {
+  if (!str) return "";
+  let h = escapeHtml(str);
+  h = h.replace(/^### (.*$)/gim, '<h3 class="chat-md-h3">$1</h3>');
+  h = h.replace(/^## (.*$)/gim, '<h2 class="chat-md-h2">$1</h2>');
+  h = h.replace(/^# (.*$)/gim, '<h1 class="chat-md-h1">$1</h1>');
+  h = h.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  h = h.replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>');
+  h = h.replace(/`([^`]+)`/g, '<code>$1</code>');
+  h = h.replace(/\n\n+/g, '<br><br>');
+  h = h.replace(/\n/g, '<br>');
+  return h;
+}
+
+function formatEmailSummaryDeck(text) {
+  if (!text) return null;
+  const hasSummaryPattern = /(?:^|\n)(?:#|\*\*#)?1\.\s*(?:\[[A-Za-z\s]+\])?/i.test(text) &&
+                            /(?:From|Key Points|Required Action)/i.test(text);
+  if (!hasSummaryPattern) return null;
+
+  const firstItemIdx = text.search(/(?:^|\n)(?=(?:#|\*\*#)1\.\s*)/i);
+  if (firstItemIdx === -1) return null;
+
+  const introText = text.slice(0, firstItemIdx).trim();
+  const itemsText = text.slice(firstItemIdx);
+
+  const parts = itemsText.split(/(?:^|\n)(?=(?:#|\*\*#)\d+\.\s*)/g);
+  const items = [];
+
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (!trimmed.match(/^(?:#|\*\*#)\d+\./)) continue;
+    const lines = trimmed.split("\n").map(l => l.trim()).filter(Boolean);
+    const headerLine = lines[0] || "";
+    const headerMatch = headerLine.match(/^(?:#|\*\*#)(\d+)\.\s*(?:\[([^\]]+)\])?\s*(.*)$/);
+    if (!headerMatch) continue;
+
+    const num = headerMatch[1];
+    const priority = (headerMatch[2] || "NORMAL").toUpperCase().trim();
+    let subject = headerMatch[3].replace(/^\*\*|\*\*$/g, "").trim();
+
+    let from = "Unknown";
+    let keyPoints = "";
+    let action = "None (Informational update)";
+
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i];
+      if (line.match(/^(?:•|\*|-)?\s*From:/i)) {
+        from = line.replace(/^(?:•|\*|-)?\s*From:\s*/i, "").replace(/^`|`$/g, "").trim();
+      } else if (line.match(/^(?:•|\*|-)?\s*Key Points:/i)) {
+        keyPoints = line.replace(/^(?:•|\*|-)?\s*Key Points:\s*/i, "").trim();
+      } else if (line.match(/^(?:•|\*|-)?\s*Required Action:/i)) {
+        action = line.replace(/^(?:•|\*|-)?\s*Required Action:\s*/i, "").trim();
+      } else if (keyPoints && !line.match(/^(?:•|\*|-)?\s*(?:Required Action|From):/i)) {
+        keyPoints += " " + line;
+      }
+    }
+
+    if (!keyPoints) {
+      keyPoints = "Automated notification or social feed activity from sender.";
+    }
+
+    items.push({ num, priority, subject, from, keyPoints, action });
+  }
+
+  if (items.length === 0) return null;
+
+  const totalCount = items.length;
+  const urgentCount = items.filter(it => ["URGENT", "SECURITY", "HIGH"].includes(it.priority)).length;
+  const actionCount = items.filter(it => !it.action.toLowerCase().includes("none")).length;
+
+  let introHtml = "";
+  if (introText) {
+    introHtml = `<div class="chat-md-intro" style="margin-bottom: 12px; font-weight: 500; color: var(--text-main); font-size: 13.5px;">${formatBasicMarkdown(introText)}</div>`;
+  }
+
+  const cardsHtml = items.map(item => {
+    const pLower = item.priority.toLowerCase();
+    const prioCardClass = "prio-card-" + (pLower.includes("urgent") ? "urgent" : pLower.includes("sec") ? "security" : pLower.includes("high") ? "high" : pLower.includes("low") ? "low" : "normal");
+    const prioBadgeClass = "prio-" + (pLower.includes("urgent") ? "urgent" : pLower.includes("sec") ? "security" : pLower.includes("high") ? "high" : pLower.includes("low") ? "low" : "normal");
+    const isActionNeeded = !item.action.toLowerCase().includes("none");
+
+    return `
+      <div class="email-summary-card ${prioCardClass}" data-priority="${pLower}" data-action="${isActionNeeded ? 'true' : 'false'}">
+        <div class="esc-header-row">
+          <div class="esc-header-left">
+            <span class="esc-num-badge">#${String(item.num).padStart(2, "0")}</span>
+            <span class="esc-prio-badge ${prioBadgeClass}">
+              <span class="prio-indicator-dot"></span>
+              ${escapeHtml(item.priority)}
+            </span>
+          </div>
+          <div class="esc-sender-badge" title="From: ${escapeHtml(item.from)}">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            <span>${escapeHtml(item.from)}</span>
+          </div>
+        </div>
+
+        <h4 class="esc-title">${escapeHtml(item.subject)}</h4>
+
+        <div class="esc-key-points">
+          <div class="esc-points-header">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            Key Takeaways
+          </div>
+          <p class="esc-points-body">${escapeHtml(item.keyPoints)}</p>
+        </div>
+
+        <div class="esc-footer-row">
+          <div class="esc-action-callout ${isActionNeeded ? 'action-required' : 'action-none'}">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              ${isActionNeeded 
+                ? '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>' 
+                : '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>'}
+            </svg>
+            <span>${escapeHtml(item.action)}</span>
+          </div>
+          <button type="button" class="esc-view-inbox-btn" data-search="${escapeHtml(item.subject)}">
+            View in Inbox &rarr;
+          </button>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  return `
+    ${introHtml}
+    <div class="email-summary-deck">
+      <div class="deck-top-stat-bar">
+        <div class="deck-stat-group">
+          <div class="deck-stat-chip total">
+            <span>${totalCount}</span> Emails Summarized
+          </div>
+          <div class="deck-stat-chip urgent">
+            <span>${urgentCount}</span> Urgent / High
+          </div>
+          <div class="deck-stat-chip action">
+            <span>${actionCount}</span> Need Action
+          </div>
+        </div>
+        <div class="deck-filter-pills">
+          <button type="button" class="deck-filter-btn active" data-filter="all">All (${totalCount})</button>
+          <button type="button" class="deck-filter-btn" data-filter="action">Action Needed (${actionCount})</button>
+          <button type="button" class="deck-filter-btn" data-filter="urgent">Urgent (${urgentCount})</button>
+        </div>
+      </div>
+      <div class="deck-cards-list">
+        ${cardsHtml}
+      </div>
+    </div>
+  `;
+}
+
 function formatMarkdown(text) {
   if (!text) return "";
+
+  // Check if text is an executive email summary list
+  const emailDeckHtml = formatEmailSummaryDeck(text);
+  if (emailDeckHtml) {
+    return emailDeckHtml;
+  }
 
   // 1. Preserve and extract Fenced Code Blocks
   const codeBlocks = [];
@@ -529,21 +692,27 @@ function formatMarkdown(text) {
     return token;
   });
 
-  // 3. Inline Code: `code`
+  // 3. Headings
+  html = html.replace(/^### (.*$)/gim, '<h3 class="chat-md-h3">$1</h3>');
+  html = html.replace(/^## (.*$)/gim, '<h2 class="chat-md-h2">$1</h2>');
+  html = html.replace(/^# (.*$)/gim, '<h1 class="chat-md-h1">$1</h1>');
+
+  // 4. Inline Code: `code`
   html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
 
-  // 4. Bold: **text**
+  // 5. Bold & Italics: **text**, *text*
   html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>");
 
-  // 5. Bullet Lists: - item or * item
+  // 6. Bullet Lists: - item or * item
   html = html.replace(/^\s*[-*]\s+(.+)$/gm, "<li>$1</li>");
   html = html.replace(/(<li>(?:(?!<ul)[^<]|<(?!\/ul>))*<\/li>)/gs, "<ul>$1</ul>");
 
-  // 6. Line breaks
+  // 7. Line breaks
   html = html.replace(/\n\n+/g, "<br><br>");
   html = html.replace(/\n/g, "<br>");
 
-  // 7. Restore Tables & Code Blocks
+  // 8. Restore Tables & Code Blocks
   tableBlocks.forEach((tbl, idx) => {
     html = html.replace(`__TABLE_${idx}__`, tbl);
   });
@@ -564,6 +733,53 @@ function isLlmEngineEnabled() {
   return stored === "1";
 }
 
+let lastLlmStatusData = null;
+
+function updateChatModelBadge(data, isEnabled) {
+  if (data) lastLlmStatusData = data;
+  const badge = document.getElementById("chat-model-badge");
+  const dot = document.getElementById("chat-model-badge-dot");
+  const name = document.getElementById("chat-model-badge-name");
+  if (!badge || !name) return;
+
+  const enabled = isEnabled !== undefined ? isEnabled : isLlmEngineEnabled();
+  if (!enabled) {
+    badge.className = "chat-model-badge offline";
+    if (dot) dot.className = "chat-model-badge-dot offline";
+    name.textContent = "LLM Off";
+    badge.title = "LLM inference is toggled OFF (Manual mode). Click to configure or enable.";
+    return;
+  }
+
+  const status = data || lastLlmStatusData;
+  if (!status) {
+    name.textContent = "Checking...";
+    return;
+  }
+
+  const provider = (status.provider || "ollama").toLowerCase();
+  if (provider === "groq") {
+    const rawModel = status.groq_model || "llama-3.3-70b-versatile";
+    const shortModel = rawModel.split("/").pop();
+    const isOnline = Boolean(status.groq_configured && status.llm_available);
+    badge.className = `chat-model-badge ${isOnline ? "online groq" : "warning"}`;
+    if (dot) dot.className = `chat-model-badge-dot ${isOnline ? "online" : "warning"}`;
+    name.textContent = `⚡ Groq: ${shortModel}`;
+    badge.title = isOnline
+      ? `Active Model: Groq Cloud (${rawModel}). Click to configure.`
+      : `Groq is not configured. Click to set API key.`;
+  } else {
+    const rawModel = status.ollama_model || "qwen2.5:3b";
+    const isOnline = Boolean(status.ollama_online);
+    badge.className = `chat-model-badge ${isOnline ? "online ollama" : "offline"}`;
+    if (dot) dot.className = `chat-model-badge-dot ${isOnline ? "online" : "offline"}`;
+    name.textContent = `● Local: ${rawModel}`;
+    badge.title = isOnline
+      ? `Active Model: Local Ollama (${rawModel}). Click to configure.`
+      : `Local Ollama is offline (Port 11434). Click to start.`;
+  }
+}
+
 function updateLlmToggleUI(enabled) {
   const checkbox = document.getElementById("llm-toggle-checkbox");
   const dot = document.getElementById("llm-toggle-dot");
@@ -581,12 +797,14 @@ function updateLlmToggleUI(enabled) {
       ? "Local LLM inference is ON. Click to toggle OFF (pure offline mode)."
       : "Local LLM inference is OFF (instant offline mode). Click to toggle ON.";
   }
+  updateChatModelBadge(lastLlmStatusData, enabled);
 }
 
 function initLlmToggle() {
   const checkbox = document.getElementById("llm-toggle-checkbox");
   const wrap = document.getElementById("header-llm-toggle-wrap");
   const btnGear = document.getElementById("btn-open-llm-modal");
+  const chatModelBadge = document.getElementById("chat-model-badge");
   const current = isLlmEngineEnabled();
   updateLlmToggleUI(current);
 
@@ -601,6 +819,11 @@ function initLlmToggle() {
   });
 
   btnGear?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openLlmConfigModal();
+  });
+
+  chatModelBadge?.addEventListener("click", (e) => {
     e.stopPropagation();
     openLlmConfigModal();
   });
@@ -626,6 +849,7 @@ function initLlmToggle() {
   });
 
   initLlmConfigModal(handleToggle);
+  fetchLlmStatus();
 }
 
 let _detectGpuFn = null;
@@ -654,6 +878,8 @@ async function fetchLlmStatus() {
   try {
     const res = await fetch("/api/llm/status");
     const data = await res.json();
+    lastLlmStatusData = data;
+    updateChatModelBadge(data);
 
     if (elActiveProv) elActiveProv.textContent = data.provider || "ollama";
     if (elOllamaStatus) {
@@ -1076,6 +1302,11 @@ function initNavigation() {
   };
 
   function switchTab(tabId) {
+    if (!tabId) return;
+    try {
+      localStorage.setItem("active_dashboard_tab", tabId);
+    } catch (e) {}
+
     navBtns.forEach(b => b.classList.remove("active"));
     viewPanes.forEach(p => p.classList.remove("active"));
 
@@ -1097,12 +1328,17 @@ function initNavigation() {
     if (tabId === "tab-inbox") {
       document.getElementById("header-chat-tools")?.classList.add("hidden");
       document.getElementById("header-inbox-search-wrap")?.classList.remove("hidden");
-      document.getElementById("header-inbox-tools")?.classList.remove("hidden");
       fetchEmailInbox();
     } else {
       document.getElementById("header-chat-tools")?.classList.remove("hidden");
       document.getElementById("header-inbox-search-wrap")?.classList.add("hidden");
-      document.getElementById("header-inbox-tools")?.classList.add("hidden");
+    }
+
+    if (tabId === "tab-ask-ai") {
+      requestAnimationFrame(() => {
+        const vp = document.getElementById("chat-viewport");
+        if (vp) vp.scrollTop = vp.scrollHeight;
+      });
     }
   }
 
@@ -1112,6 +1348,15 @@ function initNavigation() {
       switchTab(tabId);
     });
   });
+
+  // Restore persisted tab on reload
+  try {
+    const hash = window.location.hash ? "tab-" + window.location.hash.replace("#", "") : null;
+    const saved = hash || localStorage.getItem("active_dashboard_tab");
+    if (saved && document.getElementById(saved)) {
+      switchTab(saved);
+    }
+  } catch (e) {}
 
   // Breadcrumb Click Navigation
   breadcrumbRoot?.addEventListener("click", () => {
@@ -1811,6 +2056,42 @@ function appendAssistantMessage(data, persist = true) {
     });
   });
 
+  // Wire email summary deck interactive filters
+  contentBox.querySelectorAll(".deck-filter-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const deck = btn.closest(".email-summary-deck");
+      if (!deck) return;
+      deck.querySelectorAll(".deck-filter-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      const filter = btn.dataset.filter;
+      deck.querySelectorAll(".email-summary-card").forEach(card => {
+        if (filter === "all") {
+          card.classList.remove("hidden");
+        } else if (filter === "action") {
+          if (card.dataset.action === "true") card.classList.remove("hidden");
+          else card.classList.add("hidden");
+        } else if (filter === "urgent") {
+          const p = card.dataset.priority || "";
+          if (p.includes("urgent") || p.includes("high") || p.includes("sec")) card.classList.remove("hidden");
+          else card.classList.add("hidden");
+        }
+      });
+    });
+  });
+
+  // Wire View in Inbox button to smoothly switch tabs and search email
+  contentBox.querySelectorAll(".esc-view-inbox-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const query = btn.dataset.search || "";
+      switchTab("tab-inbox");
+      const searchInput = document.getElementById("email-search-input");
+      if (searchInput && query) {
+        searchInput.value = query.slice(0, 30);
+        searchInput.dispatchEvent(new Event("input"));
+      }
+    });
+  });
+
   // If this is a synthesized automation plan, render the plan card inline inside this message!
   if (data.type === "plan" && data.steps && data.steps.length > 0) {
     const planCard = document.createElement("div");
@@ -2182,10 +2463,14 @@ function initAttachments() {
   });
 }
 
-function scrollToBottom() {
+function scrollToBottom(instant = false) {
   const viewport = document.getElementById("chat-viewport");
   if (viewport) {
-    viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" });
+    if (instant) {
+      viewport.scrollTop = viewport.scrollHeight;
+    } else {
+      viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" });
+    }
   }
 }
 
@@ -2446,7 +2731,23 @@ function renderAttendanceActiveState(data) {
   const projPresentCount = document.getElementById("proj-present-count");
   if (projPresentCount) projPresentCount.textContent = `${(data.roster || []).length} Present`;
 
-  const lanHost = data.network_url || (data.lan_ip ? `${window.location.protocol}//${data.lan_ip}${window.location.port ? ':' + window.location.port : ''}` : window.location.origin);
+  const tunnelUrl = data.tunnel_url;
+  const isTunnelActive = !!(data.is_tunnel_active && tunnelUrl);
+  const tunnelChip = document.getElementById("att-tunnel-chip");
+  const accessText = document.getElementById("att-mobile-access-text");
+
+  if (tunnelChip) {
+    tunnelChip.style.display = isTunnelActive ? "inline-flex" : "none";
+  }
+  if (accessText) {
+    if (isTunnelActive) {
+      accessText.innerHTML = `Mobile Access: Public Cloudflare Tunnel Active &bull; <strong style="color: #047857;">${escapeHtml(tunnelUrl.replace(/^https?:\/\//, ''))}</strong>`;
+    } else {
+      accessText.innerHTML = `Mobile Access: Connect your phone to Wi-Fi to scan or visit <strong id="att-lan-ip-display">${data.lan_ip || '127.0.0.1'}:8000</strong>`;
+    }
+  }
+
+  const lanHost = tunnelUrl || data.network_url || (data.lan_ip ? `${window.location.protocol}//${data.lan_ip}${window.location.port ? ':' + window.location.port : ''}` : window.location.origin);
   const scannerUrl = `${lanHost}/attendance/student`;
   const scannerInput = document.getElementById("att-scanner-url-input");
   if (scannerInput) scannerInput.value = scannerUrl;
@@ -2467,6 +2768,9 @@ function renderAttendanceInactiveState() {
   const badgeText = document.getElementById("att-status-text");
   if (badge) badge.className = "attendance-status-badge inactive";
   if (badgeText) badgeText.textContent = "No Active Session";
+
+  const tunnelChip = document.getElementById("att-tunnel-chip");
+  if (tunnelChip) tunnelChip.style.display = "none";
 
   const btnStart = document.getElementById("btn-start-attendance");
   const btnStartLabel = document.getElementById("btn-start-attendance-label");
@@ -2672,10 +2976,59 @@ function initAttendanceModule() {
     }
   });
 
+  // Preset chips click & manual input sync
+  const intervalInput = document.getElementById("modal-att-interval");
+  const presetChips = document.querySelectorAll(".att-interval-preset-chip");
+
+  presetChips.forEach(chip => {
+    chip.addEventListener("click", () => {
+      const val = chip.getAttribute("data-sec");
+      if (intervalInput && val) {
+        intervalInput.value = val;
+        presetChips.forEach(c => {
+          c.classList.remove("active");
+          c.style.background = "#f1f5f9";
+          c.style.color = "#475569";
+          c.style.borderColor = "#e2e8f0";
+        });
+        chip.classList.add("active");
+        chip.style.background = "#2563eb";
+        chip.style.color = "#ffffff";
+        chip.style.borderColor = "#2563eb";
+      }
+    });
+  });
+
+  intervalInput?.addEventListener("input", (e) => {
+    const val = parseInt(e.target.value, 10);
+    presetChips.forEach(c => {
+      if (parseInt(c.getAttribute("data-sec"), 10) === val) {
+        c.classList.add("active");
+        c.style.background = "#2563eb";
+        c.style.color = "#ffffff";
+        c.style.borderColor = "#2563eb";
+      } else {
+        c.classList.remove("active");
+        c.style.background = "#f1f5f9";
+        c.style.color = "#475569";
+        c.style.borderColor = "#e2e8f0";
+      }
+    });
+  });
+
   btnConfirmStart?.addEventListener("click", async () => {
     const course = document.getElementById("modal-att-course")?.value.trim() || "Course Attendance";
     const section = document.getElementById("modal-att-section")?.value.trim() || "Section A";
-    const interval = parseInt(document.getElementById("modal-att-interval")?.value || "15", 10);
+    const intervalRaw = document.getElementById("modal-att-interval")?.value;
+    let interval = parseInt(intervalRaw, 10);
+    if (isNaN(interval) || interval < 1) {
+      interval = 1;
+    }
+    const useTunnel = document.getElementById("modal-att-use-tunnel") ? document.getElementById("modal-att-use-tunnel").checked : true;
+
+    btnConfirmStart.disabled = true;
+    const origText = btnConfirmStart.textContent;
+    btnConfirmStart.textContent = useTunnel ? "Starting Cloudflare Tunnel..." : "Starting...";
 
     try {
       const res = await fetch("/api/attendance/session/start", {
@@ -2684,19 +3037,27 @@ function initAttendanceModule() {
         body: JSON.stringify({
           course_name: course,
           section: section,
-          rotation_interval_seconds: interval
+          rotation_interval_seconds: interval,
+          use_tunnel: useTunnel
         })
       });
       const data = await res.json();
       if (data.success) {
         closeModal();
         await fetchActiveAttendanceSession();
-        showAttendanceToast(`Live attendance started for ${course}`, "success");
+        if (data.tunnel_url) {
+          showAttendanceToast(`Live attendance active with Cloudflare Tunnel`, "success");
+        } else {
+          showAttendanceToast(`Live attendance started for ${course}`, "success");
+        }
       } else {
         alert(data.error || "Could not start session.");
       }
     } catch (err) {
       alert("Failed to start attendance session: " + err.message);
+    } finally {
+      btnConfirmStart.disabled = false;
+      btnConfirmStart.textContent = origText;
     }
   });
 
@@ -2889,6 +3250,7 @@ let activeEmailMsg = null;
 let activeReplyTone = "professional";
 let emailSearchDebounce = null;
 let activeConnectedEmail = "";
+let activeAccountType = "demo";
 let isThreadedView = false;
 let currentEmailViewMode = "clean";
 
@@ -3006,14 +3368,27 @@ function formatEmailTime(isoStr) {
   return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
 
+function decodeHtmlEntities(str) {
+  if (!str) return "";
+  const txt = document.createElement("textarea");
+  txt.innerHTML = str;
+  return txt.value;
+}
+
 function cleanSnippet(text) {
   if (!text) return "";
-  return text
+  let cleaned = decodeHtmlEntities(text);
+  cleaned = cleaned
+    .replace(/\*{2,}\s*disclaimer\s*\*{2,}[\s\S]*/i, "")
+    .replace(/\n\s*--\s*[\s\S]*/i, "")
+    .replace(/\b(The information contained in this (?:electronic )?communication[\s\S]*)/i, "")
     .replace(/\[image:[^\]]*\]/gi, "")
     .replace(/https?:\/\/\S+/gi, "")
     .replace(/<[^>]+>/g, " ")
+    .replace(/\u00a0|&nbsp;/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
+  return cleaned;
 }
 
 function formatEmailBody(rawBody) {
@@ -3139,6 +3514,23 @@ function formatBentoSummary(rawSummary) {
 function initEmailCopilot() {
   fetchEmailAccount();
 
+  // Handle Google OAuth callback notification and redirection
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get("google_auth") === "success") {
+    const userEmail = urlParams.get("email") || "Google Account";
+    window.history.replaceState({}, document.title, window.location.pathname + "#inbox");
+    document.getElementById("nav-btn-inbox")?.click();
+    setTimeout(() => {
+      alert(`Successfully signed in with Google (${userEmail})!\nYour Gmail mailbox is connected and synchronized.`);
+    }, 200);
+  } else if (urlParams.get("google_error")) {
+    const err = urlParams.get("google_error");
+    window.history.replaceState({}, document.title, window.location.pathname + "#inbox");
+    setTimeout(() => {
+      alert("Google Sign-In Notice: " + err);
+    }, 200);
+  }
+
   // Back to Inbox Button in Detail View
   document.getElementById("btn-back-to-inbox")?.addEventListener("click", () => {
     closeEmailDetailView();
@@ -3160,12 +3552,45 @@ function initEmailCopilot() {
     document.querySelectorAll(".row-checkbox").forEach(cb => { cb.checked = isChecked; });
   });
 
-  // Sync Mail Buttons (Toolbar and Top Nav)
+  // Reload / Sync Mail Button (above emails row)
   document.getElementById("btn-table-sync")?.addEventListener("click", () => {
-    syncEmailAccount();
+    syncEmailInbox();
   });
-  document.getElementById("btn-sync-emails")?.addEventListener("click", () => {
-    syncEmailAccount();
+
+  // Top bar Google Account Popover & Login/Logout actions
+  const topGoogleBtn = document.getElementById("btn-top-google-account");
+  const topGooglePopover = document.getElementById("google-account-popover");
+  const btnTopLogout = document.getElementById("btn-top-google-logout");
+
+  topGoogleBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    topGooglePopover?.classList.toggle("hidden");
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest("#top-user-pill-wrap")) {
+      topGooglePopover?.classList.add("hidden");
+    }
+  });
+
+  btnTopLogout?.addEventListener("click", async () => {
+    const confirmed = confirm("Disconnect your Google account and return to offline sandbox mode?");
+    if (!confirmed) return;
+    try {
+      const res = await fetch("/api/email/account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: "demo.executive@local.ai", account_type: "demo" })
+      });
+      const data = await res.json();
+      if (data.success) {
+        topGooglePopover?.classList.add("hidden");
+        await fetchEmailAccount();
+        await fetchEmailInbox();
+      }
+    } catch (e) {
+      alert("Error logging out: " + e.message);
+    }
   });
 
   // Compose button opens detail view in composer mode
@@ -3338,31 +3763,52 @@ function initEmailCopilot() {
 
   // Link account modal
   const openModalBtn = document.getElementById("btn-open-link-account");
-  const accountPill = document.getElementById("inbox-account-pill");
   const linkModal = document.getElementById("link-email-modal");
   const cancelLinkBtn = document.getElementById("btn-cancel-link-account");
   const cancelDemoBtn = document.getElementById("btn-cancel-demo-account");
   const closeIconBtn = document.getElementById("btn-close-link-modal");
   const unlinkBtn = document.getElementById("btn-unlink-account");
+  const cancelGoogleBtn = document.getElementById("btn-cancel-google-account");
+  const btnTopManage = document.getElementById("btn-top-manage-account");
+  const btnGoogleModalDisconnect = document.getElementById("btn-google-modal-disconnect");
 
   const openLinkModal = () => {
     linkModal?.classList.remove("hidden");
     const emailInput = document.getElementById("link-imap-email");
-    const hostInput = document.getElementById("link-imap-host");
-    const smtpInput = document.getElementById("link-smtp-host");
+    const tabGoogle = document.getElementById("tab-account-google");
+    const tabImap = document.getElementById("tab-account-imap");
+    const googleConnectedView = document.getElementById("google-pane-connected-view");
+    const googleLoginView = document.getElementById("google-pane-login-view");
+    const googleEmailLabel = document.getElementById("modal-google-connected-email");
 
-    if (activeConnectedEmail) {
+    const isGoogleOAuth = activeAccountType === "google_oauth" || activeAccountType === "google";
+    const isRealImap = activeAccountType === "imap" && activeConnectedEmail && !activeConnectedEmail.includes("demo.executive");
+
+    if (isGoogleOAuth) {
+      tabGoogle?.click();
+      if (googleConnectedView) googleConnectedView.style.display = "block";
+      if (googleLoginView) googleLoginView.style.display = "none";
+      if (googleEmailLabel) googleEmailLabel.textContent = `Connected: ${activeConnectedEmail}`;
+    } else {
+      if (googleConnectedView) googleConnectedView.style.display = "none";
+      if (googleLoginView) googleLoginView.style.display = "block";
+    }
+
+    if (isRealImap) {
+      tabImap?.click();
       if (emailInput) emailInput.value = activeConnectedEmail;
       if (activeConnectedEmail.includes("@gmail.com")) {
-        if (hostInput && !hostInput.value) hostInput.value = "imap.gmail.com";
-        if (smtpInput && !smtpInput.value) smtpInput.value = "smtp.gmail.com";
+        btnProvGoogle?.click();
+      } else if (activeConnectedEmail.includes("@outlook.com") || activeConnectedEmail.includes("@office365.com")) {
+        btnProvOutlook?.click();
       }
-      // If already connected, default to IMAP tab and display Disconnect button
-      const tabImap = document.getElementById("tab-account-imap");
-      tabImap?.click();
       if (unlinkBtn) unlinkBtn.style.display = "inline-flex";
-    } else {
+    } else if (!isGoogleOAuth) {
+      tabGoogle?.click();
       if (unlinkBtn) unlinkBtn.style.display = "none";
+      if (emailInput && emailInput.value.includes("demo.executive")) {
+        emailInput.value = "";
+      }
     }
   };
 
@@ -3371,10 +3817,34 @@ function initEmailCopilot() {
   };
 
   openModalBtn?.addEventListener("click", openLinkModal);
-  accountPill?.addEventListener("click", openLinkModal);
+  btnTopManage?.addEventListener("click", () => {
+    document.getElementById("google-account-popover")?.classList.add("hidden");
+    openLinkModal();
+  });
   cancelLinkBtn?.addEventListener("click", closeLinkModal);
   cancelDemoBtn?.addEventListener("click", closeLinkModal);
+  cancelGoogleBtn?.addEventListener("click", closeLinkModal);
   closeIconBtn?.addEventListener("click", closeLinkModal);
+
+  btnGoogleModalDisconnect?.addEventListener("click", async () => {
+    const confirmed = confirm(`Disconnect Google account (${activeConnectedEmail}) and return to offline sandbox?`);
+    if (!confirmed) return;
+    try {
+      const res = await fetch("/api/email/account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: "demo.executive@local.ai", account_type: "demo" })
+      });
+      const data = await res.json();
+      if (data.success) {
+        closeLinkModal();
+        await fetchEmailAccount();
+        await syncEmailInbox();
+      }
+    } catch (e) {
+      alert("Error disconnecting account: " + e.message);
+    }
+  });
 
   // Close modal when clicking backdrop outside card
   linkModal?.addEventListener("click", (e) => {
@@ -3404,22 +3874,37 @@ function initEmailCopilot() {
   });
 
   // Link account tabs
+  const tabGoogle = document.getElementById("tab-account-google");
   const tabDemo = document.getElementById("tab-account-demo");
   const tabImap = document.getElementById("tab-account-imap");
+  const paneGoogle = document.getElementById("pane-account-google");
   const paneDemo = document.getElementById("pane-account-demo");
   const paneImap = document.getElementById("pane-account-imap");
 
+  tabGoogle?.addEventListener("click", () => {
+    tabGoogle.classList.add("active");
+    tabDemo?.classList.remove("active");
+    tabImap?.classList.remove("active");
+    paneGoogle?.classList.remove("hidden");
+    paneDemo?.classList.add("hidden");
+    paneImap?.classList.add("hidden");
+  });
+
   tabDemo?.addEventListener("click", () => {
     tabDemo.classList.add("active");
+    tabGoogle?.classList.remove("active");
     tabImap?.classList.remove("active");
     paneDemo?.classList.remove("hidden");
+    paneGoogle?.classList.add("hidden");
     paneImap?.classList.add("hidden");
   });
 
   tabImap?.addEventListener("click", () => {
     tabImap.classList.add("active");
+    tabGoogle?.classList.remove("active");
     tabDemo?.classList.remove("active");
     paneImap?.classList.remove("hidden");
+    paneGoogle?.classList.add("hidden");
     paneDemo?.classList.add("hidden");
   });
 
@@ -3705,35 +4190,78 @@ function initEmailCopilot() {
 async function fetchEmailAccount() {
   const statusLabel = document.getElementById("account-status-text");
   const linkAccountBtn = document.getElementById("btn-open-link-account");
-  if (!statusLabel) return;
   try {
     const res = await fetch("/api/email/account");
     const data = await res.json();
     if (data.success) {
       activeConnectedEmail = data.email || "";
-      const isImap = data.account_type === "imap";
-      statusLabel.textContent = `Connected: ${data.email} (${isImap ? "IMAP" : "Sandbox"})`;
+      activeAccountType = data.account_type || "demo";
+      const isGoogleOAuth = activeAccountType === "google_oauth" || activeAccountType === "google";
+      const isRealImap = activeAccountType === "imap" && activeConnectedEmail && !activeConnectedEmail.includes("demo.executive");
 
-      // If an account is linked, remove/hide the Link Account button option
+      if (statusLabel) {
+        if (isGoogleOAuth) {
+          statusLabel.textContent = `Google: ${data.email}`;
+          if (statusLabel.parentElement) {
+            statusLabel.parentElement.title = `Connected to ${data.email} via Google Cloud OAuth (Click to manage)`;
+          }
+        } else if (isRealImap) {
+          statusLabel.textContent = `Connected: ${data.email}`;
+          if (statusLabel.parentElement) {
+            statusLabel.parentElement.title = `Connected to ${data.email} via IMAP (Click to manage)`;
+          }
+        } else {
+          statusLabel.textContent = `Sandbox: demo.executive@local.ai`;
+          if (statusLabel.parentElement) {
+            statusLabel.parentElement.title = `Offline Sandbox: demo.executive@local.ai (Not connected to Google; click to link live email)`;
+          }
+        }
+      }
+
+      // If a real account is linked, remove/hide the Link Account button option
       if (linkAccountBtn) {
-        if (isImap && activeConnectedEmail) {
+        if (isGoogleOAuth || isRealImap) {
           linkAccountBtn.style.display = "none";
         } else {
           linkAccountBtn.style.display = "inline-flex";
         }
       }
+
+      // Top bar Google button & popover update
+      const topGoogleLabel = document.getElementById("top-google-label");
+      const topPopoverEmail = document.getElementById("top-popover-email");
+      const topPopoverStatus = document.getElementById("top-popover-status");
+      const topInitials = document.getElementById("top-user-avatar-initials");
+      const btnTopLogin = document.getElementById("btn-top-google-login");
+      const btnTopLogout = document.getElementById("btn-top-google-logout");
+
+      if (isGoogleOAuth) {
+        const fullEmail = data.email || "";
+        const shortName = fullEmail.split("@")[0] || "Google";
+        if (topGoogleLabel) topGoogleLabel.textContent = shortName;
+        if (topPopoverEmail) topPopoverEmail.textContent = fullEmail;
+        if (topPopoverStatus) topPopoverStatus.textContent = "Google OAuth Active";
+        if (topInitials) topInitials.textContent = shortName.slice(0, 2).toUpperCase();
+        if (btnTopLogin) btnTopLogin.style.display = "none";
+        if (btnTopLogout) btnTopLogout.style.display = "block";
+      } else {
+        if (topGoogleLabel) topGoogleLabel.textContent = "Google";
+        if (topPopoverEmail) topPopoverEmail.textContent = "Not connected";
+        if (topPopoverStatus) topPopoverStatus.textContent = "Offline Sandbox";
+        if (topInitials) topInitials.textContent = "G";
+        if (btnTopLogin) btnTopLogin.style.display = "flex";
+        if (btnTopLogout) btnTopLogout.style.display = "none";
+      }
     }
   } catch (e) {
-    statusLabel.textContent = "Offline Sandbox";
+    if (statusLabel) statusLabel.textContent = "Sandbox: demo.executive@local.ai";
     if (linkAccountBtn) linkAccountBtn.style.display = "inline-flex";
   }
 }
 
 async function syncEmailInbox() {
-  const syncBtn = document.getElementById("btn-sync-emails");
-  const label = syncBtn?.querySelector("span");
-  if (syncBtn) syncBtn.classList.add("spinning");
-  if (label) label.textContent = "Syncing...";
+  const tableSyncBtn = document.getElementById("btn-table-sync");
+  if (tableSyncBtn) tableSyncBtn.classList.add("spinning");
   try {
     const res = await fetch("/api/email/sync", { method: "POST" });
     const data = await res.json();
@@ -3745,8 +4273,7 @@ async function syncEmailInbox() {
   } catch (e) {
     console.warn("Sync failed:", e);
   } finally {
-    if (syncBtn) syncBtn.classList.remove("spinning");
-    if (label) label.textContent = "Sync Mail";
+    if (tableSyncBtn) tableSyncBtn.classList.remove("spinning");
   }
 }
 
@@ -3805,13 +4332,16 @@ async function fetchEmailInbox(query = "") {
     const totalCount = items.length;
     const unreadCount = items.filter(m => !m.is_read).length;
     const urgentCount = items.filter(m => (m.priority || "").toLowerCase() === "high" || (m.category || "").toLowerCase() === "urgent").length;
+    const actionCount = items.filter(m => (m.category || "").toLowerCase() === "action" || (m.priority || "").toLowerCase() === "high").length;
 
     const badgeAll = document.getElementById("tab-badge-all");
     const badgeUnread = document.getElementById("tab-badge-unread");
     const badgeUrgent = document.getElementById("tab-badge-urgent");
+    const badgeAction = document.getElementById("tab-badge-action");
     if (badgeAll) badgeAll.textContent = totalCount;
     if (badgeUnread) badgeUnread.textContent = unreadCount;
     if (badgeUrgent) badgeUrgent.textContent = urgentCount;
+    if (badgeAction) badgeAction.textContent = actionCount;
 
     fetchNotifications();
 

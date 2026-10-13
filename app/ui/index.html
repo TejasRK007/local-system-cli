@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/index.css?v=28">
+  <link rel="stylesheet" href="/static/index.css?v=30">
 </head>
 <body>
   <div class="layout-container">
@@ -231,7 +231,7 @@
               <circle cx="11" cy="11" r="8"></circle>
               <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
             </svg>
-            <input type="text" id="email-search-input" placeholder="Search mail, sender, or keywords... (Press / to search)">
+            <input type="text" id="email-search-input" placeholder="Search mail, sender, or keyword...">
             <button class="search-clear-btn hidden" id="btn-clear-email-search">&times;</button>
           </div>
         </div>
@@ -277,28 +277,6 @@
             </button>
           </div>
 
-          <!-- Inbox Dedicated Header Tools -->
-          <div class="header-inbox-tools hidden" id="header-inbox-tools">
-            <button class="account-status-pill" id="inbox-account-pill" title="Email account connection status">
-              <span class="status-indicator-dot"></span>
-              <span id="account-status-text">Not Connected</span>
-            </button>
-            <button class="pill-btn pill-btn-outline" id="btn-sync-emails" title="Sync incoming emails">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="23 4 23 10 17 10"></polyline>
-                <polyline points="1 20 1 14 7 14"></polyline>
-                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-              </svg>
-              <span>Sync Mail</span>
-            </button>
-            <button class="pill-btn pill-btn-dark" id="btn-new-email-draft" title="Compose new message">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <line x1="5" y1="12" x2="19" y2="12"></line>
-              </svg>
-              <span>Compose</span>
-            </button>
-          </div>
 
           <div class="notifications-wrapper" id="notifications-wrapper">
             <button class="icon-action-btn" id="btn-notifications" title="Notifications" aria-label="Notifications" aria-haspopup="true" aria-expanded="false">
@@ -337,8 +315,44 @@
               </div>
             </div>
           </div>
-          <div class="top-user-pill">
-            <img src="/static/assets/admin_avatar.jpg" alt="Profile" class="top-avatar-mini">
+          <div class="top-user-pill" id="top-user-pill-wrap" style="position: relative;">
+            <button class="top-google-account-btn" id="btn-top-google-account" title="Google Account" style="background: var(--bg-surface, #ffffff); border: 1px solid var(--border-subtle, #e2e8f0); border-radius: 20px; padding: 4px 10px; display: inline-flex; align-items: center; gap: 7px; cursor: pointer; height: 32px; font-size: 12px; color: var(--text-main, #1e293b); font-weight: 500; font-family: inherit; transition: background 0.15s, border-color 0.15s;">
+              <svg width="15" height="15" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+              </svg>
+              <span id="top-google-label" style="max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Google</span>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity: 0.6;">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+            <!-- Google Account Dropdown Popover -->
+            <div class="google-account-popover hidden" id="google-account-popover" style="position: absolute; right: 0; top: 38px; background: #ffffff; border: 1px solid var(--border-subtle, #e2e8f0); border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.12); width: 250px; padding: 14px; z-index: 10000; font-size: 13px;">
+              <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border-subtle, #e2e8f0);">
+                <div style="width: 32px; height: 32px; border-radius: 50%; background: #eff6ff; display: flex; align-items: center; justify-content: center; font-weight: 700; color: #2563eb; font-size: 13px;" id="top-user-avatar-initials">G</div>
+                <div style="overflow: hidden; flex: 1;">
+                  <div style="font-weight: 600; color: var(--text-main, #0f172a); font-size: 12.5px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;" id="top-popover-email">user@example.com</div>
+                  <div style="font-size: 11px; color: #64748b;" id="top-popover-status">Google OAuth Connected</div>
+                </div>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 6px;">
+                <button type="button" id="btn-top-manage-account" style="width: 100%; border: 1px solid var(--border-subtle, #e2e8f0); background: #f8fafc; color: var(--text-main, #1e293b); border-radius: 8px; padding: 7px 12px; font-size: 12px; font-weight: 500; cursor: pointer; text-align: left; display: flex; align-items: center; gap: 8px; font-family: inherit;">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                  </svg>
+                  <span>Manage Mail Accounts</span>
+                </button>
+                <a href="/api/auth/google/login" id="btn-top-google-login" style="display: none; align-items: center; justify-content: center; gap: 8px; background: #2563eb; color: #ffffff; border-radius: 8px; padding: 8px 12px; font-size: 12px; font-weight: 600; text-decoration: none; text-align: center;">
+                  Sign in with Google
+                </a>
+                <button type="button" id="btn-top-google-logout" style="display: block; width: 100%; border: 1px solid #fee2e2; background: #fef2f2; color: #dc2626; border-radius: 8px; padding: 8px 12px; font-size: 12px; font-weight: 600; cursor: pointer; text-align: center; font-family: inherit;">
+                  Log Out from Google
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </header>
@@ -403,6 +417,10 @@
               </div>
 
               <div class="prompt-right-tools">
+                <div class="chat-model-badge" id="chat-model-badge" title="Active Model: Click to configure model">
+                  <span class="chat-model-badge-dot offline" id="chat-model-badge-dot"></span>
+                  <span class="chat-model-badge-name" id="chat-model-badge-name">Loading...</span>
+                </div>
                 <button class="btn-icon-soft" id="btn-voice-input" title="Voice / Tone">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
@@ -563,8 +581,8 @@
                   <path d="M1.42 9a16 16 0 0 1 21.16 0"></path>
                   <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
                   <circle cx="12" cy="20" r="1"></circle>
-                </svg>
-                <span>Mobile Access: Connect your phone to Wi-Fi to scan or visit <strong id="att-lan-ip-display">192.168.1.5:8000</strong></span>
+                <span id="att-mobile-access-text">Mobile Access: Connect your phone to Wi-Fi to scan or visit <strong id="att-lan-ip-display">192.168.1.5:8000</strong></span>
+                <span id="att-tunnel-chip" style="display: none; margin-left: auto; background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 600; white-space: nowrap;">🌐 Cloudflare Active</span>
               </div>
 
               <!-- Student Mobile Scanner Portal Link -->
@@ -670,6 +688,7 @@
                     <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
                   </svg>
                   <span>Action Needed</span>
+                  <span class="tab-badge badge-action" id="tab-badge-action">0</span>
                 </button>
               </div>
             </div>
@@ -891,6 +910,15 @@
             </div>
           </div>
         </div>
+
+        <!-- Floating Action Button: Compose Email (Bottom-Right) -->
+        <button class="inbox-compose-fab" id="btn-new-email-draft" title="Compose new message">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          <span>Compose</span>
+        </button>
       </section>
 
       <!-- TAB 4: TASKS -->
@@ -1468,16 +1496,86 @@
         </button>
       </div>
 
-      <div class="link-account-tabs" style="margin-top: 14px;">
-        <button class="tab-chip active" id="tab-account-demo">Executive Sandbox</button>
+      <div class="link-account-tabs" style="margin-top: 14px; display: flex; gap: 6px;">
+        <button class="tab-chip active" id="tab-account-google" style="display: flex; align-items: center; gap: 6px;">
+          <svg width="13" height="13" viewBox="0 0 24 24">
+            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+          </svg>
+          Google Sign-In
+        </button>
+        <button class="tab-chip" id="tab-account-demo">Executive Sandbox</button>
         <button class="tab-chip" id="tab-account-imap">Custom IMAP / SMTP</button>
       </div>
 
-      <div class="account-tab-pane" id="pane-account-demo">
-        <p class="account-tab-desc">Connects to the pre-loaded sandbox workspace featuring realistic incident alerts, budget requests, and engineering communications.</p>
+      <!-- Google OAuth Tab Pane -->
+      <div class="account-tab-pane" id="pane-account-google">
+        <div id="google-pane-connected-view" style="display: none; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 8px; padding: 14px; margin-top: 10px; margin-bottom: 14px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="width: 9px; height: 9px; border-radius: 50%; background: #10b981; display: inline-block; flex-shrink: 0;"></span>
+              <div>
+                <div style="font-size: 13px; font-weight: 600; color: #065f46;" id="modal-google-connected-email">Connected to Google</div>
+                <div style="font-size: 11.5px; color: #047857; margin-top: 2px;">Live Gmail API sync active &bull; Cloud OAuth 2.0</div>
+              </div>
+            </div>
+            <button type="button" id="btn-google-modal-disconnect" class="pill-btn pill-btn-ghost danger" style="color: #dc2626; border: 1px solid #fee2e2; background: #fff5f5; font-size: 12px; padding: 5px 12px; cursor: pointer; border-radius: 6px; font-weight: 600; white-space: nowrap;">
+              Disconnect
+            </button>
+          </div>
+        </div>
+
+        <div id="google-pane-login-view" style="text-align: center; padding: 20px 10px 15px;">
+          <div style="background: rgba(66, 133, 244, 0.08); border: 1px solid rgba(66, 133, 244, 0.25); border-radius: 8px; padding: 12px 14px; margin-bottom: 16px; text-align: left;">
+            <div style="font-size: 13px; font-weight: 600; color: #1e40af; display: flex; align-items: center; gap: 8px;">
+              <svg width="15" height="15" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+              </svg>
+              Google Cloud OAuth 2.0 Authentication
+            </div>
+            <div style="font-size: 12px; color: #2563eb; margin-top: 3px; line-height: 1.5;">
+              Authenticate your Google Account securely with OAuth 2.0. Reads and sends emails directly through Google's Gmail API.
+            </div>
+          </div>
+
+          <a href="/api/auth/google/login" id="btn-google-oauth-login" style="display: inline-flex; align-items: center; justify-content: center; gap: 10px; background: #ffffff; color: #1e293b; border: 1px solid #cbd5e1; border-radius: 8px; padding: 11px 24px; font-weight: 600; font-size: 14px; text-decoration: none; box-shadow: 0 1px 3px rgba(0,0,0,0.08); transition: all 0.2s; cursor: pointer;">
+            <svg width="18" height="18" viewBox="0 0 24 24">
+              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+            </svg>
+            Sign in with Google
+          </a>
+          <p style="font-size: 11.5px; color: #64748b; margin-top: 10px;">
+            One-click authorization with your Google Cloud OAuth Client credentials.
+          </p>
+        </div>
+
         <div class="modal-actions-row" style="margin-top: 16px; display: flex; justify-content: flex-end; gap: 8px;">
-          <button class="pill-btn pill-btn-outline" id="btn-cancel-demo-account">Cancel</button>
-          <button class="pill-btn pill-btn-dark" id="btn-activate-sandbox">Activate Sandbox Mailbox</button>
+          <button class="pill-btn pill-btn-outline" id="btn-cancel-google-account">Close</button>
+        </div>
+      </div>
+
+      <div class="account-tab-pane hidden" id="pane-account-demo">
+        <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 8px; padding: 12px 14px; margin-top: 10px; margin-bottom: 14px; display: flex; align-items: flex-start; gap: 10px;">
+          <span style="width: 8px; height: 8px; border-radius: 50%; background: #10b981; flex-shrink: 0; margin-top: 5px;"></span>
+          <div>
+            <div style="font-size: 13px; font-weight: 600; color: #065f46;">Offline Executive Sandbox Active</div>
+            <div style="font-size: 12px; color: #047857; margin-top: 2px;">Running on an isolated offline demo account (<code>demo.executive@local.ai</code>). Not connected to Google or any live mail server.</div>
+          </div>
+        </div>
+        <p class="account-tab-desc" style="color: var(--text-muted); font-size: 12.5px; line-height: 1.5; margin-bottom: 16px;">
+          This sandbox provides pre-loaded mock communications (SLA incidents, cloud GPU budget requests, latency benchmarks) for testing AI features safely. To link your real Gmail or Outlook account, click the <strong>Custom IMAP / SMTP</strong> tab above.
+        </p>
+        <div class="modal-actions-row" style="margin-top: 16px; display: flex; justify-content: flex-end; gap: 8px;">
+          <button class="pill-btn pill-btn-outline" id="btn-cancel-demo-account">Close</button>
+          <button class="pill-btn pill-btn-dark" id="btn-activate-sandbox">Reset Sandbox Mailbox</button>
         </div>
       </div>
 
@@ -1536,47 +1634,80 @@
 
   <!-- Modal: Start Live Class Attendance Session -->
   <div class="modal-backdrop hidden" id="modal-start-attendance">
-    <div class="modal-card" style="max-width: 480px;">
-      <div class="modal-header">
+    <div class="modern-modal-card" style="max-width: 500px; width: 92%; background: #ffffff; border-radius: 16px; padding: 24px; box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.25); border: 1px solid var(--border-subtle, #e2e8f0); box-sizing: border-box;">
+      <div style="display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 16px; border-bottom: 1px solid #f1f5f9; padding-bottom: 14px;">
         <div>
-          <h2 class="modal-title">Start Live Class Attendance</h2>
-          <p class="modal-desc" style="font-size: 12px; color: #64748b; margin-top: 2px;">Display a dynamic rotating QR code for in-person students</p>
+          <div style="display: inline-flex; align-items: center; gap: 6px; background: #eff6ff; color: #2563eb; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 6px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px;">
+            <span style="width: 6px; height: 6px; border-radius: 50%; background: #2563eb;"></span>
+            Classroom Mode
+          </div>
+          <h2 class="modal-title" style="margin: 0; font-size: 18px; font-weight: 700; color: #0f172a;">Start Live Class Attendance</h2>
+          <p class="modal-desc" style="font-size: 12.5px; color: #64748b; margin: 3px 0 0 0;">Display a dynamic rotating QR code for in-person students</p>
         </div>
-        <button class="modal-close-btn" id="btn-close-modal-attendance">&times;</button>
+        <button class="modal-close-icon-btn" id="btn-close-modal-attendance" title="Close" style="background: transparent; border: 1px solid var(--border-subtle, #e2e8f0); border-radius: 8px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #64748b; transition: all 0.15s; flex-shrink: 0; margin-left: 12px;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
       </div>
 
-      <div class="modal-body" style="padding: 16px 0;">
+      <div class="modal-body" style="padding: 0;">
         <div class="form-group" style="margin-bottom: 14px;">
-          <label style="display: block; font-size: 12px; font-weight: 600; color: #334155; margin-bottom: 6px;">Course Name</label>
-          <input type="text" id="modal-att-course" class="form-input" value="CS401: Distributed Systems" placeholder="e.g. CS101: Introduction to CS" style="width: 100%; height: 40px; padding: 0 12px; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 13.5px;">
+          <label style="display: block; font-size: 12.5px; font-weight: 600; color: #334155; margin-bottom: 6px;">Course Name</label>
+          <input type="text" id="modal-att-course" class="form-input" value="CS401: Distributed Systems" placeholder="e.g. CS101: Introduction to CS" style="width: 100%; height: 40px; padding: 0 12px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 13.5px; background: #ffffff; color: #0f172a; box-sizing: border-box;">
         </div>
 
         <div class="form-group" style="margin-bottom: 14px;">
-          <label style="display: block; font-size: 12px; font-weight: 600; color: #334155; margin-bottom: 6px;">Class Section / Batch</label>
-          <input type="text" id="modal-att-section" class="form-input" value="Section A (Morning)" placeholder="e.g. Section A" style="width: 100%; height: 40px; padding: 0 12px; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 13.5px;">
+          <label style="display: block; font-size: 12.5px; font-weight: 600; color: #334155; margin-bottom: 6px;">Class Section / Batch</label>
+          <input type="text" id="modal-att-section" class="form-input" value="Section A (Morning)" placeholder="e.g. Section A" style="width: 100%; height: 40px; padding: 0 12px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 13.5px; background: #ffffff; color: #0f172a; box-sizing: border-box;">
         </div>
 
-        <div class="form-group" style="margin-bottom: 14px;">
-          <label style="display: block; font-size: 12px; font-weight: 600; color: #334155; margin-bottom: 6px;">QR Code Rotation Interval</label>
-          <select id="modal-att-interval" style="width: 100%; height: 40px; padding: 0 12px; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 13.5px; background: #ffffff;">
-            <option value="10">10 Seconds (Maximum Anti-Proxy Security)</option>
-            <option value="15" selected>15 Seconds (Recommended Balanced)</option>
-            <option value="25">25 Seconds (High Classroom Capacity)</option>
-            <option value="45">45 Seconds (Relaxed)</option>
-          </select>
-          <span style="font-size: 11.5px; color: #64748b; margin-top: 4px; display: block;">The QR code will automatically regenerate a new token every cycle. Screenshots sent to absent friends expire immediately.</span>
+        <!-- QR Code Rotation Interval (Manual Seconds + Quick Presets) -->
+        <div class="form-group" style="margin-bottom: 16px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+            <label style="font-size: 12.5px; font-weight: 600; color: #334155;">QR Code Rotation Interval</label>
+            <span style="font-size: 11.5px; color: #2563eb; font-weight: 600;">Manual Seconds (min 1)</span>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+            <input type="number" id="modal-att-interval" min="1" step="1" value="1" placeholder="Enter seconds (min 1)..." style="flex: 1; height: 40px; padding: 0 12px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 14px; font-weight: 600; color: #0f172a; background: #ffffff; box-sizing: border-box;">
+            <span style="font-size: 13px; font-weight: 600; color: #64748b; white-space: nowrap;">Seconds</span>
+          </div>
+
+          <!-- Quick Preset Chips -->
+          <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;" id="att-interval-chips">
+            <button type="button" class="att-interval-preset-chip active" data-sec="1" style="background: #2563eb; color: #ffffff; border: 1px solid #2563eb; border-radius: 6px; padding: 3px 9px; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.15s;">1s (Default)</button>
+            <button type="button" class="att-interval-preset-chip" data-sec="5" style="background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 6px; padding: 3px 9px; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.15s;">5s</button>
+            <button type="button" class="att-interval-preset-chip" data-sec="10" style="background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 6px; padding: 3px 9px; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.15s;">10s</button>
+            <button type="button" class="att-interval-preset-chip" data-sec="15" style="background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 6px; padding: 3px 9px; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.15s;">15s</button>
+            <button type="button" class="att-interval-preset-chip" data-sec="25" style="background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 6px; padding: 3px 9px; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.15s;">25s</button>
+            <button type="button" class="att-interval-preset-chip" data-sec="45" style="background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 6px; padding: 3px 9px; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.15s;">45s</button>
+          </div>
+
+          <span style="font-size: 11.5px; color: #64748b; margin-top: 6px; display: block; line-height: 1.4;">
+            Dynamic token rotates automatically to prevent screenshot sharing. You can enter any custom number of seconds (1 or higher).
+          </span>
         </div>
 
-        <div class="checkbox-row" style="margin-top: 12px; display: flex; align-items: center; gap: 8px;">
-          <input type="checkbox" id="modal-att-auto-export" checked style="accent-color: #2563eb; width: 16px; height: 16px; cursor: pointer;">
-          <label for="modal-att-auto-export" style="font-size: 12.5px; color: #334155; font-weight: 500; cursor: pointer;">Automatically download CSV roster when session is ended</label>
+        <div class="checkbox-row" style="margin-top: 14px; display: flex; align-items: center; gap: 8px; background: #f8fafc; padding: 10px 12px; border-radius: 8px; border: 1px solid #f1f5f9;">
+          <input type="checkbox" id="modal-att-auto-export" checked style="accent-color: #2563eb; width: 16px; height: 16px; cursor: pointer; margin: 0;">
+          <label for="modal-att-auto-export" style="font-size: 12.5px; color: #334155; font-weight: 500; cursor: pointer; margin: 0;">Automatically download CSV roster when session is ended</label>
+        </div>
+
+        <div class="checkbox-row" style="margin-top: 8px; display: flex; align-items: center; gap: 8px; background: #eff6ff; padding: 10px 12px; border-radius: 8px; border: 1px solid #dbeafe;">
+          <input type="checkbox" id="modal-att-use-tunnel" checked style="accent-color: #2563eb; width: 16px; height: 16px; cursor: pointer; margin: 0;">
+          <label for="modal-att-use-tunnel" style="font-size: 12.5px; color: #1e40af; font-weight: 500; cursor: pointer; margin: 0;">
+            <strong>Cloudflare Tunnel:</strong> Auto-generate public HTTPS QR for mobile access outside Wi-Fi
+          </label>
         </div>
       </div>
 
-      <div class="modal-actions-row" style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px;">
-        <button class="pill-btn pill-btn-outline" id="btn-cancel-modal-attendance">Cancel</button>
-        <button class="pill-btn pill-btn-dark" id="btn-confirm-start-attendance">Launch Live Session</button>
+      <div class="modal-actions-row" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; border-top: 1px solid #f1f5f9; padding-top: 16px;">
+        <button class="pill-btn pill-btn-outline" id="btn-cancel-modal-attendance" style="padding: 8px 18px; font-size: 13px; font-weight: 600;">Cancel</button>
+        <button class="pill-btn pill-btn-dark" id="btn-confirm-start-attendance" style="padding: 8px 20px; font-size: 13px; font-weight: 600; background: #0f172a; color: #ffffff;">Launch Live Session</button>
       </div>
+    </div>
   </div>
 
   <!-- Modal: Fullscreen Classroom Projector Mode -->
@@ -1592,8 +1723,12 @@
           <p class="projector-course-sub" id="proj-course-sub">Section A &bull; Rotating QR Code</p>
         </div>
         <div class="projector-actions">
-          <span class="projector-present-count" id="proj-present-count">0 Present</span>
-          <button class="modal-close-btn" id="btn-close-projector" title="Exit Projector View">&times;</button>
+          <button class="modal-close-icon-btn" id="btn-close-projector" title="Exit Projector View" style="background: transparent; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; color: #ffffff;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
         </div>
       </div>
 
@@ -1623,6 +1758,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=38"></script>
+  <script src="/static/app.js?v=43"></script>
 </body>
 </html>

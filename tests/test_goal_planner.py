@@ -929,3 +929,33 @@ def test_archive_and_organize_wording_preserved(tmp_path):
         "Move all PDF files into archive folder in Downloads"
     )
     assert heur_move["action_type"] == "move"
+
+
+def test_compound_find_move_and_rename_goal(tmp_path):
+    """Verify compound request: find a.pdf and move it to downloads and rename it to b.pdf."""
+    doc_dir = tmp_path / "Documents"
+    doc_dir.mkdir()
+    dl_dir = tmp_path / "Downloads"
+    dl_dir.mkdir()
+    (doc_dir / "alpha.pdf").write_text("alpha content", encoding="utf-8")
+    WorkspaceManager.add_workspace(doc_dir, name="Documents", permissions=["READ", "WRITE"])
+    WorkspaceManager.add_workspace(dl_dir, name="Downloads", permissions=["READ", "WRITE"])
+
+    heur = GoalPlanner._heuristic_goal_analysis(
+        "can you find alpha.pdf and move it to downloads and rename it to beta.pdf"
+    )
+    assert heur["action_type"] == "move"
+    assert heur["filename"] == "alpha.pdf"
+    assert heur["new_filename"] == "beta.pdf"
+    assert heur["target_workspace_name"] == "Downloads"
+
+    plan = GoalPlanner.plan_goal(
+        "can you find alpha.pdf and move it to downloads and rename it to beta.pdf"
+    )
+    assert len(plan.steps) == 2
+    assert plan.steps[0]["action"] == "move"
+    assert "alpha.pdf" in plan.steps[0]["arguments"]["source"]
+    assert plan.steps[1]["action"] == "rename"
+    assert plan.steps[1]["arguments"]["new_name"] == "beta.pdf"
+    assert plan.steps[1]["depends_on_order"] == 1
+

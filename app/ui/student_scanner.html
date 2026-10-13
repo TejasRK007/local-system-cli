@@ -987,19 +987,31 @@
         sessionId = u.searchParams.get("session_id") || "";
         token     = u.searchParams.get("token")      || "";
       } catch (e) {
-        token = urlOrData;
+      let devId = localStorage.getItem("attendance_device_uuid");
+      if (!devId) {
+        devId = (typeof crypto !== "undefined" && crypto.randomUUID) 
+          ? crypto.randomUUID() 
+          : "dev-" + Date.now() + "-" + Math.random().toString(36).substring(2, 10);
+        try {
+          localStorage.setItem("attendance_device_uuid", devId);
+          document.cookie = `device_id=${devId}; path=/; max-age=31536000; SameSite=Lax`;
+        } catch(e) {}
       }
 
       try {
         const res = await fetch("/api/attendance/checkin", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { 
+            "Content-Type": "application/json",
+            "X-Device-Id": devId
+          },
           body: JSON.stringify({
             session_id: sessionId,
             token: token,
             student_id: sId,
             student_name: sName,
-            device_info: navigator.userAgent.substring(0, 80)
+            device_info: navigator.userAgent.substring(0, 80),
+            device_id: devId
           })
         });
         const data = await res.json();
@@ -1012,7 +1024,7 @@
           showError("Verification Rejected", data.error || "The server rejected this attendance token.");
         }
       } catch (err) {
-        showError("Network Error", "Unable to connect to the attendance server. Ensure phone is on the classroom Wi-Fi.");
+        showError("Network Error", "Unable to connect to the attendance server. Ensure phone is connected to network.");
       }
     }
 

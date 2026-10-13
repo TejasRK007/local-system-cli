@@ -45,9 +45,53 @@ from app.tools.file_actions import (
 from app.tools.github_tools import github_list_issues
 from app.tools.metadata_tools import get_file_metadata
 from app.tools.system_tools import get_system_info, list_processes
-from app.workspaces import WorkspaceManager
+from app.workspaces import Permission, WorkspaceManager
 
 console = Console()
+
+
+def get_candidate_unauthorized_folders(text: str = "", summary: str = "") -> list[tuple[str, Path]]:
+    """
+    Identify potential local folders (Downloads, Documents, Desktop, or explicitly
+    mentioned directories) that are not yet registered as enabled workspaces.
+    """
+    home = Path.home()
+    existing_paths = {
+        str(w.canonical_path).lower()
+        for w in WorkspaceManager.list_workspaces()
+        if w.enabled
+    }
+    candidates: list[tuple[str, Path]] = []
+    seen_paths: set[str] = set()
+
+    standard = [
+        ("Downloads", home / "Downloads"),
+        ("Documents", home / "Documents"),
+        ("Desktop", home / "Desktop"),
+    ]
+
+    combined_text = f"{text} {summary}".lower()
+
+    # Prioritize folders explicitly mentioned in user request or summary
+    for name, path in standard:
+        if path.exists():
+            resolved_str = str(path.resolve()).lower()
+            if resolved_str not in existing_paths and resolved_str not in seen_paths:
+                alias = name.lower()
+                singular = alias[:-1] if alias.endswith("s") else alias
+                if alias in combined_text or singular in combined_text:
+                    candidates.append((name, path.resolve()))
+                    seen_paths.add(resolved_str)
+
+    # Then include other standard folders that exist but are not yet registered
+    for name, path in standard:
+        if path.exists():
+            resolved_str = str(path.resolve()).lower()
+            if resolved_str not in existing_paths and resolved_str not in seen_paths:
+                candidates.append((name, path.resolve()))
+                seen_paths.add(resolved_str)
+
+    return candidates
 
 
 def check_workspace_requirement(operation_name: str = "tasks") -> bool:
@@ -58,6 +102,35 @@ def check_workspace_requirement(operation_name: str = "tasks") -> bool:
     """
     if WorkspaceManager.count_workspaces() > 0:
         return True
+
+    # In real CLI, if no workspaces exist, prompt user with yes/no option to authorize standard folders
+    if not os.getenv("PYTEST_CURRENT_TEST") and not os.getenv("AGENT_ENFORCE_WORKSPACES"):
+        candidates = get_candidate_unauthorized_folders()
+        if candidates:
+            folder_names = ", ".join(f"[bold cyan]{c[0]}[/bold cyan]" for c in candidates)
+            console.print(
+                Panel(
+                    f"[yellow]No workspaces are currently configured.[/yellow]\n\n"
+                    f"To perform {operation_name}, access to your local folders is needed.\n\n"
+                    f"Available standard folders: {folder_names}\n\n"
+                    "[bold white]Would you like to grant access to these folders now?[/bold white]",
+                    title="[bold yellow]Authorize Folder Access[/bold yellow]",
+                    border_style="yellow",
+                )
+            )
+            if typer.confirm("Grant access to standard folders now?", default=True):
+                for name, path in candidates:
+                    WorkspaceManager.add_workspace(
+                        path,
+                        name=name,
+                        permissions=[
+                            Permission.READ.value,
+                            Permission.WRITE.value,
+                            Permission.DELETE.value,
+                        ],
+                    )
+                    console.print(f"[bold green]✓ Authorized '{name}' ({path})[/bold green]")
+                return True
 
     # Real CLI or enforced mode: require explicit workspace
     if not os.getenv("PYTEST_CURRENT_TEST") or os.getenv("AGENT_ENFORCE_WORKSPACES"):
@@ -85,12 +158,28 @@ app = typer.Typer(help="Local Agentic Automation System - AI-powered task automa
 def show_header():
     """Display the application header."""
 
+    provider = os.getenv("LLM_PROVIDER", "ollama").lower()
+    from app.llm import is_ollama_online
+
+    ollama_up = is_ollama_online()
+    if provider == "ollama":
+        if ollama_up:
+            status_line = (
+                f"\n[dim green]● Local AI (Ollama): Online ({os.getenv('OLLAMA_MODEL', 'qwen2.5:3b')})[/dim green]"
+            )
+        else:
+            status_line = (
+                "\n[dim yellow]○ Local AI (Ollama): Offline (Run 'ollama serve' for offline local model)[/dim yellow]"
+            )
+    else:
+        status_line = f"\n[dim blue]● Cloud AI: Groq ({os.getenv('GROQ_MODEL', 'openai/gpt-oss-120b')})[/dim blue]"
+
     console.print()
 
     console.print(
         Panel(
             "[bold white]LOCAL AGENTIC AUTOMATION SYSTEM[/bold white]\n"
-            "[cyan]AI Task Automation CLI[/cyan]",
+            f"[cyan]AI Task Automation CLI[/cyan]{status_line}",
             border_style="cyan",
             expand=False,
         )
@@ -429,6 +518,23 @@ def agent(request: str):
     # AGENT PROCESSING
     # ---------------------------------------------------------
 
+    # Auto-bridge compound requests that involve multi-step goals
+    compound_action_words = [
+        "if found",
+        "and move",
+        "then move",
+        "and delete",
+        "then delete",
+        "organize",
+        "archive",
+        "clean up",
+        "sort all",
+    ]
+    if any(w in request_lower for w in compound_action_words):
+        console.print("[dim]Delegating compound task to Goal Planner...[/dim]")
+        goal_command(request)
+        return
+
     console.print("[bold blue]● Understanding request...[/bold blue]")
 
     result = run_agent(request)
@@ -438,21 +544,25 @@ def agent(request: str):
     console.print()
 
     # ---------------------------------------------------------
-    # UNSUPPORTED / UNCLEAR REQUEST
+    # UNSUPPORTED / STRING RESULT HANDLING
     # ---------------------------------------------------------
 
-    if result == "UNSUPPORTED_REQUEST":
-        show_help_hint()
+    if isinstance(result, str):
+        if result == "UNSUPPORTED_REQUEST":
+            show_help_hint()
 
-        log_event(
-            user_request=request,
-            action="unsupported",
-            risk_level="low",
-            approval_required=False,
-            approval_result="NOT_APPLICABLE",
-            execution_status="NOT_SUPPORTED",
-            result_summary="Unsupported or unrecognized request",
-        )
+            log_event(
+                user_request=request,
+                action="unsupported",
+                risk_level="low",
+                approval_required=False,
+                approval_result="NOT_APPLICABLE",
+                execution_status="NOT_SUPPORTED",
+                result_summary="Unsupported or unrecognized request",
+            )
+        else:
+            console.print(Panel(result, border_style="cyan"))
+        return
 
         return
 
@@ -1529,7 +1639,42 @@ def goal_command(
     console.print("[bold blue]* Analyzing goal and inspecting authorized workspaces...[/bold blue]")
     plan = GoalPlanner.plan_goal(goal)
 
-    # If zero files discovered or planning stopped safely
+    # If zero files discovered or planning stopped safely, offer yes/no option to grant access to candidate folders
+    if not plan.steps:
+        if not os.getenv("PYTEST_CURRENT_TEST"):
+            candidates = get_candidate_unauthorized_folders(goal, plan.summary)
+            if candidates:
+                folder_list_str = "\n".join(
+                    f"  • [bold cyan]{name}[/bold cyan] ([dim]{path}[/dim])"
+                    for name, path in candidates
+                )
+                console.print(
+                    Panel(
+                        f"[yellow]No matching files found in currently authorized workspaces.[/yellow]\n\n"
+                        f"The following folder(s) were detected on your system but are not yet authorized:\n\n"
+                        f"{folder_list_str}\n\n"
+                        "[bold white]Would you like to grant access to these folders to locate and process your files?[/bold white]",
+                        title="[bold yellow]Authorize Folder Access[/bold yellow]",
+                        border_style="yellow",
+                    )
+                )
+                if auto_approve or typer.confirm("Grant access to these folders and re-run?", default=True):
+                    for name, path in candidates:
+                        WorkspaceManager.add_workspace(
+                            path,
+                            name=name,
+                            permissions=[
+                                Permission.READ.value,
+                                Permission.WRITE.value,
+                                Permission.DELETE.value,
+                            ],
+                        )
+                        console.print(f"[bold green]✓ Authorized '{name}' ({path})[/bold green]")
+
+                    console.print()
+                    console.print("[bold blue]* Re-analyzing goal with newly authorized workspace(s)...[/bold blue]")
+                    plan = GoalPlanner.plan_goal(goal)
+
     if not plan.steps:
         console.print(
             Panel(

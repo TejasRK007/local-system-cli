@@ -82,11 +82,11 @@ class WorkspaceManager:
         """
         if cls._all_files_override is not None:
             return cls._all_files_override
+        if os.getenv("AGENT_ENFORCE_WORKSPACES") or os.getenv("PYTEST_CURRENT_TEST"):
+            return False
         env_val = os.getenv("ALL_FILES_ACCESS")
         if env_val is not None:
             return env_val.lower() in ("true", "1", "yes", "on")
-        if os.getenv("AGENT_ENFORCE_WORKSPACES") or os.getenv("PYTEST_CURRENT_TEST"):
-            return False
         return True
 
     @classmethod
@@ -540,13 +540,13 @@ class WorkspaceManager:
                 return False, f"POLICY_VIOLATION: Rename unauthorized - {reason}"
             return True, "Authorized"
 
-        elif act in ("create_directory", "mkdir"):
+        elif act in ("create_directory", "mkdir", "create_file", "touch"):
             p = target_path or destination_path or source_path
             if not p:
-                return False, "POLICY_VIOLATION: Missing directory path for create_directory."
+                return False, f"POLICY_VIOLATION: Missing path for {act}."
             ok, reason, _ = cls.check_workspace_authorization(p, Permission.WRITE.value)
             if not ok:
-                return False, f"POLICY_VIOLATION: Create directory unauthorized - {reason}"
+                return False, f"POLICY_VIOLATION: {act.replace('_', ' ').capitalize()} unauthorized - {reason}"
             return True, "Authorized"
 
         elif act == "delete":

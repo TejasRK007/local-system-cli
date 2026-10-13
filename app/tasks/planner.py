@@ -17,9 +17,16 @@ load_dotenv()
 llm: Any = None
 
 
+from app.llm import get_configured_llm, is_ollama_online
+
+
 def get_llm() -> Any:
     global llm
     if llm is not None:
+        return llm
+    provider = os.getenv("LLM_PROVIDER", "").lower()
+    if provider == "ollama" and is_ollama_online():
+        llm = get_configured_llm()
         return llm
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:

@@ -234,3 +234,76 @@ def create_directory(directory_path: str) -> str:
         return f"Directory creation verification failed: directory does not exist: {path}"
 
     return f"Verified: directory created successfully.\nPath: {path}"
+
+
+def create_file(file_path: str, content: str = "") -> str:
+    """
+    Create a new file inside an allowed workspace with WRITE permission.
+
+    Canonicalizes the path, checks workspace containment, enforces WRITE
+    permission, rejects traversal and system folders, and physically verifies
+    file creation. For PDF files, writes a minimal valid 1-page PDF binary.
+    """
+    path = Path(file_path).expanduser().resolve()
+
+    # Reject entire drive root (e.g. C:\ or /)
+    if path == Path(path.anchor) or len(path.parts) <= 1:
+        return f"File creation blocked: cannot target drive root: {path}"
+
+    # Reject protected system directories across platforms
+    if WorkspaceManager.is_protected_system_path(path):
+        return f"File creation blocked: cannot target protected system directory: {path}"
+
+    # Windows reserved device names
+    windows_reserved = {
+        "con", "prn", "aux", "nul",
+        "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9",
+        "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+    }
+    stem_lower = path.stem.lower()
+    if stem_lower in windows_reserved or path.name.lower() in windows_reserved:
+        return f"File creation blocked: '{path.name}' is a reserved device name."
+
+    if any(c in '<>:"|?*' or ord(c) < 32 for c in path.name):
+        return f"File creation blocked: filename contains invalid characters: '{path.name}'."
+
+    # Verify workspace containment and WRITE permission
+    if not is_allowed_path(path, permission=Permission.WRITE.value):
+        return (
+            f"File creation blocked: path is outside allowed directories or lacks WRITE "
+            f"permission: {path}"
+        )
+
+    # Check if a directory or file already exists at path
+    if path.exists():
+        if path.is_dir():
+            return f"File creation blocked: a directory already exists at: {path}"
+        return f"File creation blocked: a file already exists at: {path}"
+
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.suffix.lower() == ".pdf":
+            # Minimal valid 1-page PDF binary (PDF-1.4 standard)
+            pdf_bytes = (
+                b"%PDF-1.4\n"
+                b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"
+                b"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n"
+                b"3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>\nendobj\n"
+                b"xref\n0 4\n"
+                b"0000000000 65535 f \n"
+                b"0000000010 00000 n \n"
+                b"0000000060 00000 n \n"
+                b"0000000117 00000 n \n"
+                b"trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n193\n%%EOF\n"
+            )
+            path.write_bytes(pdf_bytes)
+        else:
+            path.write_text(content or "", encoding="utf-8")
+    except Exception as error:
+        return f"File creation failed: {error}"
+
+    if not path.exists() or not path.is_file():
+        return f"File creation verification failed: file does not exist: {path}"
+
+    return f"Verified: file created successfully.\nPath: {path}"
+
