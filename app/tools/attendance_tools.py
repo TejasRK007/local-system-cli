@@ -474,8 +474,7 @@ def attendance_checkin(
     """
     Student check-in handler with anti-proxy verification:
     - Verifies session is currently active
-    - Token must match current or immediately preceding token (grace period)
-    - Rejects expired or forwarded tokens
+    - Rejects expired or forwarded tokens (strictly expires at expires_at)
     - Prevents duplicate check-ins for the same student
     - Enforces strict one attendance per device limit (prevents proxy for peers)
     """
@@ -503,8 +502,6 @@ def attendance_checkin(
         if not sess["is_active"]:
             return {"success": False, "error": "This attendance session has ended."}
 
-        interval = sess["rotation_interval"]
-        grace_period = interval + 8.0  # Allow scan + network latency window
         now_ts = time.time()
 
         # Check token validity in database
@@ -523,8 +520,9 @@ def attendance_checkin(
                 "error": "Invalid QR code token. Please scan the live QR code on the screen.",
             }
 
-        # Check if token is older than the allowed grace window
-        if now_ts > (tok_row["expires_at"] + grace_period):
+        # Check if token is expired (with 0.5s grace period for in-flight requests after QR rotation)
+        QR_GRACE_PERIOD_SECONDS = 0.5
+        if now_ts > (tok_row["expires_at"] + QR_GRACE_PERIOD_SECONDS):
             return {
                 "success": False,
                 "error": "QR code token expired. Screenshots cannot be used. Scan the live screen.",
