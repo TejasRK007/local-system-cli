@@ -10,6 +10,7 @@ Provides secure classroom attendance management:
 """
 
 import csv
+from datetime import datetime, timedelta, timezone
 import io
 import secrets
 import socket
@@ -131,6 +132,29 @@ def _ensure_attendance_tables() -> None:
                 conn.execute("ALTER TABLE attendance_records ADD COLUMN device_id TEXT")
     finally:
         conn.close()
+
+
+def _format_ist_timestamp(val: Any) -> str:
+    """Convert stored UTC/ISO timestamp to Indian Standard Time (IST, UTC+05:30)."""
+    if not val:
+        return ""
+    ts_str = str(val).strip()
+    if not ts_str:
+        return ""
+    ist_tz = timezone(timedelta(hours=5, minutes=30), name="IST")
+    try:
+        if "T" in ts_str:
+            dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+        else:
+            try:
+                dt = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                dt = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S.%f")
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(ist_tz).strftime("%Y-%m-%d %H:%M:%S IST")
+    except Exception:
+        return ts_str
 
 
 def generate_qr_svg(url: str) -> str:
@@ -365,7 +389,7 @@ def attendance_get_active_session(
                 "student_id": r["student_id"],
                 "student_name": r["student_name"],
                 "device_info": r["device_info"] or "Mobile Web Client",
-                "checked_in_at": r["checked_in_at"],
+                "checked_in_at": _format_ist_timestamp(r["checked_in_at"]),
             }
             for r in cur.fetchall()
         ]
@@ -574,7 +598,8 @@ def attendance_checkin(
                 (session_id, s_id, s_name, device_info.strip(), dev_id),
             )
 
-        ts = time.strftime("%Y-%m-%d %H:%M:%S")
+        ist_now = datetime.now(timezone(timedelta(hours=5, minutes=30), name="IST"))
+        ts = ist_now.strftime("%Y-%m-%d %H:%M:%S IST")
         return {
             "success": True,
             "message": f"Attendance verified for {s_name} ({s_id}).",
@@ -594,7 +619,7 @@ def attendance_checkin(
 
 
 def attendance_export_csv(session_id: str) -> str:
-    """Export attendance roster for a session as CSV."""
+    """Export attendance roster for a session as CSV formatted in IST."""
     _ensure_attendance_tables()
     conn = _get_db_connection()
     try:
@@ -621,14 +646,14 @@ def attendance_export_csv(session_id: str) -> str:
         writer = csv.writer(output)
         writer.writerow(["# Attendance Roster", f"Course: {course}", f"Section: {section}"])
         writer.writerow(
-            ["Student ID", "Student Name", "Check-in Timestamp", "Status", "Device Info"]
+            ["Student ID", "Student Name", "Check-in Timestamp (IST)", "Status", "Device Info"]
         )
         for r in rows:
             writer.writerow(
                 [
                     r["student_id"],
                     r["student_name"],
-                    r["checked_in_at"],
+                    _format_ist_timestamp(r["checked_in_at"]),
                     "Verified Present",
                     r["device_info"],
                 ]

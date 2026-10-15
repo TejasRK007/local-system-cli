@@ -527,3 +527,38 @@ def test_api_tunnel_endpoints():
     stop_res = client.post("/api/tunnel/stop")
     assert stop_res.status_code == 200
     assert stop_res.json()["success"] is True
+
+
+def test_external_student_route_restrictions():
+    """Ensure external students are blocked from dashboard and restricted to attendance portal."""
+    external_headers = {"Host": "quick-sample.trycloudflare.com"}
+
+    # 1. Visiting root dashboard redirects directly to student scanner
+    root_res = client.get("/", headers=external_headers, follow_redirects=False)
+    assert root_res.status_code in (307, 302, 301)
+    assert root_res.headers.get("location") == "/attendance/student"
+
+    # 2. Administrative and chat APIs are blocked with 403 Forbidden
+    blocked_chat = client.post("/api/chat", json={"message": "hello"}, headers=external_headers)
+    assert blocked_chat.status_code == 403
+    assert "restricted" in blocked_chat.json().get("detail", "").lower()
+
+    blocked_workspaces = client.get("/api/workspaces", headers=external_headers)
+    assert blocked_workspaces.status_code == 403
+
+    blocked_start = client.post("/api/attendance/session/start", json={"course": "CS101"}, headers=external_headers)
+    assert blocked_start.status_code == 403
+
+    blocked_export = client.get("/api/attendance/export?session_id=fake", headers=external_headers)
+    assert blocked_export.status_code == 403
+
+    # 3. Allowed attendance portals and static files pass through
+    checkin_page = client.get("/attendance/checkin?session_id=1&token=2", headers=external_headers)
+    assert checkin_page.status_code == 200
+
+    student_page = client.get("/attendance/student", headers=external_headers)
+    assert student_page.status_code == 200
+
+    scan_alias = client.get("/attendance/scan", headers=external_headers)
+    assert scan_alias.status_code == 200
+

@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -81,6 +81,70 @@ server_app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# -----------------------------------------------------------------------------
+# External Student Route Restriction Middleware
+# -----------------------------------------------------------------------------
+ALLOWED_EXTERNAL_PREFIXES = (
+    "/attendance/",
+    "/static/",
+    "/favicon.ico",
+)
+
+ALLOWED_EXTERNAL_EXACT = (
+    "/api/attendance/checkin",
+    "/api/attendance/session/active",
+)
+
+
+def _is_local_request(request: Request) -> bool:
+    """Determine whether request originates locally (instructor/test suite) vs external (students)."""
+    host_header = request.headers.get("host", "").lower()
+    # Cloudflare public tunnel or reverse proxy forwarding is strictly external
+    if "trycloudflare.com" in host_header or "cf-connecting-ip" in request.headers:
+        return False
+
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    # Localhost loopback addresses and testing client
+    if client_ip in ("127.0.0.1", "::1", "localhost", "testclient"):
+        return True
+
+    # Host machine's own LAN IP
+    try:
+        local_ip = get_local_ip()
+        if local_ip and client_ip == local_ip:
+            return True
+    except Exception:
+        pass
+
+    return False
+
+
+@server_app.middleware("http")
+async def student_access_control_middleware(request: Request, call_next):
+    """
+    Prevent students scanning the QR code from accessing the instructor dashboard
+    or administrative APIs. External requests are restricted solely to the student
+    attendance portal, scanner, and check-in endpoints.
+    """
+    if not _is_local_request(request):
+        path = request.url.path
+        # If student opens root URL, redirect directly to student scanner
+        if path in ("/", "/index.html"):
+            return RedirectResponse(url="/attendance/student", status_code=307)
+
+        # Check allowed student routes
+        is_allowed = (
+            path in ALLOWED_EXTERNAL_EXACT
+            or any(path.startswith(prefix) for prefix in ALLOWED_EXTERNAL_PREFIXES)
+        )
+        if not is_allowed:
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Access restricted: student attendance portal only."},
+            )
+
+    return await call_next(request)
 
 
 # -----------------------------------------------------------------------------

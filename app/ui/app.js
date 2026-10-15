@@ -2870,6 +2870,28 @@ function startAttendanceCountdown(expiresAt, totalInterval) {
   attendanceTimerInterval = setInterval(tick, 1000);
 }
 
+function formatRosterTime(rawTime) {
+  if (!rawTime) return "Just now";
+  const s = String(rawTime).trim();
+  if (s.includes("IST")) {
+    const parts = s.split(" ");
+    return parts.length >= 2 ? parts[1] : s;
+  }
+  try {
+    const d = new Date(s.includes("T") || s.includes("Z") ? s : s.replace(" ", "T") + "Z");
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleTimeString("en-GB", {
+        timeZone: "Asia/Kolkata",
+        hour12: false,
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit"
+      });
+    }
+  } catch (e) {}
+  return s.split(" ")[1] || s;
+}
+
 function renderAttendanceRoster(roster, newIds = new Set()) {
   const tbody = document.getElementById("att-roster-tbody");
   const counterEl = document.getElementById("att-present-counter");
@@ -2899,7 +2921,7 @@ function renderAttendanceRoster(roster, newIds = new Set()) {
     if (newIds && newIds.has(r.student_id)) {
       tr.className = "att-row-new";
     }
-    const timeFormatted = r.checked_in_at ? r.checked_in_at.split(" ")[1] || r.checked_in_at : "Just now";
+    const timeFormatted = formatRosterTime(r.checked_in_at);
     tr.innerHTML = `
       <td style="font-weight: 600; color: #64748b;">${idx + 1}</td>
       <td style="font-family: var(--font-mono); font-weight: 700; color: #0f172a;">${escapeHtml(r.student_id)}</td>
