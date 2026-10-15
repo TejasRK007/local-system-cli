@@ -637,10 +637,11 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 36px;
+  padding: 0 24px;
   border-bottom: 1px solid var(--border-light);
   background: #ffffff;
   z-index: 20;
+  gap: 12px;
 }
 
 .top-left-actions {
@@ -1487,6 +1488,81 @@ html, body {
   gap: 8px;
 }
 
+.chat-model-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  color: #334155;
+  transition: all 0.15s ease;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.chat-model-badge:hover {
+  background: #e2e8f0;
+  border-color: #cbd5e1;
+  transform: translateY(-1px);
+}
+
+.chat-model-badge.online.ollama {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+}
+
+.chat-model-badge.online.groq {
+  background: #fefce8;
+  border-color: #fef08a;
+  color: #a16207;
+}
+
+.chat-model-badge.offline {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  color: #94a3b8;
+}
+
+.chat-model-badge.warning {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
+.chat-model-badge-dot {
+  width: 6.5px;
+  height: 6.5px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.chat-model-badge-dot.online {
+  background: #10b981;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.25);
+}
+
+.chat-model-badge-dot.warning {
+  background: #f59e0b;
+}
+
+.chat-model-badge-dot.offline {
+  background: #94a3b8;
+}
+
+.chat-model-badge-name {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .btn-icon-soft {
   background: transparent;
   border: none;
@@ -2193,16 +2269,21 @@ html, body {
   align-items: center;
   justify-content: center;
   z-index: 1000;
+  padding: 16px;
+  box-sizing: border-box;
 }
 
 .modern-modal-card {
   background: #ffffff;
   border-radius: 20px;
-  padding: 28px;
+  padding: 24px;
   max-width: 520px;
   width: 90%;
   box-shadow: var(--shadow-modal);
   border: 1px solid var(--border-subtle);
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  box-sizing: border-box;
 }
 
 .modal-badge-row {
@@ -2397,13 +2478,22 @@ html, body {
   gap: 7px;
   background: #f1f5f9;
   border: 1px solid var(--border-subtle);
-  padding: 4px 10px;
+  padding: 4px 11px;
   border-radius: 9999px;
   font-size: 12px;
   font-weight: 500;
   color: var(--text-body);
   cursor: pointer;
+  max-width: 280px;
   transition: all 0.15s ease;
+}
+
+.account-status-pill span#account-status-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+  max-width: 230px;
 }
 
 .account-status-pill:hover {
@@ -2448,9 +2538,9 @@ html, body {
 
 /* Header Inbox Tools & Gmail Search Bar */
 .header-inbox-search-wrap {
-  flex: 1;
-  max-width: 600px;
-  margin: 0 16px;
+  flex: 1 1 320px;
+  max-width: 500px;
+  margin: 0 12px;
   display: flex;
   align-items: center;
 }
@@ -2459,12 +2549,12 @@ html, body {
   display: flex;
   align-items: center;
   width: 100%;
-  height: 40px;
+  height: 38px;
   background: #f1f5f9;
   border: 1px solid #e2e8f0;
   border-radius: 20px;
   padding: 0 14px;
-  gap: 10px;
+  gap: 8px;
   transition: all 0.15s ease;
 }
 
@@ -2488,6 +2578,53 @@ html, body {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* Floating Action Button: Compose Email (Bottom-Right) */
+.inbox-compose-fab {
+  position: fixed;
+  bottom: 28px;
+  right: 28px;
+  z-index: 95;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 12px 22px;
+  background: #0f172a;
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 9999px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  box-shadow: 0 10px 25px -4px rgba(15, 23, 42, 0.35), 0 4px 10px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.inbox-compose-fab:hover {
+  background: #1e293b;
+  transform: translateY(-2px);
+  box-shadow: 0 14px 28px -4px rgba(15, 23, 42, 0.45), 0 6px 14px rgba(0, 0, 0, 0.15);
+}
+
+.inbox-compose-fab:active {
+  transform: translateY(0) scale(0.98);
+}
+
+/* Hide Compose FAB when viewing email reader / composer */
+.inbox-detail-view:not(.hidden) ~ .inbox-compose-fab {
+  display: none !important;
+}
+
+/* Action Needed category badge */
+.tab-badge.badge-action {
+  background: #f1f5f9;
+  color: #475569;
+}
+.inbox-cat-tab.active .tab-badge.badge-action {
+  background: #eff6ff;
+  color: #2563eb;
 }
 
 /* VIEW 1: Multi-Row Table List View */
@@ -4741,5 +4878,331 @@ html, body {
 .projector-warning {
   font-size: 11.5px;
   color: #94a3b8;
+}
+
+/* ==========================================================================
+   Executive Email Summary Deck & Cards in Chat
+   ========================================================================== */
+.email-summary-deck {
+  margin: 14px 0 8px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.deck-top-stat-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  background: #f8fafc;
+  border: 1px solid var(--border-subtle, #e2e8f0);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 4px;
+}
+
+.deck-stat-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.deck-stat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.deck-stat-chip.total {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.deck-stat-chip.urgent {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.deck-stat-chip.action {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.deck-filter-pills {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.deck-filter-btn {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 20px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.deck-filter-btn:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+
+.deck-filter-btn.active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #ffffff;
+}
+
+.deck-cards-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.email-summary-card {
+  background: #ffffff;
+  border: 1px solid var(--border-subtle, #e2e8f0);
+  border-left: 4px solid #3b82f6;
+  border-radius: 10px;
+  padding: 14px 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  transition: all 0.18s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.email-summary-card:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+  transform: translateY(-1px);
+}
+
+.email-summary-card.prio-card-urgent,
+.email-summary-card.prio-card-security {
+  border-left-color: #ef4444;
+  background: #fffcfc;
+}
+
+.email-summary-card.prio-card-high {
+  border-left-color: #f59e0b;
+  background: #fffdfa;
+}
+
+.email-summary-card.prio-card-normal {
+  border-left-color: #3b82f6;
+}
+
+.email-summary-card.prio-card-low {
+  border-left-color: #94a3b8;
+}
+
+.esc-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.esc-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.esc-num-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  background: #f1f5f9;
+  color: #475569;
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+}
+
+.esc-prio-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+.esc-prio-badge .prio-indicator-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.esc-prio-badge.prio-urgent,
+.esc-prio-badge.prio-security {
+  background: #fee2e2;
+  color: #dc2626;
+}
+.esc-prio-badge.prio-urgent .prio-indicator-dot,
+.esc-prio-badge.prio-security .prio-indicator-dot {
+  background: #dc2626;
+}
+
+.esc-prio-badge.prio-high {
+  background: #fef3c7;
+  color: #d97706;
+}
+.esc-prio-badge.prio-high .prio-indicator-dot {
+  background: #d97706;
+}
+
+.esc-prio-badge.prio-normal {
+  background: #eff6ff;
+  color: #2563eb;
+}
+.esc-prio-badge.prio-normal .prio-indicator-dot {
+  background: #2563eb;
+}
+
+.esc-prio-badge.prio-low {
+  background: #f1f5f9;
+  color: #64748b;
+}
+.esc-prio-badge.prio-low .prio-indicator-dot {
+  background: #64748b;
+}
+
+.esc-sender-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: #64748b;
+  font-weight: 500;
+  background: #f8fafc;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid #f1f5f9;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.esc-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.35;
+  margin: 2px 0 0 0;
+}
+
+.esc-key-points {
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 8px 12px;
+  border: 1px solid #f1f5f9;
+}
+
+.esc-points-header {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #64748b;
+  letter-spacing: 0.04em;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 4px;
+}
+
+.esc-points-body {
+  font-size: 12.5px;
+  color: #334155;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.esc-footer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.esc-action-callout {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.esc-action-callout.action-none {
+  background: #f0fdf4;
+  color: #15803d;
+  border: 1px solid #dcfce7;
+}
+
+.esc-action-callout.action-required {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fee2e2;
+}
+
+.esc-view-inbox-btn {
+  background: transparent;
+  border: 1px solid var(--border-subtle, #e2e8f0);
+  border-radius: 6px;
+  padding: 3px 9px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #2563eb;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.esc-view-inbox-btn:hover {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+/* Headings in markdown */
+.chat-md-h3 {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 8px 0 4px 0;
+}
+.chat-md-h2 {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 10px 0 6px 0;
+}
+.chat-md-h1 {
+  font-size: 18px;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 12px 0 8px 0;
 }
 

@@ -288,3 +288,258 @@ def parse_calendar_event_request(text: str) -> dict[str, str]:
         "start_time": dt_start.strftime("%Y-%m-%dT%H:%M:00"),
         "end_time": dt_end.strftime("%Y-%m-%dT%H:%M:00"),
     }
+
+
+def calendar_sync_google(
+    calendar_id_or_url: str,
+    api_key: Optional[str] = None,
+    access_token: Optional[str] = None,
+) -> dict[str, Any]:
+    """
+    Sync events from Google Calendar into local SQLite storage.
+    Supports:
+    1. Google Calendar REST API v3 via API key or OAuth Bearer token
+    2. Google Calendar iCal / .ics private or public feed URLs
+    """
+    import json
+    import os
+    import re
+    import urllib.parse
+    import urllib.request
+    from datetime import datetime
+
+    _ensure_calendar_table()
+    raw_source = calendar_id_or_url.strip()
+    if not raw_source:
+        return {
+            "success": False,
+            "error": "Google Calendar ID or Feed URL cannot be empty.",
+            "status": "VALIDATION_FAILURE",
+        }
+
+    resolved_api_key = api_key or os.getenv("GOOGLE_CALENDAR_API_KEY")
+    resolved_token = access_token or os.getenv("GOOGLE_ACCESS_TOKEN")
+
+    parsed_events: list[dict[str, str]] = []
+
+    # Case 1: Direct iCal / ICS Feed (Public or Secret iCal Address from Google Calendar Settings)
+    if "calendar.google.com" in raw_source.lower() and (
+        raw_source.lower().endswith(".ics") or "/ical/" in raw_source.lower()
+    ) or (raw_source.lower().startswith("http") and raw_source.lower().endswith(".ics")):
+        try:
+            req = urllib.request.Request(
+                raw_source,
+                headers={"User-Agent": "LocalAgenticCalendarSync/1.0"},
+            )
+            with urllib.request.urlopen(req, timeout=12) as resp:
+                raw_ics = resp.read().decode("utf-8", errors="replace")
+
+            vevent_matches = re.findall(r"BEGIN:VEVENT(.*?)END:VEVENT", raw_ics, re.DOTALL)
+            for block in vevent_matches:
+                summary_m = re.search(r"SUMMARY(?::|;[^:]*:)(.*)", block)
+                dtstart_m = re.search(r"DTSTART(?::|;[^:]*:)(.*)", block)
+                dtend_m = re.search(r"DTEND(?::|;[^:]*:)(.*)", block)
+                desc_m = re.search(r"DESCRIPTION(?::|;[^:]*:)(.*)", block)
+
+                title = summary_m.group(1).strip() if summary_m else "Google Calendar Event"
+                desc = desc_m.group(1).strip().replace("\\n", "\n") if desc_m else ""
+
+                def _parse_ics_date(d_str: str) -> str:
+                    s = d_str.strip().replace("Z", "")
+                    if len(s) == 8:
+                        return f"{s[:4]}-{s[4:6]}-{s[6:8]}T09:00:00"
+                    if len(s) >= 15:
+                        return f"{s[:4]}-{s[4:6]}-{s[6:8]}T{s[9:11]}:{s[11:13]}:{s[13:15]}"
+                    return datetime.now().strftime("%Y-%m-%dT%H:00:00")
+
+                if dtstart_m:
+                    start_iso = _parse_ics_date(dtstart_m.group(1))
+                else:
+                    start_iso = datetime.now().strftime("%Y-%m-%dT%H:00:00")
+                end_iso = _parse_ics_date(dtend_m.group(1)) if dtend_m else start_iso
+
+                parsed_events.append({
+                    "title": title,
+                    "start_time": start_iso,
+                    "end_time": end_iso,
+                    "description": desc,
+                })
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Failed to retrieve Google Calendar iCal feed: {e}",
+                "status": "NETWORK_FAILURE",
+            }
+
+    # Case 2: Google Calendar REST API v3
+    else:
+        cal_id = raw_source
+        encoded_id = urllib.parse.quote(cal_id)
+
+        now_iso = datetime.now().strftime("%Y-%m-%dT00:00:00Z")
+        url = (
+            f"https://www.googleapis.com/calendar/v3/calendars/{encoded_id}/events"
+            f"?timeMin={now_iso}&singleEvents=true&orderBy=startTime&maxResults=50"
+        )
+        if resolved_api_key:
+            url += f"&key={resolved_api_key}"
+
+        headers = {"Accept": "application/json", "User-Agent": "LocalAgenticCalendarSync/1.0"}
+        if resolved_token:
+            headers["Authorization"] = f"Bearer {resolved_token}"
+
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=12) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+
+            for item in data.get("items", []):
+                title = item.get("summary") or "Untitled Event"
+                start_obj = item.get("start", {})
+                end_obj = item.get("end", {})
+                start_raw = start_obj.get("dateTime") or start_obj.get("date") or ""
+                end_raw = end_obj.get("dateTime") or end_obj.get("date") or ""
+
+                start_clean = re.sub(r"[+-]\d{2}:\d{2}$|Z$", "", start_raw)
+                end_clean = re.sub(r"[+-]\d{2}:\d{2}$|Z$", "", end_raw)
+                if len(start_clean) == 10:
+                    start_clean += "T09:00:00"
+                if len(end_clean) == 10:
+                    end_clean += "T10:00:00"
+
+                parsed_events.append({
+                    "title": title,
+                    "start_time": start_clean,
+                    "end_time": end_clean or start_clean,
+                    "description": item.get("description") or "",
+                })
+        except Exception as e:
+            return {
+                "success": False,
+                "error": (
+                    f"Google Calendar API request failed: {e}. "
+                    "Ensure your Google Calendar ID is valid and an API Key or OAuth Token "
+                    "is provided, or provide your Google Calendar Secret iCal Address URL directly."
+                ),
+                "status": "API_FAILURE",
+            }
+
+    # Save idempotently into local SQLite database
+    conn = _get_db_connection()
+    inserted_count = 0
+    try:
+        cur = conn.cursor()
+        with conn:
+            for ev in parsed_events:
+                cur.execute(
+                    "SELECT id FROM calendar_events WHERE title = ? AND start_time = ?",
+                    (ev["title"], ev["start_time"]),
+                )
+                if not cur.fetchone():
+                    cur.execute(
+                        """
+                        INSERT INTO calendar_events (title, start_time, end_time, description)
+                        VALUES (?, ?, ?, ?)
+                        """,
+                        (ev["title"], ev["start_time"], ev["end_time"], ev["description"]),
+                    )
+                    inserted_count += 1
+        return {
+            "success": True,
+            "synced_count": len(parsed_events),
+            "newly_added": inserted_count,
+            "source": raw_source,
+            "events": parsed_events,
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e), "status": "DATABASE_ERROR"}
+    finally:
+        conn.close()
+
+
+def calendar_create_google_event(
+    title: str,
+    start_time: str,
+    end_time: str,
+    description: str = "",
+    calendar_id: str = "primary",
+    access_token: Optional[str] = None,
+) -> dict[str, Any]:
+    """
+    Create an event in Google Calendar via REST API v3 and mirror it in local SQLite calendar.
+    Requires an OAuth access token (provided or via GOOGLE_ACCESS_TOKEN env var).
+    """
+    import json
+    import os
+    import urllib.parse
+    import urllib.request
+
+    resolved_token = access_token or os.getenv("GOOGLE_ACCESS_TOKEN")
+    google_event_id = None
+    api_synced = False
+
+    if resolved_token:
+        try:
+            encoded_id = urllib.parse.quote(calendar_id.strip() or "primary")
+            url = f"https://www.googleapis.com/calendar/v3/calendars/{encoded_id}/events"
+            s_time = start_time.strip()
+            e_time = end_time.strip()
+
+            s_payload = (
+                {"dateTime": s_time}
+                if ("+" in s_time or "Z" in s_time or "-" in s_time[10:])
+                else {
+                    "dateTime": f"{s_time}:00" if len(s_time) == 16 else s_time,
+                    "timeZone": "UTC",
+                }
+            )
+            e_payload = (
+                {"dateTime": e_time}
+                if ("+" in e_time or "Z" in e_time or "-" in e_time[10:])
+                else {
+                    "dateTime": f"{e_time}:00" if len(e_time) == 16 else e_time,
+                    "timeZone": "UTC",
+                }
+            )
+
+            body = json.dumps({
+                "summary": title.strip(),
+                "description": description.strip(),
+                "start": s_payload,
+                "end": e_payload,
+            }).encode("utf-8")
+
+            req = urllib.request.Request(
+                url,
+                data=body,
+                headers={
+                    "Authorization": f"Bearer {resolved_token}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "LocalAgenticCalendarSync/1.0",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=12) as resp:
+                res_data = json.loads(resp.read().decode("utf-8"))
+                google_event_id = res_data.get("id")
+                api_synced = True
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Failed to create Google Calendar event: {e}",
+                "status": "GOOGLE_API_ERROR",
+            }
+
+    local_res = calendar_create_event(title, start_time, end_time, description)
+    if not local_res.get("success"):
+        return local_res
+
+    local_res["google_synced"] = api_synced
+    if google_event_id:
+        local_res["google_event_id"] = google_event_id
+    if not resolved_token:
+        local_res["note"] = (
+            "Saved to local calendar. To sync directly to remote Google Calendar, "
+            "provide a Google OAuth access token."
+        )
+    return local_res

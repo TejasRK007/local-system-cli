@@ -71,6 +71,36 @@ class Workspace:
 class WorkspaceManager:
     """Manages workspace lifecycle, permissions, and canonical path containment."""
 
+    _all_files_override: Optional[bool] = None
+
+    @classmethod
+    def is_all_files_mode(cls) -> bool:
+        """
+        Check if unrestricted all-files access mode is enabled.
+        When active, the AI has direct access to all user files across the filesystem,
+        restricted only from protected operating system roots (e.g. C:\\Windows).
+        """
+        if cls._all_files_override is not None:
+            return cls._all_files_override
+        if os.getenv("AGENT_ENFORCE_WORKSPACES") or os.getenv("PYTEST_CURRENT_TEST"):
+            return False
+        env_val = os.getenv("ALL_FILES_ACCESS")
+        if env_val is not None:
+            return env_val.lower() in ("true", "1", "yes", "on")
+        return True
+
+    @classmethod
+    def set_all_files_mode(cls, enabled: bool) -> None:
+        """Dynamically set all-files access mode."""
+        cls._all_files_override = enabled
+        os.environ["ALL_FILES_ACCESS"] = "true" if enabled else "false"
+
+    @classmethod
+    def reset_all_files_mode(cls) -> None:
+        """Reset all-files access mode override to environment defaults."""
+        cls._all_files_override = None
+        os.environ.pop("ALL_FILES_ACCESS", None)
+
     @staticmethod
     def _is_subpath(target: Path, parent: Path) -> bool:
         """
@@ -420,22 +450,34 @@ class WorkspaceManager:
             return False, f"Invalid path: {e}", None
 
         ws = WorkspaceManager.find_workspace_for_path(target)
-        if not ws:
-            return False, f"Path is outside configured workspaces: {target}", None
+        if ws:
+            if not ws.enabled:
+                return False, f"Workspace '{ws.name}' is currently disabled.", ws
 
-        if not ws.enabled:
-            return False, f"Workspace '{ws.name}' is currently disabled.", ws
+            req_perm = required_permission.upper().strip()
+            if req_perm not in ws.permissions:
+                return (
+                    False,
+                    f"Workspace '{ws.name}' does not have {req_perm} permission (has "
+                    f"{sorted(list(ws.permissions))}).",
+                    ws,
+                )
+            return True, "Authorized", ws
 
-        req_perm = required_permission.upper().strip()
-        if req_perm not in ws.permissions:
-            return (
-                False,
-                f"Workspace '{ws.name}' does not have {req_perm} permission (has "
-                f"{sorted(list(ws.permissions))}).",
-                ws,
+        # In All-Files Mode: authorize user file unless targeting protected OS system roots
+        if WorkspaceManager.is_all_files_mode():
+            if WorkspaceManager.is_protected_system_path(target):
+                return False, f"Cannot access protected operating system directory: {target}", None
+            synthetic_ws = Workspace(
+                workspace_id="ws_all_files",
+                name="All Files",
+                path=str(target.parent if target.is_file() else target),
+                enabled=True,
+                permissions=set(ALL_PERMISSIONS),
             )
+            return True, "Authorized (All Files Access)", synthetic_ws
 
-        return True, "Authorized", ws
+        return False, f"Path is outside configured workspaces: {target}", None
 
     @classmethod
     def authorize_action(
@@ -455,10 +497,10 @@ class WorkspaceManager:
         act = action.lower().strip()
 
         # If no workspaces are configured:
-        # In real CLI or enforced mode, block execution immediately.
-        # Fall back to legacy ALLOWED_DIRECTORIES only for legacy test fixtures.
         if cls.count_workspaces() == 0:
-            if not os.getenv("PYTEST_CURRENT_TEST") or os.getenv("AGENT_ENFORCE_WORKSPACES"):
+            if cls.is_all_files_mode():
+                pass
+            elif not os.getenv("PYTEST_CURRENT_TEST") or os.getenv("AGENT_ENFORCE_WORKSPACES"):
                 return (
                     False,
                     "POLICY_VIOLATION: No workspaces configured. An authorized workspace must be "
@@ -498,13 +540,13 @@ class WorkspaceManager:
                 return False, f"POLICY_VIOLATION: Rename unauthorized - {reason}"
             return True, "Authorized"
 
-        elif act in ("create_directory", "mkdir"):
+        elif act in ("create_directory", "mkdir", "create_file", "touch"):
             p = target_path or destination_path or source_path
             if not p:
-                return False, "POLICY_VIOLATION: Missing directory path for create_directory."
+                return False, f"POLICY_VIOLATION: Missing path for {act}."
             ok, reason, _ = cls.check_workspace_authorization(p, Permission.WRITE.value)
             if not ok:
-                return False, f"POLICY_VIOLATION: Create directory unauthorized - {reason}"
+                return False, f"POLICY_VIOLATION: {act.replace('_', ' ').capitalize()} unauthorized - {reason}"
             return True, "Authorized"
 
         elif act == "delete":

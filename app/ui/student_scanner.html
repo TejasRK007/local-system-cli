@@ -482,7 +482,7 @@
 
     <!-- Insecure context alert (shown only when running on plain HTTP over LAN) -->
     <div id="insecure-http-banner" style="display: none; background: #fffbeb; border: 1px solid #fde68a; border-radius: 12px; padding: 12px 14px; margin-bottom: 16px; font-size: 13px; color: #92400e;">
-      <div style="font-weight: 700; margin-bottom: 4px;">⚠️ Live Camera requires HTTPS on phones</div>
+      <div style="font-weight: 700; margin-bottom: 4px;">Live Camera requires HTTPS on phones</div>
       <p style="margin: 0 0 8px 0; font-size: 12px; color: #b45309; line-height: 1.4;">Mobile browsers block live camera on plain HTTP. You can either:</p>
       <div style="display: flex; gap: 8px; flex-direction: column;">
         <a id="https-switch-link" href="#" style="display: block; background: #d97706; color: #ffffff; padding: 8px 12px; border-radius: 8px; font-weight: 600; text-decoration: none; text-align: center; font-size: 12.5px;">Switch to HTTPS (Port 8443)</a>
@@ -987,19 +987,31 @@
         sessionId = u.searchParams.get("session_id") || "";
         token     = u.searchParams.get("token")      || "";
       } catch (e) {
-        token = urlOrData;
+      let devId = localStorage.getItem("attendance_device_uuid");
+      if (!devId) {
+        devId = (typeof crypto !== "undefined" && crypto.randomUUID) 
+          ? crypto.randomUUID() 
+          : "dev-" + Date.now() + "-" + Math.random().toString(36).substring(2, 10);
+        try {
+          localStorage.setItem("attendance_device_uuid", devId);
+          document.cookie = `device_id=${devId}; path=/; max-age=31536000; SameSite=Lax`;
+        } catch(e) {}
       }
 
       try {
         const res = await fetch("/api/attendance/checkin", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { 
+            "Content-Type": "application/json",
+            "X-Device-Id": devId
+          },
           body: JSON.stringify({
             session_id: sessionId,
             token: token,
             student_id: sId,
             student_name: sName,
-            device_info: navigator.userAgent.substring(0, 80)
+            device_info: navigator.userAgent.substring(0, 80),
+            device_id: devId
           })
         });
         const data = await res.json();
@@ -1012,7 +1024,7 @@
           showError("Verification Rejected", data.error || "The server rejected this attendance token.");
         }
       } catch (err) {
-        showError("Network Error", "Unable to connect to the attendance server. Ensure phone is on the classroom Wi-Fi.");
+        showError("Network Error", "Unable to connect to the attendance server. Ensure phone is connected to network.");
       }
     }
 

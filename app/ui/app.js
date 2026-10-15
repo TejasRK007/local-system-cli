@@ -440,7 +440,11 @@ function loadChatSession(sessionId) {
   }
 
   renderSidebarThreads();
-  scrollToBottom();
+  scrollToBottom(true);
+  requestAnimationFrame(() => {
+    const vp = document.getElementById("chat-viewport");
+    if (vp) vp.scrollTop = vp.scrollHeight;
+  });
 }
 
 // ----------------------------------------------------------------------------
@@ -462,8 +466,167 @@ function escapeHtml(text) {
     .replace(/'/g, "&#039;");
 }
 
+function formatBasicMarkdown(str) {
+  if (!str) return "";
+  let h = escapeHtml(str);
+  h = h.replace(/^### (.*$)/gim, '<h3 class="chat-md-h3">$1</h3>');
+  h = h.replace(/^## (.*$)/gim, '<h2 class="chat-md-h2">$1</h2>');
+  h = h.replace(/^# (.*$)/gim, '<h1 class="chat-md-h1">$1</h1>');
+  h = h.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  h = h.replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>');
+  h = h.replace(/`([^`]+)`/g, '<code>$1</code>');
+  h = h.replace(/\n\n+/g, '<br><br>');
+  h = h.replace(/\n/g, '<br>');
+  return h;
+}
+
+function formatEmailSummaryDeck(text) {
+  if (!text) return null;
+  const hasSummaryPattern = /(?:^|\n)(?:#|\*\*#)?1\.\s*(?:\[[A-Za-z\s]+\])?/i.test(text) &&
+                            /(?:From|Key Points|Required Action)/i.test(text);
+  if (!hasSummaryPattern) return null;
+
+  const firstItemIdx = text.search(/(?:^|\n)(?=(?:#|\*\*#)1\.\s*)/i);
+  if (firstItemIdx === -1) return null;
+
+  const introText = text.slice(0, firstItemIdx).trim();
+  const itemsText = text.slice(firstItemIdx);
+
+  const parts = itemsText.split(/(?:^|\n)(?=(?:#|\*\*#)\d+\.\s*)/g);
+  const items = [];
+
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (!trimmed.match(/^(?:#|\*\*#)\d+\./)) continue;
+    const lines = trimmed.split("\n").map(l => l.trim()).filter(Boolean);
+    const headerLine = lines[0] || "";
+    const headerMatch = headerLine.match(/^(?:#|\*\*#)(\d+)\.\s*(?:\[([^\]]+)\])?\s*(.*)$/);
+    if (!headerMatch) continue;
+
+    const num = headerMatch[1];
+    const priority = (headerMatch[2] || "NORMAL").toUpperCase().trim();
+    let subject = headerMatch[3].replace(/^\*\*|\*\*$/g, "").trim();
+
+    let from = "Unknown";
+    let keyPoints = "";
+    let action = "None (Informational update)";
+
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i];
+      if (line.match(/^(?:•|\*|-)?\s*From:/i)) {
+        from = line.replace(/^(?:•|\*|-)?\s*From:\s*/i, "").replace(/^`|`$/g, "").trim();
+      } else if (line.match(/^(?:•|\*|-)?\s*Key Points:/i)) {
+        keyPoints = line.replace(/^(?:•|\*|-)?\s*Key Points:\s*/i, "").trim();
+      } else if (line.match(/^(?:•|\*|-)?\s*Required Action:/i)) {
+        action = line.replace(/^(?:•|\*|-)?\s*Required Action:\s*/i, "").trim();
+      } else if (keyPoints && !line.match(/^(?:•|\*|-)?\s*(?:Required Action|From):/i)) {
+        keyPoints += " " + line;
+      }
+    }
+
+    if (!keyPoints) {
+      keyPoints = "Automated notification or social feed activity from sender.";
+    }
+
+    items.push({ num, priority, subject, from, keyPoints, action });
+  }
+
+  if (items.length === 0) return null;
+
+  const totalCount = items.length;
+  const urgentCount = items.filter(it => ["URGENT", "SECURITY", "HIGH"].includes(it.priority)).length;
+  const actionCount = items.filter(it => !it.action.toLowerCase().includes("none")).length;
+
+  let introHtml = "";
+  if (introText) {
+    introHtml = `<div class="chat-md-intro" style="margin-bottom: 12px; font-weight: 500; color: var(--text-main); font-size: 13.5px;">${formatBasicMarkdown(introText)}</div>`;
+  }
+
+  const cardsHtml = items.map(item => {
+    const pLower = item.priority.toLowerCase();
+    const prioCardClass = "prio-card-" + (pLower.includes("urgent") ? "urgent" : pLower.includes("sec") ? "security" : pLower.includes("high") ? "high" : pLower.includes("low") ? "low" : "normal");
+    const prioBadgeClass = "prio-" + (pLower.includes("urgent") ? "urgent" : pLower.includes("sec") ? "security" : pLower.includes("high") ? "high" : pLower.includes("low") ? "low" : "normal");
+    const isActionNeeded = !item.action.toLowerCase().includes("none");
+
+    return `
+      <div class="email-summary-card ${prioCardClass}" data-priority="${pLower}" data-action="${isActionNeeded ? 'true' : 'false'}">
+        <div class="esc-header-row">
+          <div class="esc-header-left">
+            <span class="esc-num-badge">#${String(item.num).padStart(2, "0")}</span>
+            <span class="esc-prio-badge ${prioBadgeClass}">
+              <span class="prio-indicator-dot"></span>
+              ${escapeHtml(item.priority)}
+            </span>
+          </div>
+          <div class="esc-sender-badge" title="From: ${escapeHtml(item.from)}">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            <span>${escapeHtml(item.from)}</span>
+          </div>
+        </div>
+
+        <h4 class="esc-title">${escapeHtml(item.subject)}</h4>
+
+        <div class="esc-key-points">
+          <div class="esc-points-header">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            Key Takeaways
+          </div>
+          <p class="esc-points-body">${escapeHtml(item.keyPoints)}</p>
+        </div>
+
+        <div class="esc-footer-row">
+          <div class="esc-action-callout ${isActionNeeded ? 'action-required' : 'action-none'}">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              ${isActionNeeded 
+                ? '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>' 
+                : '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>'}
+            </svg>
+            <span>${escapeHtml(item.action)}</span>
+          </div>
+          <button type="button" class="esc-view-inbox-btn" data-search="${escapeHtml(item.subject)}">
+            View in Inbox &rarr;
+          </button>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  return `
+    ${introHtml}
+    <div class="email-summary-deck">
+      <div class="deck-top-stat-bar">
+        <div class="deck-stat-group">
+          <div class="deck-stat-chip total">
+            <span>${totalCount}</span> Emails Summarized
+          </div>
+          <div class="deck-stat-chip urgent">
+            <span>${urgentCount}</span> Urgent / High
+          </div>
+          <div class="deck-stat-chip action">
+            <span>${actionCount}</span> Need Action
+          </div>
+        </div>
+        <div class="deck-filter-pills">
+          <button type="button" class="deck-filter-btn active" data-filter="all">All (${totalCount})</button>
+          <button type="button" class="deck-filter-btn" data-filter="action">Action Needed (${actionCount})</button>
+          <button type="button" class="deck-filter-btn" data-filter="urgent">Urgent (${urgentCount})</button>
+        </div>
+      </div>
+      <div class="deck-cards-list">
+        ${cardsHtml}
+      </div>
+    </div>
+  `;
+}
+
 function formatMarkdown(text) {
   if (!text) return "";
+
+  // Check if text is an executive email summary list
+  const emailDeckHtml = formatEmailSummaryDeck(text);
+  if (emailDeckHtml) {
+    return emailDeckHtml;
+  }
 
   // 1. Preserve and extract Fenced Code Blocks
   const codeBlocks = [];
@@ -529,21 +692,27 @@ function formatMarkdown(text) {
     return token;
   });
 
-  // 3. Inline Code: `code`
+  // 3. Headings
+  html = html.replace(/^### (.*$)/gim, '<h3 class="chat-md-h3">$1</h3>');
+  html = html.replace(/^## (.*$)/gim, '<h2 class="chat-md-h2">$1</h2>');
+  html = html.replace(/^# (.*$)/gim, '<h1 class="chat-md-h1">$1</h1>');
+
+  // 4. Inline Code: `code`
   html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
 
-  // 4. Bold: **text**
+  // 5. Bold & Italics: **text**, *text*
   html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>");
 
-  // 5. Bullet Lists: - item or * item
+  // 6. Bullet Lists: - item or * item
   html = html.replace(/^\s*[-*]\s+(.+)$/gm, "<li>$1</li>");
   html = html.replace(/(<li>(?:(?!<ul)[^<]|<(?!\/ul>))*<\/li>)/gs, "<ul>$1</ul>");
 
-  // 6. Line breaks
+  // 7. Line breaks
   html = html.replace(/\n\n+/g, "<br><br>");
   html = html.replace(/\n/g, "<br>");
 
-  // 7. Restore Tables & Code Blocks
+  // 8. Restore Tables & Code Blocks
   tableBlocks.forEach((tbl, idx) => {
     html = html.replace(`__TABLE_${idx}__`, tbl);
   });
@@ -564,6 +733,53 @@ function isLlmEngineEnabled() {
   return stored === "1";
 }
 
+let lastLlmStatusData = null;
+
+function updateChatModelBadge(data, isEnabled) {
+  if (data) lastLlmStatusData = data;
+  const badge = document.getElementById("chat-model-badge");
+  const dot = document.getElementById("chat-model-badge-dot");
+  const name = document.getElementById("chat-model-badge-name");
+  if (!badge || !name) return;
+
+  const enabled = isEnabled !== undefined ? isEnabled : isLlmEngineEnabled();
+  if (!enabled) {
+    badge.className = "chat-model-badge offline";
+    if (dot) dot.className = "chat-model-badge-dot offline";
+    name.textContent = "LLM Off";
+    badge.title = "LLM inference is toggled OFF (Manual mode). Click to configure or enable.";
+    return;
+  }
+
+  const status = data || lastLlmStatusData;
+  if (!status) {
+    name.textContent = "Checking...";
+    return;
+  }
+
+  const provider = (status.provider || "ollama").toLowerCase();
+  if (provider === "groq") {
+    const rawModel = status.groq_model || "llama-3.3-70b-versatile";
+    const shortModel = rawModel.split("/").pop();
+    const isOnline = Boolean(status.groq_configured && status.llm_available);
+    badge.className = `chat-model-badge ${isOnline ? "online groq" : "warning"}`;
+    if (dot) dot.className = `chat-model-badge-dot ${isOnline ? "online" : "warning"}`;
+    name.textContent = `⚡ Groq: ${shortModel}`;
+    badge.title = isOnline
+      ? `Active Model: Groq Cloud (${rawModel}). Click to configure.`
+      : `Groq is not configured. Click to set API key.`;
+  } else {
+    const rawModel = status.ollama_model || "qwen2.5:3b";
+    const isOnline = Boolean(status.ollama_online);
+    badge.className = `chat-model-badge ${isOnline ? "online ollama" : "offline"}`;
+    if (dot) dot.className = `chat-model-badge-dot ${isOnline ? "online" : "offline"}`;
+    name.textContent = `● Local: ${rawModel}`;
+    badge.title = isOnline
+      ? `Active Model: Local Ollama (${rawModel}). Click to configure.`
+      : `Local Ollama is offline (Port 11434). Click to start.`;
+  }
+}
+
 function updateLlmToggleUI(enabled) {
   const checkbox = document.getElementById("llm-toggle-checkbox");
   const dot = document.getElementById("llm-toggle-dot");
@@ -581,11 +797,14 @@ function updateLlmToggleUI(enabled) {
       ? "Local LLM inference is ON. Click to toggle OFF (pure offline mode)."
       : "Local LLM inference is OFF (instant offline mode). Click to toggle ON.";
   }
+  updateChatModelBadge(lastLlmStatusData, enabled);
 }
 
 function initLlmToggle() {
   const checkbox = document.getElementById("llm-toggle-checkbox");
   const wrap = document.getElementById("header-llm-toggle-wrap");
+  const btnGear = document.getElementById("btn-open-llm-modal");
+  const chatModelBadge = document.getElementById("chat-model-badge");
   const current = isLlmEngineEnabled();
   updateLlmToggleUI(current);
 
@@ -599,14 +818,433 @@ function initLlmToggle() {
     handleToggle(checkbox.checked);
   });
 
+  btnGear?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openLlmConfigModal();
+  });
+
+  chatModelBadge?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openLlmConfigModal();
+  });
+
   wrap?.addEventListener("click", (e) => {
+    if (e.target.closest("#btn-open-llm-modal")) return;
     if (e.target !== checkbox && !e.target.closest(".llm-switch")) {
-      const next = !checkbox.checked;
-      checkbox.checked = next;
-      handleToggle(next);
+      // If LLM is currently off and user clicks the bar, check if LLM is ready or open config
+      fetch("/api/llm/status").then(r => r.json()).then(st => {
+        if (!st.llm_available && !checkbox.checked) {
+          openLlmConfigModal();
+        } else {
+          const next = !checkbox.checked;
+          checkbox.checked = next;
+          handleToggle(next);
+        }
+      }).catch(() => {
+        const next = !checkbox.checked;
+        checkbox.checked = next;
+        handleToggle(next);
+      });
     }
   });
+
+  initLlmConfigModal(handleToggle);
+  fetchLlmStatus();
 }
+
+let _detectGpuFn = null;
+
+function openLlmConfigModal() {
+  const modal = document.getElementById("llm-config-modal");
+  if (modal) modal.classList.remove("hidden");
+  fetchLlmStatus();
+  if (typeof _detectGpuFn === "function") {
+    _detectGpuFn();
+  }
+}
+
+function closeLlmConfigModal() {
+  const modal = document.getElementById("llm-config-modal");
+  if (modal) modal.classList.add("hidden");
+}
+
+async function fetchLlmStatus() {
+  const elActiveProv = document.getElementById("llm-cfg-active-prov");
+  const elOllamaStatus = document.getElementById("llm-cfg-ollama-status");
+  const elGroqStatus = document.getElementById("llm-cfg-groq-status");
+  const inputModel = document.getElementById("cfg-ollama-model");
+  const inputGroqModel = document.getElementById("cfg-groq-model");
+
+  try {
+    const res = await fetch("/api/llm/status");
+    const data = await res.json();
+    lastLlmStatusData = data;
+    updateChatModelBadge(data);
+
+    if (elActiveProv) elActiveProv.textContent = data.provider || "ollama";
+    if (elOllamaStatus) {
+      if (data.ollama_online) {
+        elOllamaStatus.className = "risk-badge risk-low";
+        elOllamaStatus.textContent = `ONLINE (${data.ollama_model || "qwen2.5:3b"})`;
+      } else {
+        elOllamaStatus.className = "risk-badge risk-high";
+        elOllamaStatus.textContent = "OFFLINE (Port 11434)";
+      }
+    }
+    if (elGroqStatus) {
+      if (data.groq_configured) {
+        elGroqStatus.className = "risk-badge risk-low";
+        elGroqStatus.textContent = `CONFIGURED (${data.groq_key_preview || "Active"})`;
+      } else {
+        elGroqStatus.className = "risk-badge risk-med";
+        elGroqStatus.textContent = "NOT CONFIGURED";
+      }
+    }
+    if (inputModel && data.ollama_model) {
+      inputModel.value = data.ollama_model;
+    }
+    if (inputGroqModel && data.groq_model) {
+      inputGroqModel.value = data.groq_model;
+    }
+  } catch (_) {}
+}
+
+function initLlmConfigModal(onActivateLlm) {
+  const modal = document.getElementById("llm-config-modal");
+  const btnClose = document.getElementById("btn-close-llm-modal");
+  const btnCloseX = document.getElementById("btn-close-llm-modal-x");
+  const tabBtnGroq = document.getElementById("llm-tab-btn-groq");
+  const tabBtnOllama = document.getElementById("llm-tab-btn-ollama");
+  const secGroq = document.getElementById("llm-section-groq");
+  const secOllama = document.getElementById("llm-section-ollama");
+  const inputGroqKey = document.getElementById("cfg-groq-key");
+  const inputGroqModel = document.getElementById("cfg-groq-model");
+  const inputOllamaModel = document.getElementById("cfg-ollama-model");
+  const btnSaveGroq = document.getElementById("btn-save-groq-cfg");
+  const btnSaveOllama = document.getElementById("btn-save-ollama-cfg");
+  const btnStartOllama = document.getElementById("btn-start-local-ollama");
+  const feedbackEl = document.getElementById("llm-cfg-feedback");
+
+  // --- Compute mode helpers (using <select> instead of radios) ---
+  function getSelectedComputeMode() {
+    const sel = document.getElementById("ollama-compute-select");
+    return sel ? sel.value : "cpu";
+  }
+
+  function updateGpuStatus(gpuData) {
+    const badge = document.getElementById("ollama-gpu-badge");
+    const sub = document.getElementById("ollama-gpu-detect-sub");
+    const sel = document.getElementById("ollama-compute-select");
+    if (!badge) return;
+
+    if (gpuData.gpu_available) {
+      badge.className = "risk-badge risk-low";
+      badge.textContent = gpuData.gpu_name + " (" + gpuData.gpu_type.toUpperCase() + ")";
+      if (sub) sub.textContent = "GPU inference available";
+      if (sel) sel.value = "gpu";
+    } else {
+      badge.className = "risk-badge risk-high";
+      badge.textContent = gpuData.gpu_name || "No capable GPU";
+      if (sub) sub.textContent = "CPU mode recommended";
+      if (sel) sel.value = "cpu";
+    }
+    if (gpuData.forced_cpu_mode) {
+      if (sub) sub.textContent += " · CPU mode saved";
+      if (sel) sel.value = "cpu";
+    }
+  }
+
+  let _lastGpuData = null;
+  let _gpuDetecting = false;
+
+  async function detectGpu(force = false) {
+    if (_lastGpuData && !force) {
+      updateGpuStatus(_lastGpuData);
+      return;
+    }
+    if (_gpuDetecting) return;
+    _gpuDetecting = true;
+    try {
+      const res = await fetch("/api/llm/gpu_status");
+      if (!res.ok) {
+        throw new Error("HTTP " + res.status);
+      }
+      const data = await res.json();
+      _lastGpuData = data;
+      updateGpuStatus(data);
+    } catch (_) {
+      const badge = document.getElementById("ollama-gpu-badge");
+      const sub = document.getElementById("ollama-gpu-detect-sub");
+      if (badge) {
+        badge.className = "risk-badge risk-med";
+        badge.textContent = "Detection unavailable";
+      }
+      if (sub) sub.textContent = "Defaulting to CPU mode";
+      const sel = document.getElementById("ollama-compute-select");
+      if (sel) sel.value = "cpu";
+    } finally {
+      _gpuDetecting = false;
+    }
+  }
+  _detectGpuFn = detectGpu;
+
+
+  const setTab = (tab) => {
+    if (tab === "groq") {
+      tabBtnGroq?.classList.add("pill-btn-dark");
+      tabBtnGroq?.classList.remove("pill-btn-outline");
+      tabBtnOllama?.classList.add("pill-btn-outline");
+      tabBtnOllama?.classList.remove("pill-btn-dark");
+      if (secGroq) secGroq.style.display = "block";
+      if (secOllama) secOllama.style.display = "none";
+    } else {
+      tabBtnOllama?.classList.add("pill-btn-dark");
+      tabBtnOllama?.classList.remove("pill-btn-outline");
+      tabBtnGroq?.classList.add("pill-btn-outline");
+      tabBtnGroq?.classList.remove("pill-btn-dark");
+      if (secGroq) secGroq.style.display = "none";
+      if (secOllama) secOllama.style.display = "block";
+      // Auto-detect GPU when switching to Ollama tab
+      detectGpu();
+    }
+  };
+
+
+  tabBtnGroq?.addEventListener("click", () => setTab("groq"));
+  tabBtnOllama?.addEventListener("click", () => setTab("ollama"));
+
+  btnClose?.addEventListener("click", closeLlmConfigModal);
+  btnCloseX?.addEventListener("click", closeLlmConfigModal);
+  modal?.addEventListener("click", (e) => {
+    if (e.target === modal) closeLlmConfigModal();
+  });
+
+  const inputGroqCustom = document.getElementById("cfg-groq-model-custom");
+  const btnFetchGroqModels = document.getElementById("btn-fetch-groq-models");
+  const lblModelsCount = document.getElementById("cfg-groq-models-count");
+
+  inputGroqModel?.addEventListener("change", () => {
+    if (inputGroqModel.value === "__custom__") {
+      if (inputGroqCustom) {
+        inputGroqCustom.style.display = "block";
+        inputGroqCustom.focus();
+      }
+    } else {
+      if (inputGroqCustom) inputGroqCustom.style.display = "none";
+    }
+  });
+
+  btnFetchGroqModels?.addEventListener("click", async () => {
+    const key = inputGroqKey?.value.trim();
+    if (!key) {
+      if (feedbackEl) {
+        feedbackEl.style.display = "block";
+        feedbackEl.style.background = "#fef2f2";
+        feedbackEl.style.color = "#991b1b";
+        feedbackEl.textContent = "Please enter your Groq API key first to query your available models.";
+      }
+      return;
+    }
+
+    if (feedbackEl) {
+      feedbackEl.style.display = "block";
+      feedbackEl.style.background = "#eff6ff";
+      feedbackEl.style.color = "#1e40af";
+      feedbackEl.textContent = "Fetching available models from Groq account...";
+    }
+
+    try {
+      btnFetchGroqModels.disabled = true;
+      const res = await fetch("/api/llm/groq/models", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ groq_api_key: key }),
+      });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.models) && data.models.length > 0) {
+        inputGroqModel.innerHTML = "";
+        data.models.forEach((mid) => {
+          const opt = document.createElement("option");
+          opt.value = mid;
+          opt.textContent = mid;
+          inputGroqModel.appendChild(opt);
+        });
+        const customOpt = document.createElement("option");
+        customOpt.value = "__custom__";
+        customOpt.textContent = "Custom Model (Enter below)...";
+        inputGroqModel.appendChild(customOpt);
+
+        if (lblModelsCount) lblModelsCount.textContent = `${data.models.length} models found`;
+        if (feedbackEl) {
+          feedbackEl.style.background = "#f0fdf4";
+          feedbackEl.style.color = "#166534";
+          feedbackEl.textContent = `Loaded ${data.models.length} models from your Groq account.`;
+        }
+      } else {
+        if (feedbackEl) {
+          feedbackEl.style.background = "#fef2f2";
+          feedbackEl.style.color = "#991b1b";
+          feedbackEl.textContent = data.error || "Could not fetch models.";
+        }
+      }
+    } catch (e) {
+      if (feedbackEl) {
+        feedbackEl.style.background = "#fef2f2";
+        feedbackEl.style.color = "#991b1b";
+        feedbackEl.textContent = "Error: " + e.message;
+      }
+    } finally {
+      btnFetchGroqModels.disabled = false;
+    }
+  });
+
+  btnSaveGroq?.addEventListener("click", async () => {
+    const key = inputGroqKey?.value.trim();
+    let model = inputGroqModel?.value || "llama-3.3-70b-versatile";
+    if (model === "__custom__") {
+      model = inputGroqCustom?.value.trim() || "llama-3.3-70b-versatile";
+    }
+
+    if (!key) {
+      if (feedbackEl) {
+        feedbackEl.style.display = "block";
+        feedbackEl.style.background = "#fef2f2";
+        feedbackEl.style.color = "#991b1b";
+        feedbackEl.textContent = "Please enter your Groq API key (starts with gsk_).";
+      }
+      return;
+    }
+
+    if (feedbackEl) {
+      feedbackEl.style.display = "block";
+      feedbackEl.style.background = "#eff6ff";
+      feedbackEl.style.color = "#1e40af";
+      feedbackEl.textContent = `Validating Groq API connection with ${model}...`;
+    }
+
+    try {
+      btnSaveGroq.disabled = true;
+      const res = await fetch("/api/llm/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: "groq", groq_api_key: key, groq_model: model })
+      });
+      let data = {};
+      try { data = await res.json(); } catch (_) {}
+
+      if (res.ok && data.success) {
+        const activeM = data.model || model;
+        if (feedbackEl) {
+          feedbackEl.style.background = "#f0fdf4";
+          feedbackEl.style.color = "#166534";
+          feedbackEl.textContent = `Groq connected successfully (${activeM})! Activating LLM.`;
+        }
+        if (onActivateLlm) onActivateLlm(true);
+        fetchLlmStatus();
+        setTimeout(closeLlmConfigModal, 1400);
+      } else {
+        if (feedbackEl) {
+          feedbackEl.style.background = "#fef2f2";
+          feedbackEl.style.color = "#991b1b";
+          feedbackEl.textContent = data.error || data.detail || `Connection error (HTTP ${res.status})`;
+        }
+      }
+    } catch (e) {
+      if (feedbackEl) {
+        feedbackEl.style.background = "#fef2f2";
+        feedbackEl.style.color = "#991b1b";
+        feedbackEl.textContent = "Error: " + e.message;
+      }
+    } finally {
+      btnSaveGroq.disabled = false;
+    }
+  });
+
+  btnSaveOllama?.addEventListener("click", async () => {
+    const model = inputOllamaModel?.value.trim() || "qwen2.5:3b";
+    try {
+      btnSaveOllama.disabled = true;
+      const res = await fetch("/api/llm/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: "ollama",
+          ollama_model: model,
+          cpu_mode: getSelectedComputeMode() === "cpu"
+        })
+      });
+      let data = {};
+      try { data = await res.json(); } catch (_) {}
+
+      if (res.ok && data.success) {
+        if (feedbackEl) {
+          feedbackEl.style.display = "block";
+          feedbackEl.style.background = "#f0fdf4";
+          feedbackEl.style.color = "#166534";
+          feedbackEl.textContent = `Provider set to Local Ollama (${model}).`;
+        }
+        if (onActivateLlm) onActivateLlm(true);
+        fetchLlmStatus();
+        setTimeout(closeLlmConfigModal, 1400);
+      } else {
+        if (feedbackEl) {
+          feedbackEl.style.display = "block";
+          feedbackEl.style.background = "#fef2f2";
+          feedbackEl.style.color = "#991b1b";
+          feedbackEl.textContent = data.error || data.detail || `Connection error (HTTP ${res.status})`;
+        }
+      }
+    } catch (e) {
+      if (feedbackEl) {
+        feedbackEl.style.display = "block";
+        feedbackEl.style.background = "#fef2f2";
+        feedbackEl.style.color = "#991b1b";
+        feedbackEl.textContent = "Error: " + e.message;
+      }
+    } finally {
+      btnSaveOllama.disabled = false;
+    }
+  });
+
+  btnStartOllama?.addEventListener("click", async () => {
+    const mode = getSelectedComputeMode();
+    const isCpu = mode === "cpu";
+    if (feedbackEl) {
+      feedbackEl.style.display = "block";
+      feedbackEl.style.background = "#eff6ff";
+      feedbackEl.style.color = "#1e40af";
+      feedbackEl.textContent = isCpu
+        ? "Launching Ollama in CPU-only mode (no GPU required)..."
+        : "Launching Ollama with GPU acceleration...";
+    }
+    try {
+      btnStartOllama.disabled = true;
+      const res = await fetch("/api/llm/start_ollama", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cpu_mode: isCpu }),
+      });
+      const data = await res.json();
+      if (feedbackEl) {
+        const ok = data.success;
+        feedbackEl.style.background = ok ? "#f0fdf4" : "#fef2f2";
+        feedbackEl.style.color = ok ? "#166534" : "#991b1b";
+        feedbackEl.textContent = data.message || data.error;
+      }
+      fetchLlmStatus();
+    } catch (e) {
+      if (feedbackEl) {
+        feedbackEl.style.background = "#fef2f2";
+        feedbackEl.style.color = "#991b1b";
+        feedbackEl.textContent = "Error: " + e.message;
+      }
+    } finally {
+      btnStartOllama.disabled = false;
+    }
+  });
+} // end initLlmConfigModal
+
+
 
 // ----------------------------------------------------------------------------
 // App Initialization
@@ -664,6 +1302,11 @@ function initNavigation() {
   };
 
   function switchTab(tabId) {
+    if (!tabId) return;
+    try {
+      localStorage.setItem("active_dashboard_tab", tabId);
+    } catch (e) {}
+
     navBtns.forEach(b => b.classList.remove("active"));
     viewPanes.forEach(p => p.classList.remove("active"));
 
@@ -685,12 +1328,17 @@ function initNavigation() {
     if (tabId === "tab-inbox") {
       document.getElementById("header-chat-tools")?.classList.add("hidden");
       document.getElementById("header-inbox-search-wrap")?.classList.remove("hidden");
-      document.getElementById("header-inbox-tools")?.classList.remove("hidden");
       fetchEmailInbox();
     } else {
       document.getElementById("header-chat-tools")?.classList.remove("hidden");
       document.getElementById("header-inbox-search-wrap")?.classList.add("hidden");
-      document.getElementById("header-inbox-tools")?.classList.add("hidden");
+    }
+
+    if (tabId === "tab-ask-ai") {
+      requestAnimationFrame(() => {
+        const vp = document.getElementById("chat-viewport");
+        if (vp) vp.scrollTop = vp.scrollHeight;
+      });
     }
   }
 
@@ -700,6 +1348,15 @@ function initNavigation() {
       switchTab(tabId);
     });
   });
+
+  // Restore persisted tab on reload
+  try {
+    const hash = window.location.hash ? "tab-" + window.location.hash.replace("#", "") : null;
+    const saved = hash || localStorage.getItem("active_dashboard_tab");
+    if (saved && document.getElementById(saved)) {
+      switchTab(saved);
+    }
+  } catch (e) {}
 
   // Breadcrumb Click Navigation
   breadcrumbRoot?.addEventListener("click", () => {
@@ -1399,6 +2056,42 @@ function appendAssistantMessage(data, persist = true) {
     });
   });
 
+  // Wire email summary deck interactive filters
+  contentBox.querySelectorAll(".deck-filter-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const deck = btn.closest(".email-summary-deck");
+      if (!deck) return;
+      deck.querySelectorAll(".deck-filter-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      const filter = btn.dataset.filter;
+      deck.querySelectorAll(".email-summary-card").forEach(card => {
+        if (filter === "all") {
+          card.classList.remove("hidden");
+        } else if (filter === "action") {
+          if (card.dataset.action === "true") card.classList.remove("hidden");
+          else card.classList.add("hidden");
+        } else if (filter === "urgent") {
+          const p = card.dataset.priority || "";
+          if (p.includes("urgent") || p.includes("high") || p.includes("sec")) card.classList.remove("hidden");
+          else card.classList.add("hidden");
+        }
+      });
+    });
+  });
+
+  // Wire View in Inbox button to smoothly switch tabs and search email
+  contentBox.querySelectorAll(".esc-view-inbox-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const query = btn.dataset.search || "";
+      switchTab("tab-inbox");
+      const searchInput = document.getElementById("email-search-input");
+      if (searchInput && query) {
+        searchInput.value = query.slice(0, 30);
+        searchInput.dispatchEvent(new Event("input"));
+      }
+    });
+  });
+
   // If this is a synthesized automation plan, render the plan card inline inside this message!
   if (data.type === "plan" && data.steps && data.steps.length > 0) {
     const planCard = document.createElement("div");
@@ -1576,10 +2269,48 @@ async function executeInlinePlan(plan, cardEl, approved = true) {
       (result.steps || []).forEach((s, idx) => {
         const line = document.createElement("div");
         line.className = "inline-stream-line";
-        const icon = s.status === "COMPLETED" ? "[OK]" : s.status === "FAILED" ? "[FAIL]" : "[RUNNING]";
-        const statusDetail = s.status === "COMPLETED" ? (s.error_message || "Success") : (s.error_message || "Action stopped or unapproved");
+        const isOk = s.status === "COMPLETED" || s.status === "SUCCESS";
+        const isFail = s.status === "FAILED";
+        const icon = isOk ? "[OK]" : isFail ? "[FAIL]" : "[RUNNING]";
+        let statusDetail = "Success";
+        if (!isOk) {
+          statusDetail = s.error_info || s.error_message || "Action stopped or unapproved";
+        } else if (s.output && typeof s.output.count === "number") {
+          statusDetail = `Found ${s.output.count} matching item(s)`;
+        } else if (s.summary) {
+          statusDetail = s.summary;
+        }
         line.innerHTML = `${icon} Step ${idx + 1} (${escapeHtml(s.action)}): <strong>${escapeHtml(s.status)}</strong> - ${escapeHtml(statusDetail)}`;
         streamEl.appendChild(line);
+
+        // Render file or item results if present
+        if (s.output && Array.isArray(s.output.files)) {
+          const fileBox = document.createElement("div");
+          fileBox.className = "inline-stream-results";
+          fileBox.style.cssText = "margin: 6px 0 10px 16px; padding: 8px 12px; background: rgba(15, 23, 42, 0.04); border: 1px solid rgba(0,0,0,0.06); border-radius: 6px; font-size: 12px; max-height: 220px; overflow-y: auto;";
+          if (s.output.files.length === 0) {
+            fileBox.innerHTML = `<span style="color: #64748b; font-style: italic;">No matching files found.</span>`;
+          } else {
+            const limit = 25;
+            const slice = s.output.files.slice(0, limit);
+            let fileHtml = slice.map((f, fIdx) => {
+              const fname = f.split(/[\/\\]/).pop();
+              return `<div style="padding: 2px 0; display: flex; justify-content: space-between; gap: 8px;"><span style="font-weight: 500;">${fIdx + 1}. ${escapeHtml(fname)}</span><span style="color: #64748b; font-family: monospace; font-size: 11px;">${escapeHtml(f)}</span></div>`;
+            }).join("");
+            if (s.output.files.length > limit) {
+              fileHtml += `<div style="color: #64748b; margin-top: 4px; font-style: italic;">... and ${s.output.files.length - limit} more files</div>`;
+            }
+            fileBox.innerHTML = fileHtml;
+          }
+          streamEl.appendChild(fileBox);
+        } else if (s.output && Array.isArray(s.output.processes)) {
+          const procBox = document.createElement("div");
+          procBox.className = "inline-stream-results";
+          procBox.style.cssText = "margin: 6px 0 10px 16px; padding: 8px 12px; background: rgba(15, 23, 42, 0.04); border: 1px solid rgba(0,0,0,0.06); border-radius: 6px; font-size: 12px; max-height: 200px; overflow-y: auto;";
+          const slice = s.output.processes.slice(0, 15);
+          procBox.innerHTML = slice.map((p, pIdx) => `<div style="padding: 2px 0;">${pIdx + 1}. <strong>${escapeHtml(p.name || p.pid || "process")}</strong> (PID: ${escapeHtml(String(p.pid || ''))})</div>`).join("");
+          streamEl.appendChild(procBox);
+        }
       });
       const finalSummary = document.createElement("div");
       finalSummary.className = "inline-stream-line";
@@ -1732,10 +2463,14 @@ function initAttachments() {
   });
 }
 
-function scrollToBottom() {
+function scrollToBottom(instant = false) {
   const viewport = document.getElementById("chat-viewport");
   if (viewport) {
-    viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" });
+    if (instant) {
+      viewport.scrollTop = viewport.scrollHeight;
+    } else {
+      viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" });
+    }
   }
 }
 
@@ -1996,7 +2731,23 @@ function renderAttendanceActiveState(data) {
   const projPresentCount = document.getElementById("proj-present-count");
   if (projPresentCount) projPresentCount.textContent = `${(data.roster || []).length} Present`;
 
-  const lanHost = data.network_url || (data.lan_ip ? `${window.location.protocol}//${data.lan_ip}${window.location.port ? ':' + window.location.port : ''}` : window.location.origin);
+  const tunnelUrl = data.tunnel_url;
+  const isTunnelActive = !!(data.is_tunnel_active && tunnelUrl);
+  const tunnelChip = document.getElementById("att-tunnel-chip");
+  const accessText = document.getElementById("att-mobile-access-text");
+
+  if (tunnelChip) {
+    tunnelChip.style.display = isTunnelActive ? "inline-flex" : "none";
+  }
+  if (accessText) {
+    if (isTunnelActive) {
+      accessText.innerHTML = `Mobile Access: Public Cloudflare Tunnel Active &bull; <strong style="color: #047857;">${escapeHtml(tunnelUrl.replace(/^https?:\/\//, ''))}</strong>`;
+    } else {
+      accessText.innerHTML = `Mobile Access: Connect your phone to Wi-Fi to scan or visit <strong id="att-lan-ip-display">${data.lan_ip || '127.0.0.1'}:8000</strong>`;
+    }
+  }
+
+  const lanHost = tunnelUrl || data.network_url || (data.lan_ip ? `${window.location.protocol}//${data.lan_ip}${window.location.port ? ':' + window.location.port : ''}` : window.location.origin);
   const scannerUrl = `${lanHost}/attendance/student`;
   const scannerInput = document.getElementById("att-scanner-url-input");
   if (scannerInput) scannerInput.value = scannerUrl;
@@ -2017,6 +2768,9 @@ function renderAttendanceInactiveState() {
   const badgeText = document.getElementById("att-status-text");
   if (badge) badge.className = "attendance-status-badge inactive";
   if (badgeText) badgeText.textContent = "No Active Session";
+
+  const tunnelChip = document.getElementById("att-tunnel-chip");
+  if (tunnelChip) tunnelChip.style.display = "none";
 
   const btnStart = document.getElementById("btn-start-attendance");
   const btnStartLabel = document.getElementById("btn-start-attendance-label");
@@ -2116,6 +2870,28 @@ function startAttendanceCountdown(expiresAt, totalInterval) {
   attendanceTimerInterval = setInterval(tick, 1000);
 }
 
+function formatRosterTime(rawTime) {
+  if (!rawTime) return "Just now";
+  const s = String(rawTime).trim();
+  if (s.includes("IST")) {
+    const parts = s.split(" ");
+    return parts.length >= 2 ? parts[1] : s;
+  }
+  try {
+    const d = new Date(s.includes("T") || s.includes("Z") ? s : s.replace(" ", "T") + "Z");
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleTimeString("en-GB", {
+        timeZone: "Asia/Kolkata",
+        hour12: false,
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit"
+      });
+    }
+  } catch (e) {}
+  return s.split(" ")[1] || s;
+}
+
 function renderAttendanceRoster(roster, newIds = new Set()) {
   const tbody = document.getElementById("att-roster-tbody");
   const counterEl = document.getElementById("att-present-counter");
@@ -2145,7 +2921,7 @@ function renderAttendanceRoster(roster, newIds = new Set()) {
     if (newIds && newIds.has(r.student_id)) {
       tr.className = "att-row-new";
     }
-    const timeFormatted = r.checked_in_at ? r.checked_in_at.split(" ")[1] || r.checked_in_at : "Just now";
+    const timeFormatted = formatRosterTime(r.checked_in_at);
     tr.innerHTML = `
       <td style="font-weight: 600; color: #64748b;">${idx + 1}</td>
       <td style="font-family: var(--font-mono); font-weight: 700; color: #0f172a;">${escapeHtml(r.student_id)}</td>
@@ -2222,10 +2998,59 @@ function initAttendanceModule() {
     }
   });
 
+  // Preset chips click & manual input sync
+  const intervalInput = document.getElementById("modal-att-interval");
+  const presetChips = document.querySelectorAll(".att-interval-preset-chip");
+
+  presetChips.forEach(chip => {
+    chip.addEventListener("click", () => {
+      const val = chip.getAttribute("data-sec");
+      if (intervalInput && val) {
+        intervalInput.value = val;
+        presetChips.forEach(c => {
+          c.classList.remove("active");
+          c.style.background = "#f1f5f9";
+          c.style.color = "#475569";
+          c.style.borderColor = "#e2e8f0";
+        });
+        chip.classList.add("active");
+        chip.style.background = "#2563eb";
+        chip.style.color = "#ffffff";
+        chip.style.borderColor = "#2563eb";
+      }
+    });
+  });
+
+  intervalInput?.addEventListener("input", (e) => {
+    const val = parseInt(e.target.value, 10);
+    presetChips.forEach(c => {
+      if (parseInt(c.getAttribute("data-sec"), 10) === val) {
+        c.classList.add("active");
+        c.style.background = "#2563eb";
+        c.style.color = "#ffffff";
+        c.style.borderColor = "#2563eb";
+      } else {
+        c.classList.remove("active");
+        c.style.background = "#f1f5f9";
+        c.style.color = "#475569";
+        c.style.borderColor = "#e2e8f0";
+      }
+    });
+  });
+
   btnConfirmStart?.addEventListener("click", async () => {
     const course = document.getElementById("modal-att-course")?.value.trim() || "Course Attendance";
     const section = document.getElementById("modal-att-section")?.value.trim() || "Section A";
-    const interval = parseInt(document.getElementById("modal-att-interval")?.value || "15", 10);
+    const intervalRaw = document.getElementById("modal-att-interval")?.value;
+    let interval = parseInt(intervalRaw, 10);
+    if (isNaN(interval) || interval < 1) {
+      interval = 1;
+    }
+    const useTunnel = document.getElementById("modal-att-use-tunnel") ? document.getElementById("modal-att-use-tunnel").checked : true;
+
+    btnConfirmStart.disabled = true;
+    const origText = btnConfirmStart.textContent;
+    btnConfirmStart.textContent = useTunnel ? "Starting Cloudflare Tunnel..." : "Starting...";
 
     try {
       const res = await fetch("/api/attendance/session/start", {
@@ -2234,19 +3059,27 @@ function initAttendanceModule() {
         body: JSON.stringify({
           course_name: course,
           section: section,
-          rotation_interval_seconds: interval
+          rotation_interval_seconds: interval,
+          use_tunnel: useTunnel
         })
       });
       const data = await res.json();
       if (data.success) {
         closeModal();
         await fetchActiveAttendanceSession();
-        showAttendanceToast(`Live attendance started for ${course}`, "success");
+        if (data.tunnel_url) {
+          showAttendanceToast(`Live attendance active with Cloudflare Tunnel`, "success");
+        } else {
+          showAttendanceToast(`Live attendance started for ${course}`, "success");
+        }
       } else {
         alert(data.error || "Could not start session.");
       }
     } catch (err) {
       alert("Failed to start attendance session: " + err.message);
+    } finally {
+      btnConfirmStart.disabled = false;
+      btnConfirmStart.textContent = origText;
     }
   });
 
@@ -2439,6 +3272,7 @@ let activeEmailMsg = null;
 let activeReplyTone = "professional";
 let emailSearchDebounce = null;
 let activeConnectedEmail = "";
+let activeAccountType = "demo";
 let isThreadedView = false;
 let currentEmailViewMode = "clean";
 
@@ -2556,14 +3390,27 @@ function formatEmailTime(isoStr) {
   return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
 
+function decodeHtmlEntities(str) {
+  if (!str) return "";
+  const txt = document.createElement("textarea");
+  txt.innerHTML = str;
+  return txt.value;
+}
+
 function cleanSnippet(text) {
   if (!text) return "";
-  return text
+  let cleaned = decodeHtmlEntities(text);
+  cleaned = cleaned
+    .replace(/\*{2,}\s*disclaimer\s*\*{2,}[\s\S]*/i, "")
+    .replace(/\n\s*--\s*[\s\S]*/i, "")
+    .replace(/\b(The information contained in this (?:electronic )?communication[\s\S]*)/i, "")
     .replace(/\[image:[^\]]*\]/gi, "")
     .replace(/https?:\/\/\S+/gi, "")
     .replace(/<[^>]+>/g, " ")
+    .replace(/\u00a0|&nbsp;/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
+  return cleaned;
 }
 
 function formatEmailBody(rawBody) {
@@ -2689,6 +3536,23 @@ function formatBentoSummary(rawSummary) {
 function initEmailCopilot() {
   fetchEmailAccount();
 
+  // Handle Google OAuth callback notification and redirection
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get("google_auth") === "success") {
+    const userEmail = urlParams.get("email") || "Google Account";
+    window.history.replaceState({}, document.title, window.location.pathname + "#inbox");
+    document.getElementById("nav-btn-inbox")?.click();
+    setTimeout(() => {
+      alert(`Successfully signed in with Google (${userEmail})!\nYour Gmail mailbox is connected and synchronized.`);
+    }, 200);
+  } else if (urlParams.get("google_error")) {
+    const err = urlParams.get("google_error");
+    window.history.replaceState({}, document.title, window.location.pathname + "#inbox");
+    setTimeout(() => {
+      alert("Google Sign-In Notice: " + err);
+    }, 200);
+  }
+
   // Back to Inbox Button in Detail View
   document.getElementById("btn-back-to-inbox")?.addEventListener("click", () => {
     closeEmailDetailView();
@@ -2710,12 +3574,45 @@ function initEmailCopilot() {
     document.querySelectorAll(".row-checkbox").forEach(cb => { cb.checked = isChecked; });
   });
 
-  // Sync Mail Buttons (Toolbar and Top Nav)
+  // Reload / Sync Mail Button (above emails row)
   document.getElementById("btn-table-sync")?.addEventListener("click", () => {
-    syncEmailAccount();
+    syncEmailInbox();
   });
-  document.getElementById("btn-sync-emails")?.addEventListener("click", () => {
-    syncEmailAccount();
+
+  // Top bar Google Account Popover & Login/Logout actions
+  const topGoogleBtn = document.getElementById("btn-top-google-account");
+  const topGooglePopover = document.getElementById("google-account-popover");
+  const btnTopLogout = document.getElementById("btn-top-google-logout");
+
+  topGoogleBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    topGooglePopover?.classList.toggle("hidden");
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest("#top-user-pill-wrap")) {
+      topGooglePopover?.classList.add("hidden");
+    }
+  });
+
+  btnTopLogout?.addEventListener("click", async () => {
+    const confirmed = confirm("Disconnect your Google account and return to offline sandbox mode?");
+    if (!confirmed) return;
+    try {
+      const res = await fetch("/api/email/account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: "demo.executive@local.ai", account_type: "demo" })
+      });
+      const data = await res.json();
+      if (data.success) {
+        topGooglePopover?.classList.add("hidden");
+        await fetchEmailAccount();
+        await fetchEmailInbox();
+      }
+    } catch (e) {
+      alert("Error logging out: " + e.message);
+    }
   });
 
   // Compose button opens detail view in composer mode
@@ -2888,31 +3785,52 @@ function initEmailCopilot() {
 
   // Link account modal
   const openModalBtn = document.getElementById("btn-open-link-account");
-  const accountPill = document.getElementById("inbox-account-pill");
   const linkModal = document.getElementById("link-email-modal");
   const cancelLinkBtn = document.getElementById("btn-cancel-link-account");
   const cancelDemoBtn = document.getElementById("btn-cancel-demo-account");
   const closeIconBtn = document.getElementById("btn-close-link-modal");
   const unlinkBtn = document.getElementById("btn-unlink-account");
+  const cancelGoogleBtn = document.getElementById("btn-cancel-google-account");
+  const btnTopManage = document.getElementById("btn-top-manage-account");
+  const btnGoogleModalDisconnect = document.getElementById("btn-google-modal-disconnect");
 
   const openLinkModal = () => {
     linkModal?.classList.remove("hidden");
     const emailInput = document.getElementById("link-imap-email");
-    const hostInput = document.getElementById("link-imap-host");
-    const smtpInput = document.getElementById("link-smtp-host");
+    const tabGoogle = document.getElementById("tab-account-google");
+    const tabImap = document.getElementById("tab-account-imap");
+    const googleConnectedView = document.getElementById("google-pane-connected-view");
+    const googleLoginView = document.getElementById("google-pane-login-view");
+    const googleEmailLabel = document.getElementById("modal-google-connected-email");
 
-    if (activeConnectedEmail) {
+    const isGoogleOAuth = activeAccountType === "google_oauth" || activeAccountType === "google";
+    const isRealImap = activeAccountType === "imap" && activeConnectedEmail && !activeConnectedEmail.includes("demo.executive");
+
+    if (isGoogleOAuth) {
+      tabGoogle?.click();
+      if (googleConnectedView) googleConnectedView.style.display = "block";
+      if (googleLoginView) googleLoginView.style.display = "none";
+      if (googleEmailLabel) googleEmailLabel.textContent = `Connected: ${activeConnectedEmail}`;
+    } else {
+      if (googleConnectedView) googleConnectedView.style.display = "none";
+      if (googleLoginView) googleLoginView.style.display = "block";
+    }
+
+    if (isRealImap) {
+      tabImap?.click();
       if (emailInput) emailInput.value = activeConnectedEmail;
       if (activeConnectedEmail.includes("@gmail.com")) {
-        if (hostInput && !hostInput.value) hostInput.value = "imap.gmail.com";
-        if (smtpInput && !smtpInput.value) smtpInput.value = "smtp.gmail.com";
+        btnProvGoogle?.click();
+      } else if (activeConnectedEmail.includes("@outlook.com") || activeConnectedEmail.includes("@office365.com")) {
+        btnProvOutlook?.click();
       }
-      // If already connected, default to IMAP tab and display Disconnect button
-      const tabImap = document.getElementById("tab-account-imap");
-      tabImap?.click();
       if (unlinkBtn) unlinkBtn.style.display = "inline-flex";
-    } else {
+    } else if (!isGoogleOAuth) {
+      tabGoogle?.click();
       if (unlinkBtn) unlinkBtn.style.display = "none";
+      if (emailInput && emailInput.value.includes("demo.executive")) {
+        emailInput.value = "";
+      }
     }
   };
 
@@ -2921,10 +3839,34 @@ function initEmailCopilot() {
   };
 
   openModalBtn?.addEventListener("click", openLinkModal);
-  accountPill?.addEventListener("click", openLinkModal);
+  btnTopManage?.addEventListener("click", () => {
+    document.getElementById("google-account-popover")?.classList.add("hidden");
+    openLinkModal();
+  });
   cancelLinkBtn?.addEventListener("click", closeLinkModal);
   cancelDemoBtn?.addEventListener("click", closeLinkModal);
+  cancelGoogleBtn?.addEventListener("click", closeLinkModal);
   closeIconBtn?.addEventListener("click", closeLinkModal);
+
+  btnGoogleModalDisconnect?.addEventListener("click", async () => {
+    const confirmed = confirm(`Disconnect Google account (${activeConnectedEmail}) and return to offline sandbox?`);
+    if (!confirmed) return;
+    try {
+      const res = await fetch("/api/email/account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: "demo.executive@local.ai", account_type: "demo" })
+      });
+      const data = await res.json();
+      if (data.success) {
+        closeLinkModal();
+        await fetchEmailAccount();
+        await syncEmailInbox();
+      }
+    } catch (e) {
+      alert("Error disconnecting account: " + e.message);
+    }
+  });
 
   // Close modal when clicking backdrop outside card
   linkModal?.addEventListener("click", (e) => {
@@ -2954,23 +3896,92 @@ function initEmailCopilot() {
   });
 
   // Link account tabs
+  const tabGoogle = document.getElementById("tab-account-google");
   const tabDemo = document.getElementById("tab-account-demo");
   const tabImap = document.getElementById("tab-account-imap");
+  const paneGoogle = document.getElementById("pane-account-google");
   const paneDemo = document.getElementById("pane-account-demo");
   const paneImap = document.getElementById("pane-account-imap");
 
+  tabGoogle?.addEventListener("click", () => {
+    tabGoogle.classList.add("active");
+    tabDemo?.classList.remove("active");
+    tabImap?.classList.remove("active");
+    paneGoogle?.classList.remove("hidden");
+    paneDemo?.classList.add("hidden");
+    paneImap?.classList.add("hidden");
+  });
+
   tabDemo?.addEventListener("click", () => {
     tabDemo.classList.add("active");
+    tabGoogle?.classList.remove("active");
     tabImap?.classList.remove("active");
     paneDemo?.classList.remove("hidden");
+    paneGoogle?.classList.add("hidden");
     paneImap?.classList.add("hidden");
   });
 
   tabImap?.addEventListener("click", () => {
     tabImap.classList.add("active");
+    tabGoogle?.classList.remove("active");
     tabDemo?.classList.remove("active");
     paneImap?.classList.remove("hidden");
+    paneGoogle?.classList.add("hidden");
     paneDemo?.classList.add("hidden");
+  });
+
+  // Email provider presets
+  const btnProvGoogle = document.getElementById("btn-provider-google");
+  const btnProvOutlook = document.getElementById("btn-provider-outlook");
+  const btnProvCustom = document.getElementById("btn-provider-custom");
+  const provNotice = document.getElementById("email-provider-notice");
+  const inputImapHost = document.getElementById("link-imap-host");
+  const inputImapPort = document.getElementById("link-imap-port");
+  const inputSmtpHost = document.getElementById("link-smtp-host");
+  const inputSmtpPort = document.getElementById("link-smtp-port");
+
+  const setProviderActive = (activeBtn) => {
+    [btnProvGoogle, btnProvOutlook, btnProvCustom].forEach(b => b?.classList.remove("active"));
+    activeBtn?.classList.add("active");
+  };
+
+  btnProvGoogle?.addEventListener("click", () => {
+    setProviderActive(btnProvGoogle);
+    if (inputImapHost) inputImapHost.value = "imap.gmail.com";
+    if (inputImapPort) inputImapPort.value = "993";
+    if (inputSmtpHost) inputSmtpHost.value = "smtp.gmail.com";
+    if (inputSmtpPort) inputSmtpPort.value = "587";
+    if (provNotice) {
+      provNotice.innerHTML = `
+        <strong style="color: #2563eb;">Gmail Configuration:</strong> Google requires a <strong>16-character App Password</strong> (not your standard password). Generate one at <a href="https://myaccount.google.com/apppasswords" target="_blank" style="color: #2563eb; text-decoration: underline;">myaccount.google.com/apppasswords</a> with 2-Step Verification turned on.
+      `;
+    }
+  });
+
+  btnProvOutlook?.addEventListener("click", () => {
+    setProviderActive(btnProvOutlook);
+    if (inputImapHost) inputImapHost.value = "outlook.office365.com";
+    if (inputImapPort) inputImapPort.value = "993";
+    if (inputSmtpHost) inputSmtpHost.value = "smtp.office365.com";
+    if (inputSmtpPort) inputSmtpPort.value = "587";
+    if (provNotice) {
+      provNotice.innerHTML = `
+        <strong style="color: #0284c7;">Microsoft Outlook / 365:</strong> Pre-configured for Microsoft Cloud endpoints (<code>outlook.office365.com:993</code> and <code>smtp.office365.com:587</code>). Enter your account email and App Password.
+      `;
+    }
+  });
+
+  btnProvCustom?.addEventListener("click", () => {
+    setProviderActive(btnProvCustom);
+    if (inputImapHost) inputImapHost.value = "";
+    if (inputImapPort) inputImapPort.value = "993";
+    if (inputSmtpHost) inputSmtpHost.value = "";
+    if (inputSmtpPort) inputSmtpPort.value = "587";
+    if (provNotice) {
+      provNotice.innerHTML = `
+        <strong style="color: #475569;">Custom IMAP / SMTP:</strong> Enter your mail server's custom IMAP/SMTP hostname, port numbers, and authentication credentials.
+      `;
+    }
   });
 
   // Activate Sandbox button
@@ -3201,35 +4212,78 @@ function initEmailCopilot() {
 async function fetchEmailAccount() {
   const statusLabel = document.getElementById("account-status-text");
   const linkAccountBtn = document.getElementById("btn-open-link-account");
-  if (!statusLabel) return;
   try {
     const res = await fetch("/api/email/account");
     const data = await res.json();
     if (data.success) {
       activeConnectedEmail = data.email || "";
-      const isImap = data.account_type === "imap";
-      statusLabel.textContent = `Connected: ${data.email} (${isImap ? "IMAP" : "Sandbox"})`;
+      activeAccountType = data.account_type || "demo";
+      const isGoogleOAuth = activeAccountType === "google_oauth" || activeAccountType === "google";
+      const isRealImap = activeAccountType === "imap" && activeConnectedEmail && !activeConnectedEmail.includes("demo.executive");
 
-      // If an account is linked, remove/hide the Link Account button option
+      if (statusLabel) {
+        if (isGoogleOAuth) {
+          statusLabel.textContent = `Google: ${data.email}`;
+          if (statusLabel.parentElement) {
+            statusLabel.parentElement.title = `Connected to ${data.email} via Google Cloud OAuth (Click to manage)`;
+          }
+        } else if (isRealImap) {
+          statusLabel.textContent = `Connected: ${data.email}`;
+          if (statusLabel.parentElement) {
+            statusLabel.parentElement.title = `Connected to ${data.email} via IMAP (Click to manage)`;
+          }
+        } else {
+          statusLabel.textContent = `Sandbox: demo.executive@local.ai`;
+          if (statusLabel.parentElement) {
+            statusLabel.parentElement.title = `Offline Sandbox: demo.executive@local.ai (Not connected to Google; click to link live email)`;
+          }
+        }
+      }
+
+      // If a real account is linked, remove/hide the Link Account button option
       if (linkAccountBtn) {
-        if (isImap && activeConnectedEmail) {
+        if (isGoogleOAuth || isRealImap) {
           linkAccountBtn.style.display = "none";
         } else {
           linkAccountBtn.style.display = "inline-flex";
         }
       }
+
+      // Top bar Google button & popover update
+      const topGoogleLabel = document.getElementById("top-google-label");
+      const topPopoverEmail = document.getElementById("top-popover-email");
+      const topPopoverStatus = document.getElementById("top-popover-status");
+      const topInitials = document.getElementById("top-user-avatar-initials");
+      const btnTopLogin = document.getElementById("btn-top-google-login");
+      const btnTopLogout = document.getElementById("btn-top-google-logout");
+
+      if (isGoogleOAuth) {
+        const fullEmail = data.email || "";
+        const shortName = fullEmail.split("@")[0] || "Google";
+        if (topGoogleLabel) topGoogleLabel.textContent = shortName;
+        if (topPopoverEmail) topPopoverEmail.textContent = fullEmail;
+        if (topPopoverStatus) topPopoverStatus.textContent = "Google OAuth Active";
+        if (topInitials) topInitials.textContent = shortName.slice(0, 2).toUpperCase();
+        if (btnTopLogin) btnTopLogin.style.display = "none";
+        if (btnTopLogout) btnTopLogout.style.display = "block";
+      } else {
+        if (topGoogleLabel) topGoogleLabel.textContent = "Google";
+        if (topPopoverEmail) topPopoverEmail.textContent = "Not connected";
+        if (topPopoverStatus) topPopoverStatus.textContent = "Offline Sandbox";
+        if (topInitials) topInitials.textContent = "G";
+        if (btnTopLogin) btnTopLogin.style.display = "flex";
+        if (btnTopLogout) btnTopLogout.style.display = "none";
+      }
     }
   } catch (e) {
-    statusLabel.textContent = "Offline Sandbox";
+    if (statusLabel) statusLabel.textContent = "Sandbox: demo.executive@local.ai";
     if (linkAccountBtn) linkAccountBtn.style.display = "inline-flex";
   }
 }
 
 async function syncEmailInbox() {
-  const syncBtn = document.getElementById("btn-sync-emails");
-  const label = syncBtn?.querySelector("span");
-  if (syncBtn) syncBtn.classList.add("spinning");
-  if (label) label.textContent = "Syncing...";
+  const tableSyncBtn = document.getElementById("btn-table-sync");
+  if (tableSyncBtn) tableSyncBtn.classList.add("spinning");
   try {
     const res = await fetch("/api/email/sync", { method: "POST" });
     const data = await res.json();
@@ -3241,8 +4295,7 @@ async function syncEmailInbox() {
   } catch (e) {
     console.warn("Sync failed:", e);
   } finally {
-    if (syncBtn) syncBtn.classList.remove("spinning");
-    if (label) label.textContent = "Sync Mail";
+    if (tableSyncBtn) tableSyncBtn.classList.remove("spinning");
   }
 }
 
@@ -3301,13 +4354,16 @@ async function fetchEmailInbox(query = "") {
     const totalCount = items.length;
     const unreadCount = items.filter(m => !m.is_read).length;
     const urgentCount = items.filter(m => (m.priority || "").toLowerCase() === "high" || (m.category || "").toLowerCase() === "urgent").length;
+    const actionCount = items.filter(m => (m.category || "").toLowerCase() === "action" || (m.priority || "").toLowerCase() === "high").length;
 
     const badgeAll = document.getElementById("tab-badge-all");
     const badgeUnread = document.getElementById("tab-badge-unread");
     const badgeUrgent = document.getElementById("tab-badge-urgent");
+    const badgeAction = document.getElementById("tab-badge-action");
     if (badgeAll) badgeAll.textContent = totalCount;
     if (badgeUnread) badgeUnread.textContent = unreadCount;
     if (badgeUrgent) badgeUrgent.textContent = urgentCount;
+    if (badgeAction) badgeAction.textContent = actionCount;
 
     fetchNotifications();
 
@@ -4086,7 +5142,59 @@ function initCalendarSchedulerControls() {
 // ----------------------------------------------------------------------------
 // Workspaces
 // ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// Workspaces
+// ----------------------------------------------------------------------------
+// Workspaces & Storage Management
+// ----------------------------------------------------------------------------
+let cachedWorkspacePresets = null;
+let accessModeWired = false;
+
+async function fetchAccessMode() {
+  const badge = document.getElementById("badge-file-access-mode");
+  const btn = document.getElementById("btn-toggle-access-mode");
+  try {
+    const res = await fetch("/api/system/access_mode");
+    const data = await res.json();
+    if (data && badge && btn) {
+      if (data.all_files_mode) {
+        badge.className = "risk-badge risk-low";
+        badge.textContent = "ALL FILES ACCESS: ACTIVE";
+        btn.textContent = "Mode: All Files";
+        btn.title = "Current: All Files Access. Click to isolate to Sandboxed Workspaces.";
+      } else {
+        badge.className = "risk-badge risk-med";
+        badge.textContent = "SANDBOX ISOLATED";
+        btn.textContent = "Mode: Sandboxed";
+        btn.title = "Current: Sandboxed Workspaces. Click to grant All Files Access.";
+      }
+    }
+  } catch (_) {}
+
+  if (!accessModeWired && btn) {
+    accessModeWired = true;
+    btn.addEventListener("click", async () => {
+      try {
+        const curRes = await fetch("/api/system/access_mode");
+        const curData = await curRes.json();
+        const nextState = !curData.all_files_mode;
+        btn.disabled = true;
+        await fetch("/api/system/access_mode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ all_files_mode: nextState })
+        });
+        fetchAccessMode();
+      } catch (_) {
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  }
+}
+
 async function fetchWorkspaces() {
+  fetchAccessMode();
   const container = document.getElementById("workspaces-list-container");
   if (!container) return;
 
@@ -4095,7 +5203,15 @@ async function fetchWorkspaces() {
     const workspaces = await res.json();
 
     if (!workspaces.length) {
-      container.innerHTML = "<div class='empty-state'>No authorized workspaces registered yet.</div>";
+      container.innerHTML = `
+        <div class="empty-state" style="padding: 40px 20px; text-align: center;">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5" style="margin-bottom: 8px;">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+          </svg>
+          <p style="color: #64748b; font-size: 13px;">No authorized workspaces registered yet.</p>
+          <button type="button" class="pill-btn pill-btn-outline" style="margin-top: 10px;" onclick="document.getElementById('btn-open-add-ws-modal')?.click()">+ Authorize Workspace</button>
+        </div>
+      `;
       return;
     }
 
@@ -4103,14 +5219,69 @@ async function fetchWorkspaces() {
     workspaces.forEach(ws => {
       const div = document.createElement("div");
       div.className = "panel-card";
+      div.style.position = "relative";
+
+      const permBadges = (ws.permissions || []).map(p => {
+        let badgeColor = "#475569";
+        if (p === "READ") badgeColor = "#2563eb";
+        if (p === "WRITE") badgeColor = "#0891b2";
+        if (p === "DELETE") badgeColor = "#dc2626";
+        return `<span style="display:inline-block; font-size:10.5px; font-weight:600; padding:2px 8px; border-radius:12px; background:#f1f5f9; color:${badgeColor}; border:1px solid #e2e8f0; margin-right:4px;">${p}</span>`;
+      }).join("");
+
       div.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px;">
-          <h4 style="font-weight:700;">${ws.name}</h4>
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 10px;">
+          <div>
+            <h4 style="font-weight:700; font-size:15px; margin-bottom:2px; color:#0f172a;">${ws.name}</h4>
+            <div style="margin-top:4px;">${permBadges}</div>
+          </div>
           <span class="risk-badge ${ws.enabled ? "risk-low" : "risk-high"}">${ws.enabled ? "ENABLED" : "DISABLED"}</span>
         </div>
-        <p style="font-family:var(--font-mono); font-size:12px; color:#475569; word-break:break-all;">${ws.path}</p>
-        <p style="font-size:11.5px; color:#94a3b8; margin-top:6px;">Permissions: ${(ws.permissions || []).join(", ")}</p>
+        <p style="font-family:var(--font-mono); font-size:12px; color:#475569; word-break:break-all; background:#f8fafc; padding:8px 10px; border-radius:6px; border:1px solid #f1f5f9; margin-bottom:12px;">${ws.path}</p>
+        <div style="display:flex; justify-content:flex-end; gap:8px; border-top:1px solid #f1f5f9; padding-top:10px;">
+          <button type="button" class="pill-btn pill-btn-outline btn-sm btn-toggle-ws" data-ws-id="${ws.workspace_id || ws.name}" style="font-size:11.5px; padding:4px 10px;">
+            ${ws.enabled ? "Disable" : "Enable"}
+          </button>
+          <button type="button" class="pill-btn pill-btn-outline btn-sm btn-del-ws" data-ws-id="${ws.workspace_id || ws.name}" data-ws-name="${ws.name}" style="font-size:11.5px; padding:4px 10px; color:#dc2626; border-color:#fecaca;">
+            Remove
+          </button>
+        </div>
       `;
+
+      div.querySelector(".btn-toggle-ws")?.addEventListener("click", async (e) => {
+        const targetId = e.currentTarget.getAttribute("data-ws-id");
+        try {
+          const res = await fetch(`/api/workspaces/${encodeURIComponent(targetId)}/toggle`, { method: "PATCH" });
+          const data = await res.json();
+          if (data.success) {
+            fetchWorkspaces();
+            fetchStatus();
+          } else {
+            alert("Error toggling workspace: " + (data.detail || "Unknown error"));
+          }
+        } catch (err) {
+          alert("Error: " + err.message);
+        }
+      });
+
+      div.querySelector(".btn-del-ws")?.addEventListener("click", async (e) => {
+        const targetId = e.currentTarget.getAttribute("data-ws-id");
+        const targetName = e.currentTarget.getAttribute("data-ws-name");
+        if (!confirm(`Are you sure you want to unregister workspace "${targetName}"? Files on disk will NOT be deleted.`)) return;
+        try {
+          const res = await fetch(`/api/workspaces/${encodeURIComponent(targetId)}`, { method: "DELETE" });
+          const data = await res.json();
+          if (data.success) {
+            fetchWorkspaces();
+            fetchStatus();
+          } else {
+            alert("Error removing workspace: " + (data.detail || "Unknown error"));
+          }
+        } catch (err) {
+          alert("Error: " + err.message);
+        }
+      });
+
       container.appendChild(div);
     });
   } catch (e) {
@@ -4118,28 +5289,282 @@ async function fetchWorkspaces() {
   }
 }
 
-function initWorkspaces() {
-  document.getElementById("btn-open-add-ws-modal")?.addEventListener("click", () => {
-    const path = prompt("Enter full workspace directory path:");
-    if (!path) return;
-    const name = prompt("Enter a friendly workspace name (e.g., Sandbox):", "Workspace");
-    if (!name) return;
+async function loadWorkspacePresets() {
+  if (cachedWorkspacePresets) return cachedWorkspacePresets;
+  try {
+    const res = await fetch("/api/workspaces/presets");
+    cachedWorkspacePresets = await res.json();
+    return cachedWorkspacePresets;
+  } catch (e) {
+    return null;
+  }
+}
 
-    fetch("/api/workspaces", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path, name, permissions: ["READ", "WRITE"] })
-    }).then(res => res.json()).then(data => {
-      if (data.success) {
-        alert("Workspace added successfully!");
-        fetchWorkspaces();
-        fetchStatus();
-      } else {
-        alert("Failed to add workspace: " + (data.detail || "Unknown error"));
+function initWorkspaces() {
+  const modal = document.getElementById("add-workspace-modal");
+  const btnOpen = document.getElementById("btn-open-add-ws-modal");
+  const btnCancel = document.getElementById("btn-cancel-add-ws");
+  const btnSubmit = document.getElementById("btn-submit-add-ws");
+
+  const inputName = document.getElementById("ws-input-name");
+  const inputPath = document.getElementById("ws-input-path");
+  const permWrite = document.getElementById("ws-perm-write");
+  const permDelete = document.getElementById("ws-perm-delete");
+  const hintEl = document.getElementById("ws-path-status-hint");
+
+  const openModal = async () => {
+    if (modal) modal.classList.remove("hidden");
+    if (inputName) inputName.value = "";
+    if (inputPath) inputPath.value = "";
+    if (permWrite) permWrite.checked = true;
+    if (permDelete) permDelete.checked = false;
+    if (hintEl) {
+      hintEl.textContent = "Select a quick preset or enter an absolute path on this machine.";
+      hintEl.style.color = "#64748b";
+    }
+    await loadWorkspacePresets();
+  };
+
+  const closeModal = () => {
+    if (modal) modal.classList.add("hidden");
+  };
+
+  btnOpen?.addEventListener("click", openModal);
+  btnCancel?.addEventListener("click", closeModal);
+
+  modal?.addEventListener("click", (e) => {
+    if (e.target === modal) closeModal();
+  });
+
+  // Wire up quick preset buttons
+  document.querySelectorAll("#ws-presets-container button[data-preset]")?.forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const presetKey = btn.getAttribute("data-preset");
+      const presets = await loadWorkspacePresets();
+      if (presets && presets[presetKey]) {
+        const item = presets[presetKey];
+        if (inputName) inputName.value = item.name;
+        if (inputPath) inputPath.value = item.path;
+        if (hintEl) {
+          hintEl.textContent = `Preset applied for ${item.name} (${item.exists ? "Path verified on disk" : "Local path"})`;
+          hintEl.style.color = "#2563eb";
+        }
       }
     });
   });
+
+  btnSubmit?.addEventListener("click", async () => {
+    const name = inputName?.value.trim();
+    const path = inputPath?.value.trim();
+    if (!name || !path) {
+      alert("Please provide both a Workspace Name and Directory Path.");
+      return;
+    }
+
+    const perms = ["READ"];
+    if (permWrite?.checked) perms.push("WRITE");
+    if (permDelete?.checked) perms.push("DELETE");
+
+    try {
+      btnSubmit.disabled = true;
+      btnSubmit.textContent = "Authorizing...";
+      const res = await fetch("/api/workspaces", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, path, permissions: perms })
+      });
+      const data = await res.json();
+      if (data.success) {
+        closeModal();
+        fetchWorkspaces();
+        fetchStatus();
+      } else {
+        alert("Failed to add workspace: " + (data.detail || data.error || "Unknown error"));
+      }
+    } catch (e) {
+      alert("Error adding workspace: " + e.message);
+    } finally {
+      if (btnSubmit) {
+        btnSubmit.disabled = false;
+        btnSubmit.textContent = "Authorize Workspace";
+      }
+    }
+  });
+
+  // Also initialize Google Calendar Sync Modal
+  initGoogleCalendarSync();
 }
+
+function initGoogleCalendarSync() {
+  const modal = document.getElementById("gcal-sync-modal");
+  const btnOpen = document.getElementById("btn-open-gcal-sync");
+  const btnCancel = document.getElementById("btn-cancel-gcal-sync");
+  const btnSubmit = document.getElementById("btn-submit-gcal-sync");
+  const btnModeIcal = document.getElementById("gcal-mode-ical");
+  const btnModeRest = document.getElementById("gcal-mode-rest");
+  const sectionIcal = document.getElementById("gcal-section-ical");
+  const sectionRest = document.getElementById("gcal-section-rest");
+  const inputSource = document.getElementById("gcal-input-source");
+  const inputCalId = document.getElementById("gcal-input-calid");
+  const inputApiKey = document.getElementById("gcal-input-apikey");
+  const inputToken = document.getElementById("gcal-input-token");
+  const checkRemember = document.getElementById("gcal-remember-settings");
+  const feedbackEl = document.getElementById("gcal-sync-feedback");
+
+  let activeMode = "ical"; // 'ical' or 'rest'
+
+  const setMode = (mode) => {
+    activeMode = mode;
+    if (mode === "ical") {
+      btnModeIcal?.classList.remove("pill-btn-outline");
+      btnModeIcal?.classList.add("pill-btn-dark");
+      btnModeRest?.classList.remove("pill-btn-dark");
+      btnModeRest?.classList.add("pill-btn-outline");
+      if (sectionIcal) sectionIcal.style.display = "block";
+      if (sectionRest) sectionRest.style.display = "none";
+    } else {
+      btnModeRest?.classList.remove("pill-btn-outline");
+      btnModeRest?.classList.add("pill-btn-dark");
+      btnModeIcal?.classList.remove("pill-btn-dark");
+      btnModeIcal?.classList.add("pill-btn-outline");
+      if (sectionIcal) sectionIcal.style.display = "none";
+      if (sectionRest) sectionRest.style.display = "block";
+    }
+  };
+
+  btnModeIcal?.addEventListener("click", () => setMode("ical"));
+  btnModeRest?.addEventListener("click", () => setMode("rest"));
+
+  const loadSavedSettings = () => {
+    try {
+      const savedMode = localStorage.getItem("gcal_sync_mode") || "ical";
+      const savedSource = localStorage.getItem("gcal_sync_source") || "";
+      const savedCalId = localStorage.getItem("gcal_sync_calid") || "primary";
+      const savedApiKey = localStorage.getItem("gcal_sync_apikey") || "";
+      const savedToken = localStorage.getItem("gcal_sync_token") || "";
+
+      if (inputSource && savedSource) inputSource.value = savedSource;
+      if (inputCalId && savedCalId) inputCalId.value = savedCalId;
+      if (inputApiKey && savedApiKey) inputApiKey.value = savedApiKey;
+      if (inputToken && savedToken) inputToken.value = savedToken;
+
+      setMode(savedMode);
+    } catch (_) {
+      setMode("ical");
+    }
+  };
+
+  const openModal = () => {
+    if (modal) modal.classList.remove("hidden");
+    if (feedbackEl) feedbackEl.style.display = "none";
+    loadSavedSettings();
+  };
+
+  const closeModal = () => {
+    if (modal) modal.classList.add("hidden");
+  };
+
+  btnOpen?.addEventListener("click", openModal);
+  btnCancel?.addEventListener("click", closeModal);
+
+  modal?.addEventListener("click", (e) => {
+    if (e.target === modal) closeModal();
+  });
+
+  btnSubmit?.addEventListener("click", async () => {
+    let sourcePayload = "";
+    let apiKeyPayload = undefined;
+    let tokenPayload = undefined;
+
+    if (activeMode === "ical") {
+      sourcePayload = inputSource?.value.trim() || "";
+      if (!sourcePayload) {
+        if (feedbackEl) {
+          feedbackEl.style.display = "block";
+          feedbackEl.style.background = "#fef2f2";
+          feedbackEl.style.color = "#991b1b";
+          feedbackEl.textContent = "Please enter your Google Calendar Secret iCal Address URL.";
+        }
+        return;
+      }
+    } else {
+      sourcePayload = inputCalId?.value.trim() || "primary";
+      apiKeyPayload = inputApiKey?.value.trim() || undefined;
+      tokenPayload = inputToken?.value.trim() || undefined;
+
+      if (!apiKeyPayload && !tokenPayload) {
+        if (feedbackEl) {
+          feedbackEl.style.display = "block";
+          feedbackEl.style.background = "#fef2f2";
+          feedbackEl.style.color = "#991b1b";
+          feedbackEl.textContent = "REST API v3 requires a Google Cloud API Key or an OAuth Bearer Token.";
+        }
+        return;
+      }
+    }
+
+    if (checkRemember?.checked) {
+      try {
+        localStorage.setItem("gcal_sync_mode", activeMode);
+        if (inputSource?.value) localStorage.setItem("gcal_sync_source", inputSource.value.trim());
+        if (inputCalId?.value) localStorage.setItem("gcal_sync_calid", inputCalId.value.trim());
+        if (inputApiKey?.value) localStorage.setItem("gcal_sync_apikey", inputApiKey.value.trim());
+        if (inputToken?.value) localStorage.setItem("gcal_sync_token", inputToken.value.trim());
+      } catch (_) {}
+    }
+
+    if (feedbackEl) {
+      feedbackEl.style.display = "block";
+      feedbackEl.style.background = "#eff6ff";
+      feedbackEl.style.color = "#1e40af";
+      feedbackEl.textContent = activeMode === "rest"
+        ? "Connecting to Google Calendar REST API v3..."
+        : "Fetching events from Google Calendar iCal feed...";
+    }
+
+    try {
+      btnSubmit.disabled = true;
+      btnSubmit.textContent = "Syncing...";
+      const res = await fetch("/api/calendar/google/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          calendar_id_or_url: sourcePayload,
+          api_key: apiKeyPayload,
+          access_token: tokenPayload
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (feedbackEl) {
+          feedbackEl.style.background = "#f0fdf4";
+          feedbackEl.style.color = "#166534";
+          feedbackEl.textContent = `Sync completed: ${data.synced_count} event(s) retrieved (${data.newly_added} newly stored).`;
+        }
+        fetchCalendarEvents();
+        setTimeout(closeModal, 1500);
+      } else {
+        if (feedbackEl) {
+          feedbackEl.style.background = "#fef2f2";
+          feedbackEl.style.color = "#991b1b";
+          feedbackEl.textContent = data.error || "Sync failed. Please verify credentials or URL.";
+        }
+      }
+    } catch (e) {
+      if (feedbackEl) {
+        feedbackEl.style.background = "#fef2f2";
+        feedbackEl.style.color = "#991b1b";
+        feedbackEl.textContent = "Network error: " + e.message;
+      }
+    } finally {
+      if (btnSubmit) {
+        btnSubmit.disabled = false;
+        btnSubmit.textContent = "Sync Schedule";
+      }
+    }
+  });
+}
+
 
 // ----------------------------------------------------------------------------
 // Tasks & Audit Logs

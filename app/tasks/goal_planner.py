@@ -19,16 +19,23 @@ from langchain_groq import ChatGroq
 from app.policy import get_action_risk
 from app.tasks.validator import PlanValidator
 from app.tools.filesystem import search_files
-from app.workspaces import Permission, Workspace, WorkspaceManager
+from app.workspaces import ALL_PERMISSIONS, Permission, Workspace, WorkspaceManager
 
 load_dotenv()
 
 llm: Any = None
 
 
+from app.llm import get_configured_llm, is_ollama_online
+
+
 def get_llm() -> Any:
     global llm
     if llm is not None:
+        return llm
+    provider = os.getenv("LLM_PROVIDER", "").lower()
+    if provider == "ollama" and is_ollama_online():
+        llm = get_configured_llm()
         return llm
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
@@ -36,9 +43,8 @@ def get_llm() -> Any:
             "GROQ_API_KEY environment variable is missing or empty. "
             "Please set GROQ_API_KEY in your environment or .env file."
         )
-
     llm = ChatGroq(
-        model=os.getenv("GROQ_MODEL", "openai/gpt-oss-20b"),
+        model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
         api_key=api_key,  # type: ignore[arg-type]
         temperature=0,
     )
@@ -74,6 +80,41 @@ class GoalPlanner:
         - source_workspace_name: source workspace for cross-workspace moves | null
         - target_workspace_names: list of workspaces for multi-workspace search
         """
+        goal_lower = goal.lower()
+        if (
+            re.search(
+                r"\b(?:what|which|show|list)\b.*?\b(?:folders?|workspaces?|directories)\b",
+                goal_lower,
+            )
+            or any(
+                w in goal_lower
+                for w in (
+                    "what folder can you see",
+                    "what folders can you see",
+                    "what folders do you see",
+                    "what folder do you see",
+                    "which folders can you see",
+                    "which folder can you see",
+                    "what folders are available",
+                    "what workspaces",
+                    "list workspaces",
+                    "show workspaces",
+                )
+            )
+        ):
+            return {
+                "action_type": "list_workspaces",
+                "extension": None,
+                "filename": None,
+                "filenames": [],
+                "new_filename": None,
+                "keywords": [],
+                "target_directory_name": None,
+                "target_workspace_name": None,
+                "source_workspace_name": None,
+                "target_workspace_names": [],
+            }
+
         prompt = f"""
 You are a goal analysis component for a local file automation system.
 
@@ -85,7 +126,7 @@ User goal:
 Return ONLY valid JSON matching this schema:
 {{
     "action_type": "organize" | "move" | "delete" | "archive" | "clean" | "search"
-                   | "rename" | "create_directory",
+                   | "rename" | "create_directory" | "create_file",
     "extension": "file extension like .pdf or .txt or .py if specified, otherwise null",
     "filename": "specific filename or existing source file for rename, otherwise null",
     "new_filename": "new filename for rename action, otherwise null",
@@ -99,8 +140,10 @@ Rules:
    and "new_filename" is the new/target filename.
 2. For create_directory actions, "target_directory_name" is the folder to create,
    and "target_workspace_name" is where to create it.
-3. Do NOT invent filenames. Only extract search criteria.
-4. Return JSON only with no markdown formatting.
+3. For create_file actions, "filename" is the file name to create (e.g. a.pdf),
+   and "target_workspace_name" is where to create it.
+4. Do NOT invent filenames. Only extract search criteria.
+5. Return JSON only with no markdown formatting.
 """
         try:
             llm_inst = get_llm()
@@ -131,14 +174,14 @@ Rules:
                 if is_rename_cmd:
                     data["action_type"] = "rename"
                     heur = cls._heuristic_goal_analysis(goal)
-                    if not data.get("filename") and heur.get("filename"):
+                    if heur.get("filename"):
                         data["filename"] = heur["filename"]
-                    if not data.get("new_filename") and heur.get("new_filename"):
+                    if heur.get("new_filename"):
                         data["new_filename"] = heur["new_filename"]
-                    if not data.get("target_workspace_name") and heur.get("target_workspace_name"):
+                    if heur.get("target_workspace_name"):
                         data["target_workspace_name"] = heur["target_workspace_name"]
                     data["target_directory_name"] = None
-                elif data.get("action_type") == "create_directory" or any(
+                is_standalone_mkdir = any(
                     w in goal.lower()
                     for w in (
                         "create a folder",
@@ -147,7 +190,14 @@ Rules:
                         "make folder",
                         "mkdir",
                     )
-                ):
+                ) or (
+                    data.get("action_type") == "create_directory"
+                    and not any(
+                        v in goal.lower()
+                        for v in ("organize", "move", "archive", "clean", "delete", "copy", "find", "search")
+                    )
+                )
+                if is_standalone_mkdir:
                     heur = cls._heuristic_goal_analysis(goal)
                     data["action_type"] = "create_directory"
                     if not data.get("target_directory_name") and heur.get("target_directory_name"):
@@ -156,10 +206,25 @@ Rules:
                         data["target_workspace_name"] = heur["target_workspace_name"]
                 else:
                     # For all other actions (move, delete, search, organize, etc.),
-                    # merge heuristic-extracted fields the LLM prompt doesn't cover.
+                    # merge heuristic-extracted fields the LLM prompt doesn't cover or if the LLM hallucinated create_directory.
                     heur = cls._heuristic_goal_analysis(goal)
+                    if data.get("action_type") == "create_directory" or not data.get("action_type"):
+                        data["action_type"] = heur.get("action_type", "organize")
+                    if not data.get("extension") and heur.get("extension"):
+                        data["extension"] = heur["extension"]
+                    if not data.get("keywords") and heur.get("keywords"):
+                        data["keywords"] = heur["keywords"]
+                    elif heur.get("keywords"):
+                        existing_kw = set(data.get("keywords") or [])
+                        for k in heur["keywords"]:
+                            if k not in existing_kw:
+                                data.setdefault("keywords", []).append(k)
                     if not data.get("filename") and heur.get("filename"):
                         data["filename"] = heur["filename"]
+                    if heur.get("filenames"):
+                        data["filenames"] = heur["filenames"]
+                    elif data.get("filename"):
+                        data["filenames"] = [data["filename"]]
                     if not data.get("source_workspace_name") and heur.get("source_workspace_name"):
                         data["source_workspace_name"] = heur["source_workspace_name"]
                     if not data.get("target_workspace_name") and heur.get("target_workspace_name"):
@@ -170,15 +235,37 @@ Rules:
                         data["target_workspace_names"] = heur["target_workspace_names"]
                     if not data.get("target_directory_name") and heur.get("target_directory_name"):
                         data["target_directory_name"] = heur["target_directory_name"]
-                    # Prefer heuristic action_type for cross-workspace moves or move goals
+                    if data.get("extension"):
+                        ext_str = str(data["extension"]).strip()
+                        if ext_str and not ext_str.startswith("."):
+                            data["extension"] = f".{ext_str}"
+
+                    # Prefer heuristic action_type and workspace resolution for cross-workspace moves
                     if heur.get("source_workspace_name") and heur.get("target_workspace_name"):
                         data["action_type"] = heur["action_type"]
+                        data["source_workspace_name"] = heur["source_workspace_name"]
+                        data["target_workspace_name"] = heur["target_workspace_name"]
+                        data["target_directory_name"] = None
                     elif data.get("action_type") in ("archive", "rename") and re.search(
                         r"\bmove\b", goal, re.IGNORECASE
                     ):
                         data["action_type"] = "move"
+                    elif heur.get("action_type") in ("organize", "move") and data.get("action_type") not in ("organize", "move"):
+                        data["action_type"] = heur["action_type"]
 
-                    # Sanitize keywords so workspace names are not used as file search filters
+                    # Sanitize keywords so workspace names and target directories (if not in source description)
+                    # are not used as file search filters
+                    before_target = goal
+                    m_dest = re.search(r"\b(?:into|to|in)\b", goal, re.IGNORECASE)
+                    if m_dest:
+                        before_target = goal[: m_dest.start()]
+
+                    target_dir_words = set()
+                    for t_dir in (data.get("target_directory_name"), heur.get("target_directory_name")):
+                        if t_dir:
+                            if not re.search(r"\b" + re.escape(t_dir) + r"\b", before_target, re.IGNORECASE):
+                                target_dir_words.add(t_dir.lower())
+
                     excluded_words = {
                         w.lower()
                         for w in (
@@ -189,6 +276,8 @@ Rules:
                         )
                         if w
                     }
+                    excluded_words.update(target_dir_words)
+                    excluded_words.update({"folder", "directory", "file", "files", "all"})
                     for w_obj in WorkspaceManager.list_workspaces():
                         excluded_words.add(w_obj.name.lower())
                     if data.get("target_workspace_names"):
@@ -213,6 +302,41 @@ Rules:
     def _heuristic_goal_analysis(cls, goal: str) -> dict[str, Any]:
         """Fallback analysis for offline, missing API keys, or mocked tests."""
         goal_lower = goal.lower()
+
+        # Workspace inquiry intent
+        if (
+            re.search(
+                r"\b(?:what|which|show|list)\b.*?\b(?:folders?|workspaces?|directories)\b",
+                goal_lower,
+            )
+            or any(
+                w in goal_lower
+                for w in (
+                    "what folder can you see",
+                    "what folders can you see",
+                    "what folders do you see",
+                    "what folder do you see",
+                    "which folders can you see",
+                    "which folder can you see",
+                    "what folders are available",
+                    "what workspaces",
+                    "list workspaces",
+                    "show workspaces",
+                )
+            )
+        ):
+            return {
+                "action_type": "list_workspaces",
+                "extension": None,
+                "filename": None,
+                "filenames": [],
+                "new_filename": None,
+                "keywords": [],
+                "target_directory_name": None,
+                "target_workspace_name": None,
+                "source_workspace_name": None,
+                "target_workspace_names": [],
+            }
 
         # 0. Milestone 7: System tools intents
         if re.search(
@@ -409,7 +533,40 @@ Rules:
                 "target_workspace_names": [],
             }
 
-        # 1. Handle standalone directory creation goals
+        # 1. Handle standalone file creation goals
+        m_create_file = re.search(
+            r"\b(?:create|make|touch|write)\b(?:\s+(?:a\s+|an\s+)?(?:new\s+)?(?:file\s+)?)[\"']?([A-Za-z0-9_\-\.]+\.[A-Za-z0-9]+)[\"']?",
+            goal,
+            re.IGNORECASE,
+        )
+        if not m_create_file and re.search(r"\b(?:create|make|touch)\b.*?\bfile\b", goal_lower):
+            m_fn = re.search(r"\b([A-Za-z0-9_\-]+\.[A-Za-z0-9]+)\b", goal)
+            if m_fn:
+                m_create_file = m_fn
+
+        is_dir_creation = bool(re.search(r"\b(?:folder|directory)\b", goal_lower))
+        if m_create_file and not is_dir_creation and not re.search(r"\brename\b", goal_lower):
+            filename_cand = m_create_file.group(1).strip()
+            target_ws = None
+            for ws in WorkspaceManager.list_workspaces():
+                if re.search(r"\b" + re.escape(ws.name) + r"\b", goal, re.IGNORECASE):
+                    target_ws = ws.name
+                    break
+
+            ext = Path(filename_cand).suffix if "." in filename_cand else None
+            return {
+                "action_type": "create_file",
+                "extension": ext,
+                "filename": filename_cand,
+                "new_filename": None,
+                "keywords": [],
+                "target_directory_name": None,
+                "target_workspace_name": target_ws,
+                "source_workspace_name": None,
+                "target_workspace_names": [target_ws] if target_ws else [],
+            }
+
+        # 1b. Handle standalone directory creation goals
         if re.search(
             r"\b(?:create|make|mkdir)\b.*?\b(?:folder|directory)\b", goal_lower
         ) or re.search(r"\bmkdir\s+", goal_lower):
@@ -483,17 +640,36 @@ Rules:
             if m_action:
                 rest = goal[m_action.end():].strip()
 
-                # Trailing workspace: "in/inside/under/from [workspace]"
-                ws_match = re.search(
-                    r"\s+\b(?:in|inside|under|from)\s+(?:workspace\s+)?([A-Za-z0-9_\-]+)\s*$",
+                # Middle workspace: "rename [file] in/on/from/inside/under [workspace] to/as [new_name]"
+                m_mid = re.match(
+                    r"^(.+?)\s+\b(?:in|on|from|inside|under)\s+(?:workspace\s+)?([A-Za-z0-9_\-]+)\s+\b(?:to|as)\b\s+(.+)$",
                     rest,
                     re.IGNORECASE,
                 )
-                if ws_match:
-                    possible_ws = ws_match.group(1).strip()
-                    if not target_ws:
-                        target_ws = possible_ws
-                    rest = rest[: ws_match.start()].strip()
+                if m_mid:
+                    cand_ws = m_mid.group(2).strip()
+                    target_ws = cand_ws
+                    for ws in WorkspaceManager.list_workspaces():
+                        if ws.name.lower() == cand_ws.lower():
+                            target_ws = ws.name
+                            break
+                    rest = f"{m_mid.group(1).strip()} to {m_mid.group(3).strip()}"
+                else:
+                    # Trailing workspace: "in/inside/under/from [workspace]"
+                    ws_match = re.search(
+                        r"\s+\b(?:in|inside|under|from)\s+(?:workspace\s+)?([A-Za-z0-9_\-]+)\s*$",
+                        rest,
+                        re.IGNORECASE,
+                    )
+                    if ws_match:
+                        possible_ws = ws_match.group(1).strip()
+                        if not target_ws:
+                            target_ws = possible_ws
+                        for ws in WorkspaceManager.list_workspaces():
+                            if ws.name.lower() == possible_ws.lower():
+                                target_ws = ws.name
+                                break
+                        rest = rest[: ws_match.start()].strip()
 
                 # 1. Quoted source and quoted dest: "src" to "dst"
                 m_both = re.match(
@@ -585,13 +761,26 @@ Rules:
         else:
             action_type = "organize"
 
-        # Detect specific filename if given, e.g. "Find m4_test.txt"
+        # Detect specific filenames if given, e.g. "Find m4_test.txt" or "find a.pdf or b.pdf"
         filename = None
-        m_file = re.search(r"\b([A-Za-z0-9_\-]+\.[A-Za-z0-9]+)\b", goal)
-        if m_file:
+        filenames: list[str] = []
+        for m_file in re.finditer(r"\b([A-Za-z0-9_\-]+\.[A-Za-z0-9]+)\b", goal):
             cand = m_file.group(1).strip()
             if not cand.startswith(".") and "." in cand:
-                filename = cand
+                if cand not in filenames:
+                    filenames.append(cand)
+        if filenames:
+            filename = filenames[0]
+
+        # Detect new_filename for rename or compound move+rename (e.g. "rename it to b.pdf")
+        new_filename = None
+        m_ren = re.search(
+            r"\brename\s+(?:it\s+|the\s+file\s+)?(?:to|as)\s+[\"']?([A-Za-z0-9_\-\.]+)[\"']?",
+            goal,
+            re.IGNORECASE,
+        )
+        if m_ren:
+            new_filename = m_ren.group(1).strip()
 
         # Detect extension
         ext = None
@@ -629,7 +818,20 @@ Rules:
                     "a",
                     "workspace",
                 ):
-                    matched_ws_obj = WorkspaceManager.get_workspace_by_name(matched_name)
+                    is_explicit_folder = bool(
+                        re.search(
+                            r"(?:into|to)\s+(?:(?:an?|the)\s+)?\b"
+                            + re.escape(matched_name)
+                            + r"\s+(?:folder|directory)\b",
+                            goal,
+                            re.IGNORECASE,
+                        )
+                    )
+                    matched_ws_obj = (
+                        WorkspaceManager.get_workspace_by_name(matched_name)
+                        if not is_explicit_folder
+                        else None
+                    )
                     if matched_ws_obj:
                         # Destination is an existing workspace, not a subfolder to create!
                         target_ws = matched_ws_obj.name
@@ -671,11 +873,29 @@ Rules:
             "txt",
             "pdf",
             "docx",
+            "can",
+            "you",
+            "could",
+            "please",
+            "it",
+            "to",
+            "as",
+            "is",
+            "be",
+            "that",
+            "this",
+            "if",
+            "found",
+            "then",
+            "rename",
         }
 
         # Detect all explicitly mentioned workspaces
         target_workspaces: list[str] = []
         for ws in WorkspaceManager.list_workspaces():
+            # If followed by 'folder' or 'directory' (e.g. 'Documents folder'), it's a directory name, not a workspace
+            if re.search(r"\b" + re.escape(ws.name) + r"\s+(?:folder|directory)\b", goal, re.IGNORECASE):
+                continue
             if re.search(r"\b" + re.escape(ws.name) + r"\b", goal, re.IGNORECASE):
                 target_workspaces.append(ws.name)
 
@@ -746,6 +966,8 @@ Rules:
             "action_type": action_type,
             "extension": ext,
             "filename": filename,
+            "filenames": filenames,
+            "new_filename": new_filename,
             "keywords": keywords,
             "target_directory_name": target_dir,
             "target_workspace_name": target_ws,
@@ -761,7 +983,10 @@ Rules:
         analysis = cls.analyze_goal(goal)
         action_type = analysis.get("action_type", "organize")
         ext = analysis.get("extension") or ""
+        if ext and not ext.startswith("."):
+            ext = f".{ext}"
         filename = analysis.get("filename") or ""
+        filenames = analysis.get("filenames") or ([filename] if filename else [])
         new_filename = analysis.get("new_filename") or ""
         keywords = analysis.get("keywords") or []
         target_dir_name = analysis.get("target_directory_name")
@@ -913,6 +1138,27 @@ Rules:
                 summary=f"Search and retrieve {category} messages from email inbox.",
             )
 
+        # Workspace / folder inquiry handling
+        if action_type in ("list_workspaces", "show_workspaces"):
+            workspaces = WorkspaceManager.list_workspaces()
+            if not workspaces:
+                sum_text = "No authorized workspaces are configured."
+            else:
+                ws_lines = [
+                    f"• {w.name} ({w.canonical_path}) [Permissions: {', '.join(sorted(w.permissions))}]"
+                    for w in workspaces
+                ]
+                sum_text = "Authorized Workspaces:\n" + "\n".join(ws_lines)
+            return GoalPlan(
+                goal=goal,
+                target_workspace=workspaces[0] if workspaces else None,
+                discovered_files=[],
+                steps=[],
+                cumulative_risk="low",
+                requires_approval=False,
+                summary=sum_text,
+            )
+
         if WorkspaceManager.count_workspaces() == 0:
             return GoalPlan(
                 goal=goal,
@@ -996,6 +1242,20 @@ Rules:
             return cls._plan_create_directory_goal(
                 goal=goal,
                 target_dir_name=target_dir_name,
+                target_workspace=target_ws_obj,
+                explicit_ws_name=explicit_ws_name,
+            )
+
+        # Special handling for standalone file creation
+        if action_type == "create_file":
+            target_ws_obj = (
+                WorkspaceManager.get_workspace_by_name(explicit_ws_name)
+                if explicit_ws_name
+                else (read_workspaces[0] if read_workspaces else None)
+            )
+            return cls._plan_create_file_goal(
+                goal=goal,
+                filename=filename,
                 target_workspace=target_ws_obj,
                 explicit_ws_name=explicit_ws_name,
             )
@@ -1111,6 +1371,91 @@ Rules:
                     )
                 target_workspace = ws_found
                 search_scope = [ws_found]
+                if action_type in ("organize", "move") and not source_ws_name:
+                    if target_dir_name and target_dir_name.lower() == ws_found.name.lower():
+                        target_dir_name = None
+                    other_read = [
+                        w for w in read_workspaces if w.workspace_id != ws_found.workspace_id
+                    ]
+                    if other_read:
+                        search_scope = [ws_found] + other_read
+            else:
+                std_names = {
+                    "downloads": "Downloads",
+                    "documents": "Documents",
+                    "desktop": "Desktop",
+                }
+                std_match = std_names.get(explicit_ws_name.lower())
+                cand_path = None
+                if std_match:
+                    cand_path = Path.home() / std_match
+                else:
+                    p = Path(explicit_ws_name).expanduser()
+                    if p.exists() and p.is_dir():
+                        cand_path = p
+                    else:
+                        cand_home = (Path.home() / explicit_ws_name).resolve()
+                        if cand_home.exists() and cand_home.is_dir():
+                            cand_path = cand_home
+
+                if cand_path and cand_path.exists() and WorkspaceManager.is_all_files_mode():
+                    target_workspace = Workspace(
+                        workspace_id=f"ws_{cand_path.name.lower()}",
+                        name=cand_path.name,
+                        path=str(cand_path),
+                        enabled=True,
+                        permissions=set(ALL_PERMISSIONS),
+                    )
+                    search_scope = [target_workspace]
+                else:
+                    if std_match:
+                        sum_text = (
+                            f"Workspace '{std_match}' is not yet registered. "
+                            f"To authorize it, open the Workspaces tab and click the "
+                            f"'{std_match}' preset button."
+                        )
+                    else:
+                        sum_text = (
+                            f"Workspace '{explicit_ws_name}' is not configured or unauthorized."
+                        )
+                    return GoalPlan(
+                        goal=goal,
+                        target_workspace=None,
+                        discovered_files=[],
+                        steps=[],
+                        cumulative_risk="low",
+                        requires_approval=False,
+                        summary=sum_text,
+                    )
+        elif not read_workspaces:
+            if WorkspaceManager.is_all_files_mode():
+                std_dirs = [
+                    Path.home() / "Downloads",
+                    Path.home() / "Documents",
+                    Path.home() / "Desktop",
+                ]
+                search_scope = [
+                    Workspace(
+                        workspace_id=f"ws_{d.name.lower()}",
+                        name=d.name,
+                        path=str(d),
+                        enabled=True,
+                        permissions=set(ALL_PERMISSIONS),
+                    )
+                    for d in std_dirs
+                    if d.exists()
+                ]
+                if not search_scope:
+                    search_scope = [
+                        Workspace(
+                            workspace_id="ws_user_home",
+                            name="Home",
+                            path=str(Path.home()),
+                            enabled=True,
+                            permissions=set(ALL_PERMISSIONS),
+                        )
+                    ]
+                target_workspace = search_scope[0]
             else:
                 return GoalPlan(
                     goal=goal,
@@ -1119,18 +1464,8 @@ Rules:
                     steps=[],
                     cumulative_risk="low",
                     requires_approval=False,
-                    summary=f"Workspace '{explicit_ws_name}' is not configured or unauthorized.",
+                    summary="No enabled workspaces with READ permission are available.",
                 )
-        elif not read_workspaces:
-            return GoalPlan(
-                goal=goal,
-                target_workspace=None,
-                discovered_files=[],
-                steps=[],
-                cumulative_risk="low",
-                requires_approval=False,
-                summary="No enabled workspaces with READ permission are available.",
-            )
         else:
             search_scope = read_workspaces
             target_workspace = read_workspaces[0]
@@ -1146,52 +1481,107 @@ Rules:
                 explicit_ws_name=explicit_ws_name,
             )
 
+        # Safeguard: Prevent accidental mass move if neither target folder nor source files were specified
+        if (
+            action_type in ("organize", "move")
+            and not target_dir_name
+            and not explicit_ws_name
+            and not source_ws_name
+            and not filename
+            and not filenames
+            and not ext
+            and not keywords
+        ):
+            return GoalPlan(
+                goal=goal,
+                target_workspace=target_workspace,
+                discovered_files=[],
+                steps=[],
+                cumulative_risk="low",
+                requires_approval=False,
+                summary=(
+                    "Ambiguous goal: no target folder or specific files were specified. "
+                    "Please specify which files to organize and the destination folder."
+                ),
+            )
+
         # 2. Inspect real filesystem across authorized workspace(s)
         discovered_files: list[dict[str, Any]] = []
+        target_filenames = filenames if filenames else ([filename] if filename else [""])
         for ws in search_scope:
-            res = search_files.invoke(
-                {
-                    "directory": str(ws.canonical_path),
-                    "extension": ext,
-                    "filename": filename,
-                    "start_date": "",
-                    "end_date": "",
-                }
-            )
-            for f in res.get("files", []):
-                p = Path(f["path"])
-                # Filter by keyword if keywords are specified and no specific filename was requested
-                if keywords and not filename:
-                    p_name_lower = p.name.lower()
-                    p_stem_lower = p.stem.lower()
-                    matched = False
-                    for k in keywords:
-                        if k in p_name_lower:
-                            matched = True
-                            break
-                        if len(k) >= 4 and p_stem_lower.startswith(k[:4]):
-                            matched = True
-                            break
-                        if len(k) >= 4:
-                            for part in p_stem_lower.split("_"):
-                                if len(part) >= 3 and part.startswith(k[:4]):
-                                    matched = True
-                                    break
-                        if matched:
-                            break
-                    if matched:
-                        # Avoid adding files already in the target directory
-                        if target_dir_name and target_dir_name.lower() in [
-                            part.lower() for part in p.parts
-                        ]:
-                            continue
-                        discovered_files.append(f)
-                else:
+            cleaned_keywords = []
+            if keywords and not filename and not filenames:
+                cleaned_keywords = [
+                    k.lower()
+                    for k in keywords
+                    if k.lower().lstrip(".") != (ext.lower().lstrip(".") if ext else "")
+                    and k.lower() not in ("pdf", "docx", "txt", "csv", "xlsx", "file", "files", "all")
+                    and k.lower() != (target_dir_name.lower() if target_dir_name else "")
+                    and k.lower() not in ("archive", "archives", "folder", "folders", "directory", "directories")
+                ]
+
+            for f_cand in target_filenames:
+                res = search_files.invoke(
+                    {
+                        "directory": str(ws.canonical_path),
+                        "extension": ext if not f_cand else "",
+                        "filename": f_cand,
+                        "start_date": "",
+                        "end_date": "",
+                    }
+                )
+                for f in res.get("files", []):
+                    if any(df["path"] == f["path"] for df in discovered_files):
+                        continue
+                    p = Path(f["path"])
+                    # Avoid adding files already in the target directory
                     if target_dir_name and target_dir_name.lower() in [
                         part.lower() for part in p.parts
                     ]:
                         continue
+                    if (
+                        action_type in ("organize", "move")
+                        and target_workspace
+                        and not target_dir_name
+                    ):
+                        try:
+                            if p.resolve().parent == target_workspace.canonical_path.resolve():
+                                continue
+                        except Exception:
+                            pass
+
+                    if cleaned_keywords:
+                        p_name_lower = p.name.lower()
+                        p_stem_lower = p.stem.lower()
+                        matched = False
+                        for k in cleaned_keywords:
+                            if k in p_name_lower:
+                                matched = True
+                                break
+                            if len(k) >= 4 and p_stem_lower.startswith(k[:4]):
+                                matched = True
+                                break
+                            if len(k) >= 4:
+                                for part in p_stem_lower.split("_"):
+                                    if len(part) >= 3 and part.startswith(k[:4]):
+                                        matched = True
+                                        break
+                            if matched:
+                                break
+                        if not matched:
+                            continue
+
                     discovered_files.append(f)
+
+        # Prioritize exact stem matches if multiple files matched via keywords
+        if cleaned_keywords and not filename and len(discovered_files) > 1:
+            exact_stem_matches = [
+                f
+                for f in discovered_files
+                if any(Path(f["path"]).stem.lower() == k.lower() for k in cleaned_keywords)
+            ]
+            if exact_stem_matches:
+                discovered_files = exact_stem_matches
 
         # 3. Handle zero matching files (safe no-op)
         if not discovered_files:
@@ -1311,6 +1701,7 @@ Rules:
                     continue
                 planned_names.add(src_path.name.lower())
 
+                move_step_order = step_order
                 steps.append(
                     {
                         "step_order": step_order,
@@ -1323,6 +1714,20 @@ Rules:
                     }
                 )
                 step_order += 1
+
+                if new_filename:
+                    steps.append(
+                        {
+                            "step_order": step_order,
+                            "action": "rename",
+                            "arguments": {
+                                "source": f"$output.step_{move_step_order}.path",
+                                "new_name": new_filename,
+                            },
+                            "depends_on_order": move_step_order,
+                        }
+                    )
+                    step_order += 1
 
             if not steps or (target_dir_name and len(steps) == 1):
                 if skipped_due_to_collision > 0:
@@ -1391,8 +1796,9 @@ Rules:
                 summary=f"Plan rejected by policy: {val_reason}",
             )
 
+        action_verb = f"{action_type} and rename" if new_filename else action_type
         summary_msg = (
-            f"Generated {len(steps)} steps to {action_type} {len(discovered_files)} file(s)."
+            f"Generated {len(steps)} steps to {action_verb} {len(discovered_files)} file(s)."
         )
         return GoalPlan(
             goal=goal,
@@ -1573,6 +1979,146 @@ Rules:
         )
 
     @classmethod
+    def _plan_create_file_goal(
+        cls,
+        goal: str,
+        filename: Optional[str],
+        target_workspace: Optional[Workspace],
+        explicit_ws_name: Optional[str] = None,
+    ) -> GoalPlan:
+        """
+        Synthesize a grounded GoalPlan specifically for creating a new file in a workspace.
+        """
+        if not filename:
+            return GoalPlan(
+                goal=goal,
+                target_workspace=target_workspace,
+                discovered_files=[],
+                steps=[],
+                cumulative_risk="low",
+                requires_approval=False,
+                summary="Could not determine the file name to create.",
+            )
+
+        if not target_workspace:
+            return GoalPlan(
+                goal=goal,
+                target_workspace=None,
+                discovered_files=[],
+                steps=[],
+                cumulative_risk="low",
+                requires_approval=False,
+                summary=f"Workspace '{explicit_ws_name}' is not configured or unauthorized."
+                if explicit_ws_name
+                else "No authorized workspace specified for file creation.",
+            )
+
+        if not target_workspace.enabled:
+            return GoalPlan(
+                goal=goal,
+                target_workspace=target_workspace,
+                discovered_files=[],
+                steps=[],
+                cumulative_risk="low",
+                requires_approval=False,
+                summary=f"Workspace '{target_workspace.name}' is currently disabled.",
+            )
+
+        if Permission.WRITE.value not in target_workspace.permissions:
+            return GoalPlan(
+                goal=goal,
+                target_workspace=target_workspace,
+                discovered_files=[],
+                steps=[],
+                cumulative_risk="medium",
+                requires_approval=True,
+                summary=(
+                    f"Workspace '{target_workspace.name}' lacks WRITE permission "
+                    "required to create files."
+                ),
+            )
+
+        target_file_path = (target_workspace.canonical_path / filename).resolve()
+
+        safe_ok, safe_reason = PlanValidator._check_path_safety(target_file_path)
+        if not safe_ok:
+            return GoalPlan(
+                goal=goal,
+                target_workspace=target_workspace,
+                discovered_files=[],
+                steps=[],
+                cumulative_risk="medium",
+                requires_approval=True,
+                summary=f"Target file path unsafe: {safe_reason}",
+            )
+
+        if not WorkspaceManager._is_subpath(target_file_path, target_workspace.canonical_path):
+            return GoalPlan(
+                goal=goal,
+                target_workspace=target_workspace,
+                discovered_files=[],
+                steps=[],
+                cumulative_risk="medium",
+                requires_approval=True,
+                summary=(
+                    f"Path is outside configured workspace '{target_workspace.name}': "
+                    f"{target_file_path}"
+                ),
+            )
+
+        if target_file_path.exists():
+            return GoalPlan(
+                goal=goal,
+                target_workspace=target_workspace,
+                discovered_files=[],
+                steps=[],
+                cumulative_risk="low",
+                requires_approval=False,
+                summary=f"Cannot create file: a file or directory already exists at '{target_file_path}'.",
+            )
+
+        steps = [
+            {
+                "step_order": 1,
+                "action": "create_file",
+                "arguments": {
+                    "file_path": str(target_file_path),
+                    "content": "",
+                },
+                "depends_on_order": None,
+            }
+        ]
+
+        plan_risk = cls.calculate_plan_risk(steps)
+        req_approval = plan_risk in ("medium", "high")
+
+        valid, val_reason = PlanValidator.validate_plan(steps)
+        if not valid:
+            return GoalPlan(
+                goal=goal,
+                target_workspace=target_workspace,
+                discovered_files=[],
+                steps=[],
+                cumulative_risk=plan_risk,
+                requires_approval=req_approval,
+                summary=f"Plan rejected by policy: {val_reason}",
+            )
+
+        summary_msg = (
+            f"Generated 1 step to create file '{target_file_path.name}' "
+            f"in workspace '{target_workspace.name}'."
+        )
+        return GoalPlan(
+            goal=goal,
+            target_workspace=target_workspace,
+            discovered_files=[],
+            steps=steps,
+            cumulative_risk=plan_risk,
+            requires_approval=req_approval,
+            summary=summary_msg,
+        )
+
+    @classmethod
     def _plan_rename_goal(
         cls,
         goal: str,
@@ -1636,7 +2182,12 @@ Rules:
                     }
                 )
                 for f in res.get("files", []):
-                    if Path(f["path"]).name.lower() == search_fn.lower():
+                    p_f = Path(f["path"])
+                    if p_f.name.lower() == search_fn.lower():
+                        # Exclude files that belong to a more specific nested workspace
+                        matching_ws = WorkspaceManager.find_workspace_for_path(p_f)
+                        if matching_ws and matching_ws.workspace_id != ws.workspace_id:
+                            continue
                         discovered_files.append(f)
 
         # 2. Zero matches -> safe no-op
@@ -1654,7 +2205,17 @@ Rules:
                 ),
             )
 
-        # 3. Multiple matches -> require disambiguation
+        # 3. Multiple matches -> if explicit workspace specified, prefer direct match in workspace root
+        if len(discovered_files) > 1 and explicit_ws_name and default_target_ws:
+            direct_matches = [
+                f
+                for f in discovered_files
+                if Path(f["path"]).resolve().parent == default_target_ws.canonical_path.resolve()
+            ]
+            if len(direct_matches) == 1:
+                discovered_files = direct_matches
+
+        # If still multiple matches -> require disambiguation
         if len(discovered_files) > 1:
             matches_str = ", ".join(f["path"] for f in discovered_files)
             return GoalPlan(

@@ -6,13 +6,19 @@ draft staging (MEDIUM risk), outbound dispatch (HIGH risk),
 account connection, AI summarization, and smart reply generation.
 """
 
+import base64
 import email
 import email.utils
 import imaplib
+import json
+import os
 import re
 import smtplib
 import sqlite3
-from datetime import datetime
+import urllib.error
+import urllib.parse
+import urllib.request
+from datetime import datetime, timedelta
 from email.header import decode_header
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -98,6 +104,12 @@ def _ensure_email_tables() -> None:
             account_cols = [r["name"] for r in cur.fetchall()]
             if "password" not in account_cols:
                 conn.execute("ALTER TABLE email_accounts ADD COLUMN password TEXT")
+            if "access_token" not in account_cols:
+                conn.execute("ALTER TABLE email_accounts ADD COLUMN access_token TEXT")
+            if "refresh_token" not in account_cols:
+                conn.execute("ALTER TABLE email_accounts ADD COLUMN refresh_token TEXT")
+            if "token_expiry" not in account_cols:
+                conn.execute("ALTER TABLE email_accounts ADD COLUMN token_expiry TEXT")
     finally:
         conn.close()
 
@@ -198,6 +210,8 @@ def _seed_demo_emails_if_empty(force: bool = False) -> None:
                 ),
             ]
             with conn:
+                if force:
+                    conn.execute("DELETE FROM email_inbox WHERE id NOT LIKE 'msg-%'")
                 for item in samples:
                     conn.execute(
                         """
@@ -245,7 +259,23 @@ def email_search(
 ) -> dict[str, Any]:
     """Search emails by query, sender, and category filter (LOW risk)."""
     _ensure_email_tables()
-    _seed_demo_emails_if_empty(force=False)
+    acc = email_get_account()
+    if acc.get("account_type") == "demo":
+        conn_check = _get_db_connection()
+        try:
+            cur_chk = conn_check.cursor()
+            cur_chk.execute("SELECT COUNT(*) as cnt FROM email_inbox WHERE id NOT LIKE 'msg-%'")
+            has_personal = cur_chk.fetchone()["cnt"] > 0
+            cur_chk.execute("SELECT COUNT(*) as cnt FROM email_inbox WHERE id LIKE 'msg-%'")
+            demo_cnt = cur_chk.fetchone()["cnt"]
+            if has_personal or demo_cnt == 0:
+                with conn_check:
+                    conn_check.execute("DELETE FROM email_inbox WHERE id NOT LIKE 'msg-%'")
+                _seed_demo_emails_if_empty(force=True)
+        finally:
+            conn_check.close()
+    else:
+        _seed_demo_emails_if_empty(force=False)
     conn = _get_db_connection()
     try:
         cur = conn.cursor()
@@ -884,6 +914,292 @@ def _sync_imap_emails(account: dict[str, Any]) -> dict[str, Any]:
         return {"success": False, "error": f"Connection Error: {str(exc)}"}
 
 
+def _refresh_google_token_if_needed(account: dict[str, Any]) -> str:
+    """Check if Google OAuth token needs refreshing and refresh it if needed."""
+    access_token = account.get("access_token") or ""
+    refresh_token = account.get("refresh_token") or ""
+
+    if not refresh_token:
+        return access_token
+
+    client_id = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+    client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
+    if not client_id or not client_secret:
+        return access_token
+
+    expiry_str = account.get("token_expiry")
+    needs_refresh = False
+    if expiry_str:
+        try:
+            expiry_dt = datetime.fromisoformat(expiry_str)
+            if datetime.now() >= (expiry_dt - timedelta(minutes=2)):
+                needs_refresh = True
+        except Exception:
+            needs_refresh = False
+
+    if not needs_refresh and access_token:
+        return access_token
+
+    try:
+        data = urllib.parse.urlencode({
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "refresh_token": refresh_token,
+            "grant_type": "refresh_token",
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            "https://oauth2.googleapis.com/token",
+            data=data,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            token_res = json.loads(resp.read().decode("utf-8"))
+            new_access_token = token_res.get("access_token")
+            expires_in = int(token_res.get("expires_in", 3600))
+            new_expiry = (datetime.now() + timedelta(seconds=expires_in)).isoformat()
+            if new_access_token:
+                conn = _get_db_connection()
+                try:
+                    with conn:
+                        conn.execute(
+                            "UPDATE email_accounts SET access_token = ?, token_expiry = ? WHERE id = ?",
+                            (new_access_token, new_expiry, account.get("id")),
+                        )
+                finally:
+                    conn.close()
+                return new_access_token
+    except Exception:
+        pass
+
+    return access_token
+
+
+def _decode_gmail_body_part(part: dict[str, Any]) -> tuple[str, str]:
+    """Recursively extract plain and html body from a Gmail payload part."""
+    plain = ""
+    html = ""
+    mime_type = part.get("mimeType", "")
+    body_data = part.get("body", {}).get("data", "")
+    if body_data:
+        try:
+            padded = body_data + "=" * (-len(body_data) % 4)
+            decoded = base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8", errors="replace")
+            if "text/html" in mime_type:
+                html = decoded
+            elif "text/plain" in mime_type:
+                plain = decoded
+        except Exception:
+            pass
+
+    for subpart in part.get("parts", []):
+        p_sub, h_sub = _decode_gmail_body_part(subpart)
+        if p_sub and not plain:
+            plain = p_sub
+        if h_sub and not html:
+            html = h_sub
+
+    return plain, html
+
+
+def _sync_gmail_api_emails(account: dict[str, Any]) -> dict[str, Any]:
+    """Fetch recent messages via the Google Gmail REST API using OAuth token."""
+    access_token = _refresh_google_token_if_needed(account)
+    if not access_token:
+        return {
+            "success": False,
+            "error": "Google OAuth access token missing. Please sign in with Google again.",
+        }
+
+    try:
+        list_url = "https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=25"
+        req = urllib.request.Request(
+            list_url,
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Accept": "application/json",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            list_data = json.loads(resp.read().decode("utf-8"))
+
+        msg_stubs = list_data.get("messages", [])
+        if not msg_stubs:
+            return {"success": True, "count": 0, "messages": []}
+
+        new_messages = []
+        for stub in msg_stubs:
+            msg_id = stub.get("id")
+            if not msg_id:
+                continue
+
+            detail_url = f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{msg_id}?format=full"
+            detail_req = urllib.request.Request(
+                detail_url,
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Accept": "application/json",
+                },
+            )
+            with urllib.request.urlopen(detail_req, timeout=12) as d_resp:
+                msg_detail = json.loads(d_resp.read().decode("utf-8"))
+
+            payload = msg_detail.get("payload", {})
+            headers_list = payload.get("headers", [])
+            header_map = {h.get("name", "").lower(): h.get("value", "") for h in headers_list}
+
+            sender = header_map.get("from") or "Unknown Sender"
+            subject = header_map.get("subject") or "(No Subject)"
+            date_raw = header_map.get("date")
+
+            date_str = datetime.now().isoformat()
+            if date_raw:
+                try:
+                    pdate = email.utils.parsedate_to_datetime(date_raw)
+                    date_str = pdate.isoformat()
+                except Exception:
+                    pass
+
+            plain_body, raw_html = _decode_gmail_body_part(payload)
+            if not plain_body and not raw_html:
+                plain_body = msg_detail.get("snippet", "")
+
+            sanitized_body = _sanitize_email_body(plain_body)
+            sanitized_html = _sanitize_email_body(raw_html) if raw_html else ""
+
+            text_for_category = (subject + " " + sanitized_body).lower()
+            category = "inbox"
+            priority = "normal"
+            if any(k in text_for_category for k in ["urgent", "emergency", "critical", "incident", "asap"]):
+                category = "urgent"
+                priority = "high"
+            elif any(k in text_for_category for k in ["action required", "action needed", "sign-off", "approval", "review required"]):
+                category = "action"
+                priority = "high"
+
+            clean_id = f"gmail-{msg_id}"
+            new_messages.append((
+                clean_id,
+                sender,
+                subject,
+                sanitized_body,
+                date_str,
+                category,
+                priority,
+                0,
+                sanitized_html,
+            ))
+
+        if new_messages:
+            conn = _get_db_connection()
+            try:
+                with conn:
+                    conn.execute("DELETE FROM email_inbox WHERE id LIKE 'msg-%'")
+                    for msg in new_messages:
+                        conn.execute(
+                            """
+                            INSERT OR REPLACE INTO email_inbox
+                            (id, sender, subject, body, received_at, category, priority, is_read, raw_html)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            msg,
+                        )
+            finally:
+                conn.close()
+
+        return {"success": True, "count": len(new_messages), "fetched": len(new_messages)}
+    except urllib.error.HTTPError as err:
+        if err.code == 401:
+            return {
+                "success": False,
+                "error": "Google OAuth authorization expired. Please click 'Sign in with Google' again.",
+            }
+        return {"success": False, "error": f"Gmail API HTTP {err.code}: {err.reason}"}
+    except Exception as exc:
+        return {"success": False, "error": f"Gmail API Error: {str(exc)}"}
+
+
+def _send_gmail_api_email(
+    account: dict[str, Any], to_address: str, subject: str, body: str
+) -> dict[str, Any]:
+    """Send an outbound email via the Gmail REST API with an OAuth token."""
+    access_token = _refresh_google_token_if_needed(account)
+    if not access_token:
+        raise ValueError("Google OAuth token missing. Please sign in with Google again.")
+
+    sender_email = account.get("email") or "me"
+    msg = MIMEMultipart()
+    msg["From"] = sender_email
+    msg["To"] = to_address
+    msg["Subject"] = subject
+    msg.attach(MIMEText(body, "plain"))
+
+    raw_bytes = msg.as_bytes()
+    raw_b64 = base64.urlsafe_b64encode(raw_bytes).decode("ascii")
+
+    url = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
+    post_data = json.dumps({"raw": raw_b64}).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=post_data,
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=12) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def email_link_google_oauth(
+    email_address: str,
+    access_token: str,
+    refresh_token: str = "",
+    expires_in: int = 3600,
+) -> dict[str, Any]:
+    """Link a Google Account authenticated via Google OAuth 2.0."""
+    _ensure_email_tables()
+    conn = _get_db_connection()
+    try:
+        now_dt = datetime.now()
+        now_str = now_dt.isoformat()
+        expiry_str = (now_dt + timedelta(seconds=expires_in)).isoformat()
+
+        # If refresh_token is omitted on re-login, keep previously saved refresh_token
+        if not refresh_token:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT refresh_token FROM email_accounts WHERE email = ? AND refresh_token IS NOT NULL ORDER BY id DESC LIMIT 1",
+                (email_address,),
+            )
+            r = cur.fetchone()
+            if r and r["refresh_token"]:
+                refresh_token = r["refresh_token"]
+
+        with conn:
+            conn.execute(
+                """
+                INSERT INTO email_accounts
+                (email, account_type, imap_host, is_connected, last_synced, access_token, refresh_token, token_expiry)
+                VALUES (?, 'google_oauth', 'Google Cloud OAuth (Gmail API)', 1, ?, ?, ?, ?)
+                """,
+                (email_address, now_str, access_token, refresh_token, expiry_str),
+            )
+            conn.execute("DELETE FROM email_inbox WHERE id NOT LIKE 'gmail-%'")
+
+        return {
+            "success": True,
+            "email": email_address,
+            "account_type": "google_oauth",
+            "connected": True,
+            "message": "Google Account successfully linked via OAuth 2.0.",
+        }
+    finally:
+        conn.close()
+
+
 def email_get_account() -> dict[str, Any]:
     """Retrieve current connected email account details."""
     _ensure_email_tables()
@@ -892,22 +1208,23 @@ def email_get_account() -> dict[str, Any]:
         cur = conn.cursor()
         cur.execute(
             """
-            SELECT email, account_type, imap_host, is_connected, last_synced, password
+            SELECT id, email, account_type, imap_host, is_connected, last_synced, password, access_token, refresh_token, token_expiry
             FROM email_accounts ORDER BY id DESC LIMIT 1
             """
         )
         row = cur.fetchone()
         if row:
+            is_oauth = row["account_type"] in ("google_oauth", "google")
             has_password = bool(row["password"] and len(str(row["password"]).strip()) > 0)
             return {
                 "success": True,
                 "connected": bool(row["is_connected"]),
                 "email": row["email"],
                 "account_type": row["account_type"],
-                "imap_host": row["imap_host"]
-                or ("imap.gmail.com" if "@gmail.com" in row["email"] else "Local Gateway"),
+                "imap_host": "Google Cloud OAuth (Gmail API)" if is_oauth else (row["imap_host"] or "Local Gateway"),
                 "last_synced": row["last_synced"],
-                "has_password": has_password,
+                "has_password": has_password or is_oauth,
+                "is_oauth": is_oauth,
             }
         return {
             "success": True,
@@ -917,6 +1234,7 @@ def email_get_account() -> dict[str, Any]:
             "imap_host": "Sandbox Offline Gateway",
             "last_synced": datetime.now().isoformat(),
             "has_password": True,
+            "is_oauth": False,
         }
     finally:
         conn.close()
@@ -985,6 +1303,10 @@ def email_link_account(
                     now_str,
                 ),
             )
+            if account_type == "demo":
+                conn.execute("DELETE FROM email_inbox WHERE id NOT LIKE 'msg-%'")
+        if account_type == "demo":
+            _seed_demo_emails_if_empty(force=True)
         return {
             "success": True,
             "email": email_address,
@@ -1005,8 +1327,8 @@ def email_sync() -> dict[str, Any]:
         cur = conn.cursor()
         cur.execute(
             """
-            SELECT email, account_type, imap_host, imap_port, smtp_host,
-                   smtp_port, username, password, is_connected
+            SELECT id, email, account_type, imap_host, imap_port, smtp_host,
+                   smtp_port, username, password, is_connected, access_token, refresh_token, token_expiry
             FROM email_accounts WHERE is_connected = 1 ORDER BY id DESC LIMIT 1
             """
         )
@@ -1016,13 +1338,20 @@ def email_sync() -> dict[str, Any]:
         now_str = datetime.now().isoformat()
         warning = None
 
-        if account and account.get("account_type") == "imap":
+        if account and account.get("account_type") in ("google_oauth", "google"):
+            sync_res = _sync_gmail_api_emails(account)
+            if not sync_res.get("success"):
+                warning = sync_res.get("error")
+                _seed_demo_emails_if_empty(force=False)
+        elif account and account.get("account_type") == "imap":
             sync_res = _sync_imap_emails(account)
             if not sync_res.get("success"):
                 warning = sync_res.get("error")
                 _seed_demo_emails_if_empty(force=False)
         else:
-            _seed_demo_emails_if_empty(force=False)
+            with conn:
+                conn.execute("DELETE FROM email_inbox WHERE id NOT LIKE 'msg-%'")
+            _seed_demo_emails_if_empty(force=True)
 
         cur.execute("SELECT COUNT(*) as cnt FROM email_inbox")
         count = cur.fetchone()["cnt"]
@@ -1106,14 +1435,16 @@ def email_send(
         cur = conn.cursor()
         cur.execute(
             """
-            SELECT email, account_type, smtp_host, smtp_port, username, password
+            SELECT id, email, account_type, smtp_host, smtp_port, username, password, access_token, refresh_token, token_expiry
             FROM email_accounts WHERE is_connected = 1 ORDER BY id DESC LIMIT 1
             """
         )
         row = cur.fetchone()
         acc = dict(row) if row else None
 
-        if acc and acc.get("account_type") == "imap" and acc.get("password"):
+        if acc and acc.get("account_type") in ("google_oauth", "google"):
+            _send_gmail_api_email(acc, to_address, subject, body)
+        elif acc and acc.get("account_type") == "imap" and acc.get("password"):
             smtp_host = acc.get("smtp_host") or (
                 "smtp.gmail.com" if "@gmail.com" in acc.get("email", "") else ""
             )

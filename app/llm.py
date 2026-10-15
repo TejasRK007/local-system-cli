@@ -85,14 +85,15 @@ class OllamaChatWrapper:
             data=json.dumps(payload).encode("utf-8"),
             headers={"Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(req, timeout=5) as resp:
+        with urllib.request.urlopen(req, timeout=60) as resp:
             data = json.loads(resp.read().decode("utf-8"))
 
         reply_content = data.get("message", {}).get("content", "")
 
         class ResponseContent:
-            def __init__(self, content: str):
+            def __init__(self, content: str, tool_calls: Optional[List[Any]] = None):
                 self.content = content
+                self.tool_calls = tool_calls or []
 
             def __str__(self) -> str:
                 return self.content
@@ -108,9 +109,22 @@ def get_configured_llm() -> Any:
     """
     Factory function returning the configured LLM instance based on LLM_PROVIDER.
     Supports 'ollama' (local qwen2.5:3b) and 'groq' (cloud).
+    If local Ollama is offline, gracefully falls back to Groq if GROQ_API_KEY is configured.
     """
     provider = os.getenv("LLM_PROVIDER", "ollama").lower()
     if provider == "ollama":
+        if is_ollama_online():
+            model_name = os.getenv("OLLAMA_MODEL", "qwen2.5:3b")
+            return OllamaChatWrapper(model=model_name)
+        # Fall back to Groq if Ollama is not running and Groq key is present
+        if os.getenv("GROQ_API_KEY"):
+            from langchain_groq import ChatGroq
+
+            return ChatGroq(
+                model=os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
+                api_key=os.getenv("GROQ_API_KEY"),
+                temperature=0,
+            )
         model_name = os.getenv("OLLAMA_MODEL", "qwen2.5:3b")
         return OllamaChatWrapper(model=model_name)
 
@@ -125,7 +139,7 @@ def get_configured_llm() -> Any:
     from langchain_groq import ChatGroq
 
     return ChatGroq(
-        model=os.getenv("GROQ_MODEL", "openai/gpt-oss-20b"),
+        model=os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
         api_key=api_key,  # type: ignore[arg-type]
         temperature=0,
     )
