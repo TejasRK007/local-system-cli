@@ -44,3 +44,7 @@ uploads/
 
 # Local development/test artifacts
 manual_test/
+my_sandbox/
+cloudflared.exe
+*.zip
+

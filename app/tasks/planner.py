@@ -17,9 +17,16 @@ load_dotenv()
 llm: Any = None
 
 
+from app.llm import get_configured_llm, is_ollama_online
+
+
 def get_llm() -> Any:
     global llm
     if llm is not None:
+        return llm
+    provider = os.getenv("LLM_PROVIDER", "").lower()
+    if provider == "ollama" and is_ollama_online():
+        llm = get_configured_llm()
         return llm
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
@@ -28,7 +35,7 @@ def get_llm() -> Any:
             "Please set GROQ_API_KEY in your environment or .env file."
         )
     llm = ChatGroq(
-        model="openai/gpt-oss-20b",
+        model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
         api_key=api_key,  # type: ignore[arg-type]
         temperature=0,
     )

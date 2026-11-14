@@ -135,6 +135,8 @@ def search_files(
 
     requested_filename = filename.strip().lower()
     requested_extension = extension.strip().lower()
+    if requested_extension and not requested_extension.startswith("."):
+        requested_extension = f".{requested_extension}"
 
     for file in folder.rglob("*"):
         if not file.is_file():
