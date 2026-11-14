@@ -715,6 +715,122 @@ def api_start_ollama(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]
         return {"success": False, "error": f"Failed to start Ollama: {e}"}
 
 
+def _find_ollama_binary() -> str:
+    """Locate the Ollama executable across Windows, macOS and Linux."""
+    import platform
+    import shutil
+
+    found = shutil.which("ollama") or ""
+    if found:
+        return found
+
+    candidates: list[str] = []
+    if platform.system() == "Windows":
+        local = os.environ.get("LOCALAPPDATA", "")
+        if local:
+            candidates.append(os.path.join(local, "Programs", "Ollama", "ollama.exe"))
+    elif platform.system() == "Darwin":
+        candidates.append("/Applications/Ollama.app/Contents/Resources/ollama")
+    else:
+        candidates.append("/usr/local/bin/ollama")
+
+    for candidate in candidates:
+        if candidate and Path(candidate).exists():
+            return candidate
+    return ""
+
+
+@server_app.post("/api/llm/ollama/models")
+def api_ollama_models(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """
+    Detect every Ollama model installed on this machine.
+
+    Starts the Ollama daemon automatically when it is offline, then reads the
+    model list from the local API (falling back to `ollama list`).
+    """
+    import json
+    import subprocess
+    import urllib.request
+
+    from app.llm import is_ollama_online
+
+    if payload is None:
+        payload = {}
+
+    started = False
+
+    def _list_via_api() -> list[str]:
+        req = urllib.request.Request("http://127.0.0.1:11434/api/tags")
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        return [m.get("name") for m in data.get("models", []) if m.get("name")]
+
+    if not is_ollama_online():
+        start_result = api_start_ollama({"cpu_mode": bool(payload.get("cpu_mode", False))})
+        started = bool(start_result.get("success"))
+        if not started and start_result.get("error"):
+            return {
+                "success": False,
+                "error": start_result["error"],
+                "models": [],
+                "ollama_online": False,
+            }
+
+    models: list[str] = []
+    if is_ollama_online():
+        try:
+            models = _list_via_api()
+        except Exception:
+            models = []
+
+    if not models:
+        ollama_path = _find_ollama_binary()
+        if ollama_path:
+            try:
+                proc = subprocess.run(
+                    [ollama_path, "list"],
+                    capture_output=True,
+                    text=True,
+                    errors="replace",
+                    timeout=20,
+                )
+                for line in (proc.stdout or "").splitlines():
+                    parts = line.split()
+                    if not parts or parts[0].upper() == "NAME":
+                        continue
+                    models.append(parts[0])
+            except Exception:
+                pass
+
+    # Deduplicate while preserving installation order
+    seen: set[str] = set()
+    unique_models: list[str] = []
+    for name in models:
+        if name and name not in seen:
+            seen.add(name)
+            unique_models.append(name)
+
+    if not unique_models:
+        return {
+            "success": False,
+            "error": (
+                "No Ollama models found. Pull one first, e.g. "
+                "`ollama pull qwen2.5:3b`."
+            ),
+            "models": [],
+            "ollama_online": is_ollama_online(),
+            "started": started,
+        }
+
+    return {
+        "success": True,
+        "models": unique_models,
+        "count": len(unique_models),
+        "ollama_online": True,
+        "started": started,
+    }
+
+
 _GPU_STATUS_CACHE: Optional[Dict[str, Any]] = None
 
 

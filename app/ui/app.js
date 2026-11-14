@@ -868,6 +868,38 @@ function closeLlmConfigModal() {
   if (modal) modal.classList.add("hidden");
 }
 
+function ensureOllamaModelOption(model) {
+  const select = document.getElementById("cfg-ollama-model");
+  if (!select || !model) return;
+  const exists = Array.from(select.options).some((opt) => opt.value === model);
+  if (!exists) {
+    const option = document.createElement("option");
+    option.value = model;
+    option.textContent = model;
+    select.appendChild(option);
+  }
+  select.value = model;
+}
+
+function populateOllamaModelOptions(models, preferred) {
+  const select = document.getElementById("cfg-ollama-model");
+  if (!select) return;
+
+  const current = (preferred || select.value || "").trim();
+  const names = [];
+  (models || []).forEach((raw) => {
+    const name = String(raw || "").trim();
+    if (name && !names.includes(name)) names.push(name);
+  });
+  if (current && !names.includes(current)) names.unshift(current);
+  if (!names.length) return;
+
+  select.innerHTML = names
+    .map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)
+    .join("");
+  select.value = current;
+}
+
 async function fetchLlmStatus() {
   const elActiveProv = document.getElementById("llm-cfg-active-prov");
   const elOllamaStatus = document.getElementById("llm-cfg-ollama-status");
@@ -901,7 +933,14 @@ async function fetchLlmStatus() {
       }
     }
     if (inputModel && data.ollama_model) {
-      inputModel.value = data.ollama_model;
+      const installed = Array.isArray(data.ollama_models_installed)
+        ? data.ollama_models_installed
+        : [];
+      if (installed.length) {
+        populateOllamaModelOptions(installed, data.ollama_model);
+      } else {
+        ensureOllamaModelOption(data.ollama_model);
+      }
     }
     if (inputGroqModel && data.groq_model) {
       inputGroqModel.value = data.groq_model;
@@ -923,6 +962,7 @@ function initLlmConfigModal(onActivateLlm) {
   const btnSaveGroq = document.getElementById("btn-save-groq-cfg");
   const btnSaveOllama = document.getElementById("btn-save-ollama-cfg");
   const btnStartOllama = document.getElementById("btn-start-local-ollama");
+  const btnListOllamaModels = document.getElementById("btn-list-ollama-models");
   const feedbackEl = document.getElementById("llm-cfg-feedback");
 
   // --- Compute mode helpers (using <select> instead of radios) ---
@@ -1181,11 +1221,15 @@ function initLlmConfigModal(onActivateLlm) {
           feedbackEl.style.display = "block";
           feedbackEl.style.background = "#f0fdf4";
           feedbackEl.style.color = "#166534";
-          feedbackEl.textContent = `Provider set to Local Ollama (${model}).`;
+          feedbackEl.textContent = `Local Ollama activated with ${model}. Starting a new AI chat...`;
         }
         if (onActivateLlm) onActivateLlm(true);
         fetchLlmStatus();
-        setTimeout(closeLlmConfigModal, 1400);
+        setTimeout(() => {
+          closeLlmConfigModal();
+          startNewTaskSession();
+          document.querySelector('.nav-item[data-tab="tab-ask-ai"]')?.click();
+        }, 900);
       } else {
         if (feedbackEl) {
           feedbackEl.style.display = "block";
@@ -1203,6 +1247,58 @@ function initLlmConfigModal(onActivateLlm) {
       }
     } finally {
       btnSaveOllama.disabled = false;
+    }
+  });
+
+  btnListOllamaModels?.addEventListener("click", async () => {
+    const mode = getSelectedComputeMode();
+    const labelSpan = btnListOllamaModels.querySelector("span");
+    const originalLabel = labelSpan ? labelSpan.textContent : "Ollama List";
+
+    if (feedbackEl) {
+      feedbackEl.style.display = "block";
+      feedbackEl.style.background = "#eff6ff";
+      feedbackEl.style.color = "#1e40af";
+      feedbackEl.textContent = "Scanning installed Ollama models...";
+    }
+    btnListOllamaModels.disabled = true;
+    if (labelSpan) labelSpan.textContent = "Scanning...";
+
+    try {
+      const res = await fetch("/api/llm/ollama/models", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cpu_mode: mode === "cpu" }),
+      });
+      let data = {};
+      try { data = await res.json(); } catch (_) {}
+
+      const models = Array.isArray(data.models) ? data.models : [];
+      if (res.ok && data.success && models.length) {
+        const currentModel = inputOllamaModel?.value || "";
+        populateOllamaModelOptions(models, models.includes(currentModel) ? currentModel : models[0]);
+        if (feedbackEl) {
+          feedbackEl.style.background = "#f0fdf4";
+          feedbackEl.style.color = "#166534";
+          const startedNote = data.started ? " Ollama daemon was started automatically." : "";
+          feedbackEl.textContent = `Found ${models.length} Ollama model${models.length === 1 ? "" : "s"}. Select one below and click "Use Local Ollama".${startedNote}`;
+        }
+      } else {
+        if (feedbackEl) {
+          feedbackEl.style.background = "#fef2f2";
+          feedbackEl.style.color = "#991b1b";
+          feedbackEl.textContent = data.error || `Could not detect Ollama models (HTTP ${res.status}).`;
+        }
+      }
+    } catch (e) {
+      if (feedbackEl) {
+        feedbackEl.style.background = "#fef2f2";
+        feedbackEl.style.color = "#991b1b";
+        feedbackEl.textContent = "Error: " + e.message;
+      }
+    } finally {
+      btnListOllamaModels.disabled = false;
+      if (labelSpan) labelSpan.textContent = originalLabel;
     }
   });
 

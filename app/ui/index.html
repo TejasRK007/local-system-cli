@@ -1379,12 +1379,26 @@
         </div>
 
         <div class="form-group" style="margin-bottom: 10px;">
-          <label for="cfg-ollama-model" style="font-size: 12px; font-weight: 600; color: #334155;">Ollama Model Name</label>
-          <input type="text" id="cfg-ollama-model" value="qwen2.5:3b" placeholder="qwen2.5:3b or llama3.2" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:12.5px; font-family:var(--font-mono);">
+          <label for="cfg-ollama-model" style="font-size: 12px; font-weight: 600; color: #334155;">Ollama Model</label>
+          <select id="cfg-ollama-model" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:12.5px; font-family:var(--font-mono); background:#fff; color:#334155;">
+            <option value="qwen2.5:3b">qwen2.5:3b (default)</option>
+          </select>
+          <div style="font-size: 11px; color: #64748b; margin-top: 4px;">Click <strong>Ollama List</strong> to detect installed models. The selected model is used for new AI chats.</div>
         </div>
 
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 12px;">
           <button type="button" class="pill-btn pill-btn-outline btn-sm" id="btn-start-local-ollama">Start Ollama</button>
+          <button type="button" class="pill-btn pill-btn-outline btn-sm" id="btn-list-ollama-models" title="Detect all Ollama models installed on this system" style="display: inline-flex; align-items: center; gap: 6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="8" y1="6" x2="21" y2="6"></line>
+              <line x1="8" y1="12" x2="21" y2="12"></line>
+              <line x1="8" y1="18" x2="21" y2="18"></line>
+              <line x1="3" y1="6" x2="3.01" y2="6"></line>
+              <line x1="3" y1="12" x2="3.01" y2="12"></line>
+              <line x1="3" y1="18" x2="3.01" y2="18"></line>
+            </svg>
+            <span>Ollama List</span>
+          </button>
           <button type="button" class="pill-btn pill-btn-dark" id="btn-save-ollama-cfg">Use Local Ollama</button>
         </div>
       </div>
