@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/index.css?v=30">
+  <link rel="stylesheet" href="/static/index.css?v=31">
 </head>
 <body>
   <div class="layout-container">
@@ -196,11 +196,21 @@
       </div>
 
       <!-- User Profile Card -->
-      <div class="sidebar-user">
-        <img class="user-avatar" src="/static/assets/admin_avatar.jpg" alt="David avatar">
+      <div class="sidebar-user" id="sidebar-user-card">
+        <div class="user-avatar-wrap">
+          <img class="user-avatar" id="sidebar-user-avatar" src="/static/assets/admin_avatar.jpg" alt="David avatar">
+          <span class="user-avatar-google hidden" id="sidebar-user-google-avatar" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24">
+              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+            </svg>
+          </span>
+        </div>
         <div class="user-info">
-          <span class="user-name">David</span>
-          <span class="user-role">Admin</span>
+          <span class="user-name" id="sidebar-user-name" title="David">David</span>
+          <span class="user-role" id="sidebar-user-role" title="Admin">Admin</span>
         </div>
         <div class="user-switch-icon">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -2257,12 +2267,31 @@
         </div>
 
         <div class="form-group" style="margin-bottom: 10px;">
-          <label for="cfg-ollama-model" style="font-size: 12px; font-weight: 600; color: #334155;">Ollama Model Name</label>
-          <input type="text" id="cfg-ollama-model" value="qwen2.5:3b" placeholder="qwen2.5:3b or llama3.2" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:12.5px; font-family:var(--font-mono);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <label for="cfg-ollama-model" style="font-size: 12px; font-weight: 600; color: #334155; margin-bottom: 0;">Ollama Model</label>
+            <span id="cfg-ollama-models-count" style="font-size: 11px; color: #64748b;"></span>
+          </div>
+          <select id="cfg-ollama-model" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:12.5px; font-family:var(--font-mono); background:#fff; color:#334155;">
+            <option value="qwen2.5:3b" selected>qwen2.5:3b</option>
+          </select>
+          <span style="display:block; font-size:11px; color:#64748b; margin-top:5px; line-height:1.4;">
+            Press <strong>Ollama List</strong> to start Ollama and detect every model installed on this machine.
+          </span>
         </div>
 
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px;">
-          <button type="button" class="pill-btn pill-btn-outline btn-sm" id="btn-start-local-ollama">Start Ollama</button>
+        <div style="display: flex; gap: 8px; justify-content: space-between; align-items: center; flex-wrap: wrap; margin-top: 12px;">
+          <button type="button" class="pill-btn pill-btn-outline" id="btn-start-local-ollama">Start Ollama</button>
+          <button type="button" class="pill-btn pill-btn-outline" id="btn-list-ollama-models" title="Start Ollama and scan every installed model">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="8" y1="6" x2="21" y2="6"></line>
+              <line x1="8" y1="12" x2="21" y2="12"></line>
+              <line x1="8" y1="18" x2="21" y2="18"></line>
+              <circle cx="3.5" cy="6" r="1"></circle>
+              <circle cx="3.5" cy="12" r="1"></circle>
+              <circle cx="3.5" cy="18" r="1"></circle>
+            </svg>
+            <span>Ollama List</span>
+          </button>
           <button type="button" class="pill-btn pill-btn-dark" id="btn-save-ollama-cfg">Use Local Ollama</button>
         </div>
       </div>
@@ -2693,6 +2722,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=46"></script>
+  <script src="/static/app.js?v=51"></script>
 </body>
 </html>

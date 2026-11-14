@@ -588,6 +588,16 @@ html, body {
   cursor: pointer;
 }
 
+.user-avatar-wrap {
+  position: relative;
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .user-avatar {
   width: 34px;
   height: 34px;
@@ -595,10 +605,23 @@ html, body {
   object-fit: cover;
 }
 
+.user-avatar-google {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 34px;
+}
+
 .user-info {
   display: flex;
   flex-direction: column;
   flex: 1;
+  min-width: 0;
 }
 
 .user-name {
@@ -606,11 +629,17 @@ html, body {
   font-weight: 600;
   color: var(--text-main);
   line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .user-role {
   font-size: 11px;
   color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .user-switch-icon {

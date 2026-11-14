@@ -321,6 +321,7 @@ The system provides dual-engine LLM support, configurable via `.env`, CLI, or di
 - Default model: `qwen2.5:3b` (fast and compact) or `llama3.2`.
 - GPU VRAM inspection and CPU fallback detection ([`app/llm.py`](file:///app/llm.py)).
 - Automatic background process startup via `/api/llm/start_ollama`.
+- **Ollama List** in the settings modal starts the daemon if needed and turns the model field into a dropdown of every model installed on the machine (`/api/llm/ollama/models`).
 - Switch providers dynamically via UI or the `/api/llm/config` API.
 
 ---
@@ -492,6 +493,7 @@ The FastAPI server exposes a complete REST API:
 | `POST` | `/api/llm/config` | Update provider (`groq` / `ollama`) and model selection. |
 | `POST` | `/api/llm/groq/models` | Fetch available models for configured Groq API key. |
 | `POST` | `/api/llm/start_ollama` | Trigger background start of local Ollama server process. |
+| `POST` | `/api/llm/ollama/models` | Start Ollama if needed and list every locally installed model. |
 | `GET` | `/api/llm/gpu_status` | Inspect local GPU VRAM usage and hardware availability. |
 
 ### Tasks & AI Chat

@@ -589,6 +589,34 @@ def set_system_access_mode(payload: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _fetch_installed_ollama_models(timeout: float = 15.0) -> list[Dict[str, Any]]:
+    """Return every model installed in the local Ollama daemon, sorted by name."""
+    import json
+    import urllib.request
+
+    req = urllib.request.Request("http://127.0.0.1:11434/api/tags")
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+
+    models: list[Dict[str, Any]] = []
+    for item in data.get("models", []) or []:
+        name = item.get("name") or item.get("model") or ""
+        if not name:
+            continue
+        details = item.get("details") or {}
+        models.append(
+            {
+                "name": name,
+                "size": item.get("size"),
+                "modified_at": item.get("modified_at"),
+                "parameter_size": details.get("parameter_size") or "",
+                "family": details.get("family") or "",
+            }
+        )
+    models.sort(key=lambda entry: entry["name"].lower())
+    return models
+
+
 @server_app.get("/api/llm/status")
 def api_llm_status() -> Dict[str, Any]:
     """Return real-time status of local Ollama and Groq cloud configurations."""
@@ -601,12 +629,7 @@ def api_llm_status() -> Dict[str, Any]:
     models: list[str] = []
     if ollama_ok:
         try:
-            import json
-            import urllib.request
-            req = urllib.request.Request("http://127.0.0.1:11434/api/tags")
-            with urllib.request.urlopen(req, timeout=2) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                models = [m.get("name") for m in data.get("models", [])]
+            models = [entry["name"] for entry in _fetch_installed_ollama_models(timeout=2)]
         except Exception:
             pass
 
@@ -896,6 +919,65 @@ def api_start_ollama(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]
         }
     except Exception as e:
         return {"success": False, "error": f"Failed to start Ollama: {e}"}
+
+
+@server_app.post("/api/llm/ollama/models")
+def api_ollama_models(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """
+    Start the local Ollama daemon when needed and list every installed model.
+
+    Accepts optional JSON body:
+      { "cpu_mode": true }   — forwarded to the daemon launcher.
+    """
+    from app.llm import is_ollama_online
+
+    body = payload or {}
+    cpu_mode = bool(body.get("cpu_mode", False))
+    started = False
+    start_message = ""
+
+    if not is_ollama_online():
+        start_result = api_start_ollama({"cpu_mode": cpu_mode})
+        if not start_result.get("success"):
+            return {
+                "success": False,
+                "models": [],
+                "started": False,
+                "error": start_result.get("error")
+                or start_result.get("message")
+                or "Could not start Ollama.",
+            }
+        started = True
+        start_message = start_result.get("message") or "Ollama started."
+
+    try:
+        models = _fetch_installed_ollama_models()
+    except Exception as e:
+        return {
+            "success": False,
+            "models": [],
+            "started": started,
+            "error": f"Ollama is online but its model list could not be read: {e}",
+        }
+
+    if not models:
+        message = (
+            "Ollama is running but no models are installed. "
+            "Pull one first, e.g. ollama pull qwen2.5:3b"
+        )
+    elif started:
+        message = f"{start_message} Found {len(models)} installed model(s)."
+    else:
+        message = f"Found {len(models)} installed model(s)."
+
+    return {
+        "success": True,
+        "models": models,
+        "count": len(models),
+        "started": started,
+        "configured_model": os.getenv("OLLAMA_MODEL", "qwen2.5:3b"),
+        "message": message,
+    }
 
 
 _GPU_STATUS_CACHE: Optional[Dict[str, Any]] = None

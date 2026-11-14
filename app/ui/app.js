@@ -872,7 +872,7 @@ async function fetchLlmStatus() {
   const elActiveProv = document.getElementById("llm-cfg-active-prov");
   const elOllamaStatus = document.getElementById("llm-cfg-ollama-status");
   const elGroqStatus = document.getElementById("llm-cfg-groq-status");
-  const inputModel = document.getElementById("cfg-ollama-model");
+  const selectOllamaModel = document.getElementById("cfg-ollama-model");
   const inputGroqModel = document.getElementById("cfg-groq-model");
 
   try {
@@ -900,13 +900,59 @@ async function fetchLlmStatus() {
         elGroqStatus.textContent = "NOT CONFIGURED";
       }
     }
-    if (inputModel && data.ollama_model) {
-      inputModel.value = data.ollama_model;
+    if (selectOllamaModel) {
+      const installed = Array.isArray(data.ollama_models_installed) ? data.ollama_models_installed : [];
+      const existingValues = Array.from(selectOllamaModel.options)
+        .map((opt) => opt.value)
+        .filter(Boolean);
+      // Do not collapse a list that was already filled by an explicit Ollama List scan
+      if (installed.length || existingValues.length <= 1) {
+        const preferred = selectOllamaModel.value || data.ollama_model || "qwen2.5:3b";
+        renderOllamaModelOptions(installed, preferred);
+      }
     }
     if (inputGroqModel && data.groq_model) {
       inputGroqModel.value = data.groq_model;
     }
   } catch (_) {}
+}
+
+function renderOllamaModelOptions(models, selectedModel) {
+  const select = document.getElementById("cfg-ollama-model");
+  if (!select) return;
+
+  const names = (Array.isArray(models) ? models : [])
+    .map((entry) => (typeof entry === "string" ? entry : (entry && entry.name) || ""))
+    .filter(Boolean);
+
+  const preferred = (selectedModel || select.value || "").trim();
+  const detected = [...new Set(names)];
+  const choices = [...detected];
+  if (preferred && !choices.includes(preferred)) choices.unshift(preferred);
+
+  select.innerHTML = "";
+  if (!choices.length) {
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "No models detected — press Ollama List";
+    placeholder.disabled = true;
+    placeholder.selected = true;
+    select.appendChild(placeholder);
+  } else {
+    choices.forEach((name) => {
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = name;
+      select.appendChild(option);
+    });
+    const fallbackChoice = choices.find((name) => !/(?:[-:])cloud$/i.test(name)) || choices[0];
+    select.value = preferred && choices.includes(preferred) ? preferred : fallbackChoice;
+  }
+
+  const countLabel = document.getElementById("cfg-ollama-models-count");
+  if (countLabel) {
+    countLabel.textContent = detected.length ? `${detected.length} found` : "None detected";
+  }
 }
 
 function initLlmConfigModal(onActivateLlm) {
@@ -923,6 +969,7 @@ function initLlmConfigModal(onActivateLlm) {
   const btnSaveGroq = document.getElementById("btn-save-groq-cfg");
   const btnSaveOllama = document.getElementById("btn-save-ollama-cfg");
   const btnStartOllama = document.getElementById("btn-start-local-ollama");
+  const btnListOllamaModels = document.getElementById("btn-list-ollama-models");
   const feedbackEl = document.getElementById("llm-cfg-feedback");
 
   // --- Compute mode helpers (using <select> instead of radios) ---
@@ -1161,7 +1208,16 @@ function initLlmConfigModal(onActivateLlm) {
   });
 
   btnSaveOllama?.addEventListener("click", async () => {
-    const model = inputOllamaModel?.value.trim() || "qwen2.5:3b";
+    const model = (inputOllamaModel?.value || "").trim();
+    if (!model) {
+      if (feedbackEl) {
+        feedbackEl.style.display = "block";
+        feedbackEl.style.background = "#fef2f2";
+        feedbackEl.style.color = "#991b1b";
+        feedbackEl.textContent = "No model selected. Press Ollama List to detect the models installed on this system.";
+      }
+      return;
+    }
     try {
       btnSaveOllama.disabled = true;
       const res = await fetch("/api/llm/config", {
@@ -1181,11 +1237,15 @@ function initLlmConfigModal(onActivateLlm) {
           feedbackEl.style.display = "block";
           feedbackEl.style.background = "#f0fdf4";
           feedbackEl.style.color = "#166534";
-          feedbackEl.textContent = `Provider set to Local Ollama (${model}).`;
+          feedbackEl.textContent = `Provider set to Local Ollama (${model}). Starting a new chat with this model...`;
         }
         if (onActivateLlm) onActivateLlm(true);
         fetchLlmStatus();
-        setTimeout(closeLlmConfigModal, 1400);
+        setTimeout(() => {
+          closeLlmConfigModal();
+          document.getElementById("nav-btn-ask-ai")?.click();
+          startNewTaskSession();
+        }, 1200);
       } else {
         if (feedbackEl) {
           feedbackEl.style.display = "block";
@@ -1240,6 +1300,63 @@ function initLlmConfigModal(onActivateLlm) {
       }
     } finally {
       btnStartOllama.disabled = false;
+    }
+  });
+
+  btnListOllamaModels?.addEventListener("click", async () => {
+    const isCpu = getSelectedComputeMode() === "cpu";
+    if (feedbackEl) {
+      feedbackEl.style.display = "block";
+      feedbackEl.style.background = "#eff6ff";
+      feedbackEl.style.color = "#1e40af";
+      feedbackEl.textContent = isCpu
+        ? "Starting Ollama (CPU mode) and scanning installed models..."
+        : "Starting Ollama (GPU mode) and scanning installed models...";
+    }
+    try {
+      btnListOllamaModels.disabled = true;
+      const res = await fetch("/api/llm/ollama/models", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cpu_mode: isCpu }),
+      });
+      let data = {};
+      try { data = await res.json(); } catch (_) {}
+      if (res.ok && data.success) {
+        const installedNames = (Array.isArray(data.models) ? data.models : [])
+          .map((entry) => (typeof entry === "string" ? entry : (entry && entry.name) || ""))
+          .filter(Boolean);
+        const currentValue = (inputOllamaModel?.value || "").trim();
+        const configuredModel = (data.configured_model || "").trim();
+        const localOnlyNames = installedNames.filter((name) => !/(?:[-:])cloud$/i.test(name));
+        const preferredModel = installedNames.includes(currentValue)
+          ? currentValue
+          : installedNames.includes(configuredModel)
+            ? configuredModel
+            : localOnlyNames[0] || installedNames[0] || currentValue || configuredModel;
+        renderOllamaModelOptions(data.models, preferredModel);
+        const found = Number(data.count) || installedNames.length;
+        if (feedbackEl) {
+          feedbackEl.style.background = found > 0 ? "#f0fdf4" : "#fffbeb";
+          feedbackEl.style.color = found > 0 ? "#166534" : "#92400e";
+          feedbackEl.textContent = data.message || `Found ${found} installed model(s).`;
+        }
+        fetchLlmStatus();
+      } else {
+        if (feedbackEl) {
+          feedbackEl.style.background = "#fef2f2";
+          feedbackEl.style.color = "#991b1b";
+          feedbackEl.textContent = data.error || data.detail || `Model scan failed (HTTP ${res.status})`;
+        }
+      }
+    } catch (e) {
+      if (feedbackEl) {
+        feedbackEl.style.background = "#fef2f2";
+        feedbackEl.style.color = "#991b1b";
+        feedbackEl.textContent = "Error: " + e.message;
+      }
+    } finally {
+      btnListOllamaModels.disabled = false;
     }
   });
 } // end initLlmConfigModal
@@ -4446,10 +4563,43 @@ async function fetchEmailAccount() {
         if (btnTopLogin) btnTopLogin.style.display = "flex";
         if (btnTopLogout) btnTopLogout.style.display = "none";
       }
+
+      // Sidebar profile card: reflect the signed-in Google account
+      updateSidebarUserCard(isGoogleOAuth, data.email || "");
     }
   } catch (e) {
     if (statusLabel) statusLabel.textContent = "Sandbox: demo.executive@local.ai";
     if (linkAccountBtn) linkAccountBtn.style.display = "inline-flex";
+  }
+}
+
+function updateSidebarUserCard(isGoogleSignedIn, email) {
+  const avatar = document.getElementById("sidebar-user-avatar");
+  const googleAvatar = document.getElementById("sidebar-user-google-avatar");
+  const nameEl = document.getElementById("sidebar-user-name");
+  const roleEl = document.getElementById("sidebar-user-role");
+  const card = document.getElementById("sidebar-user-card");
+  if (!nameEl || !roleEl) return;
+
+  if (isGoogleSignedIn && email) {
+    const displayName = (email.split("@")[0] || email).trim();
+    avatar?.classList.add("hidden");
+    googleAvatar?.classList.remove("hidden");
+    googleAvatar?.setAttribute("title", `Signed in with Google as ${email}`);
+    nameEl.textContent = displayName;
+    nameEl.title = displayName;
+    roleEl.textContent = email;
+    roleEl.title = email;
+    if (card) card.title = `Signed in with Google as ${email}`;
+  } else {
+    avatar?.classList.remove("hidden");
+    googleAvatar?.classList.add("hidden");
+    googleAvatar?.removeAttribute("title");
+    nameEl.textContent = "David";
+    nameEl.title = "David";
+    roleEl.textContent = "Admin";
+    roleEl.title = "Admin";
+    if (card) card.title = "";
   }
 }
 
