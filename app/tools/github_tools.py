@@ -8,16 +8,25 @@ Also provides GitHub OAuth account management and repository tracking.
 """
 
 import base64
+import hashlib
 import json
 import os
 import re
 import sqlite3
+import tempfile
 import urllib.parse
 import urllib.request
 from datetime import datetime
+from io import BytesIO
+from pathlib import Path
 from typing import Any, List, Optional
 
 import app.database as db
+from app.tools.github_analyzer import (
+    MAX_ZIP_UPLOAD_SIZE,
+    analyze_repository_directory,
+    safe_extract_zip,
+)
 
 
 def _get_github_headers() -> dict[str, str]:
@@ -215,9 +224,46 @@ def _ensure_github_tables() -> None:
                 is_active INTEGER NOT NULL DEFAULT 1
             );
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS github_repo_analyses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                repo_id INTEGER,
+                repo_name TEXT NOT NULL,
+                commit_sha TEXT,
+                status TEXT NOT NULL,
+                summary TEXT,
+                languages_json TEXT,
+                frameworks_json TEXT,
+                dependencies_json TEXT,
+                entry_points_json TEXT,
+                folder_modules_json TEXT,
+                components_json TEXT,
+                architecture_flow_json TEXT,
+                run_instructions_json TEXT,
+                test_info_json TEXT,
+                observations_json TEXT,
+                unknowns_json TEXT,
+                inspected_files_count INTEGER DEFAULT 0,
+                skipped_files_count INTEGER DEFAULT 0,
+                total_files_count INTEGER DEFAULT 0,
+                tree_json TEXT,
+                llm_provider TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY(repo_id) REFERENCES github_repositories(id) ON DELETE SET NULL
+            );
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_repo_analyses_repo_id ON github_repo_analyses(repo_id);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_repo_analyses_commit ON github_repo_analyses(repo_name, commit_sha);")
         conn.commit()
     finally:
         conn.close()
+
+    try:
+        from app.tools.github_chat import _ensure_chat_tables
+        _ensure_chat_tables()
+    except Exception:
+        pass
 
 
 def _get_authed_headers() -> Optional[dict]:
@@ -571,3 +617,295 @@ def github_connection_status() -> dict:
         }
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# GitHub Repository Intelligence & Analysis Storage (Milestone 9 - Prompt 2)
+# ---------------------------------------------------------------------------
+
+
+def _deserialize_analysis_row(row: sqlite3.Row) -> dict:
+    """Deserialize JSON fields from a github_repo_analyses row into dict."""
+    d = dict(row)
+    for col in (
+        "languages_json", "frameworks_json", "dependencies_json", "entry_points_json",
+        "folder_modules_json", "components_json", "architecture_flow_json",
+        "run_instructions_json", "test_info_json", "observations_json", "unknowns_json", "tree_json"
+    ):
+        target_key = col.replace("_json", "")
+        raw_val = d.get(col)
+        if raw_val:
+            try:
+                d[target_key] = json.loads(raw_val)
+            except Exception:
+                d[target_key] = {} if ("languages" in col or "flow" in col or "unknowns" in col or "instructions" in col or "test_info" in col) else []
+        else:
+            d[target_key] = {} if ("languages" in col or "flow" in col or "unknowns" in col or "instructions" in col or "test_info" in col) else []
+        d.pop(col, None)
+    d["success"] = True
+    return d
+
+
+def github_store_analysis(analysis: dict, repo_id: Optional[int] = None) -> dict:
+    """Safely store a structured analysis report in SQLite."""
+    _ensure_github_tables()
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn = sqlite3.connect(str(db.DB_PATH))
+    try:
+        cur = conn.execute(
+            """INSERT INTO github_repo_analyses
+               (repo_id, repo_name, commit_sha, status, summary, languages_json,
+                frameworks_json, dependencies_json, entry_points_json, folder_modules_json,
+                components_json, architecture_flow_json, run_instructions_json,
+                test_info_json, observations_json, unknowns_json, inspected_files_count,
+                skipped_files_count, total_files_count, tree_json, llm_provider,
+                created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                repo_id,
+                analysis.get("repo_name", "unknown"),
+                analysis.get("commit_sha", "snapshot"),
+                analysis.get("status", "completed"),
+                analysis.get("summary", ""),
+                json.dumps(analysis.get("languages", {})),
+                json.dumps(analysis.get("frameworks", [])),
+                json.dumps(analysis.get("dependencies", [])),
+                json.dumps(analysis.get("entry_points", [])),
+                json.dumps(analysis.get("folder_modules", [])),
+                json.dumps(analysis.get("components", [])),
+                json.dumps(analysis.get("architecture_flow", {})),
+                json.dumps(analysis.get("run_instructions", {})),
+                json.dumps(analysis.get("test_info", {})),
+                json.dumps(analysis.get("observations", [])),
+                json.dumps(analysis.get("unknowns", {})),
+                int(analysis.get("inspected_files_count", 0)),
+                int(analysis.get("skipped_files_count", 0)),
+                int(analysis.get("total_files_count", 0)),
+                json.dumps(analysis.get("tree", [])),
+                analysis.get("llm_provider", "deterministic-fallback"),
+                now,
+                now,
+            ),
+        )
+        conn.commit()
+        analysis_id = cur.lastrowid
+        analysis["id"] = analysis_id
+        analysis["repo_id"] = repo_id
+        analysis["created_at"] = now
+        analysis["updated_at"] = now
+        return analysis
+    finally:
+        conn.close()
+
+
+def github_get_latest_analysis(repo_id: int) -> Optional[dict]:
+    """Retrieve the latest analysis result for a tracked repository."""
+    _ensure_github_tables()
+    conn = sqlite3.connect(str(db.DB_PATH))
+    try:
+        conn.row_factory = sqlite3.Row
+        cur = conn.execute(
+            "SELECT * FROM github_repo_analyses WHERE repo_id = ? ORDER BY id DESC LIMIT 1",
+            (repo_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        return _deserialize_analysis_row(row)
+    finally:
+        conn.close()
+
+
+def github_get_analysis_by_id(analysis_id: int) -> Optional[dict]:
+    """Retrieve an analysis record by its primary key."""
+    _ensure_github_tables()
+    conn = sqlite3.connect(str(db.DB_PATH))
+    try:
+        conn.row_factory = sqlite3.Row
+        cur = conn.execute("SELECT * FROM github_repo_analyses WHERE id = ?", (analysis_id,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        return _deserialize_analysis_row(row)
+    finally:
+        conn.close()
+
+
+def github_get_analysis_by_commit(repo_id: int, commit_sha: str) -> Optional[dict]:
+    """Check if an analysis already exists for a specific repository and commit SHA."""
+    _ensure_github_tables()
+    conn = sqlite3.connect(str(db.DB_PATH))
+    try:
+        conn.row_factory = sqlite3.Row
+        cur = conn.execute(
+            """SELECT * FROM github_repo_analyses
+               WHERE repo_id = ? AND commit_sha = ? AND status = 'completed'
+               ORDER BY id DESC LIMIT 1""",
+            (repo_id, commit_sha),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        return _deserialize_analysis_row(row)
+    finally:
+        conn.close()
+
+
+def github_analyze_connected_repo(
+    repo_id: int, force_refresh: bool = False, allow_cloud: bool = False
+) -> dict:
+    """
+    Fetch repository snapshot from GitHub via authenticated API, extract safely,
+    perform zero-execution static analysis, and persist the report.
+    Supports incremental analysis based on commit SHA.
+    """
+    _ensure_github_tables()
+    conn = sqlite3.connect(str(db.DB_PATH))
+    try:
+        conn.row_factory = sqlite3.Row
+        cur = conn.execute(
+            "SELECT id, owner, name, full_name, private FROM github_repositories WHERE id = ? AND is_active = 1",
+            (repo_id,),
+        )
+        repo = cur.fetchone()
+        if not repo:
+            return {
+                "success": False,
+                "error": f"Repository id={repo_id} not found or inactive.",
+                "status": "NOT_FOUND",
+            }
+        repo_dict = dict(repo)
+    finally:
+        conn.close()
+
+    full_name = repo_dict["full_name"]
+    headers = _get_authed_headers() or {
+        "Accept": "application/vnd.github.v3+json",
+        "User-Agent": "LocalAgenticAutomation/1.0",
+    }
+
+    # 1. Fetch latest commit SHA
+    commits_url = f"https://api.github.com/repos/{full_name}/commits?per_page=1"
+    commit_sha = "unknown"
+    try:
+        req = urllib.request.Request(commits_url, headers=headers)
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            commits = json.loads(resp.read().decode("utf-8"))
+            if commits and isinstance(commits, list) and len(commits) > 0:
+                commit_sha = commits[0].get("sha", "unknown")
+    except Exception as exc:
+        return {
+            "success": False,
+            "error": f"Failed to fetch commit metadata from GitHub: {str(exc)}",
+            "status": "API_ERROR",
+        }
+
+    # 2. Check incremental cache if not force_refresh
+    if not force_refresh and commit_sha != "unknown":
+        existing = github_get_analysis_by_commit(repo_id, commit_sha)
+        if existing:
+            existing["cached"] = True
+            return existing
+
+    # 3. Download repository zipball
+    zip_url = f"https://api.github.com/repos/{full_name}/zipball/{commit_sha}"
+    try:
+        req = urllib.request.Request(zip_url, headers=headers)
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            zip_bytes = resp.read()
+    except Exception as exc:
+        return {
+            "success": False,
+            "error": f"Failed to download repository archive from GitHub: {str(exc)}",
+            "status": "API_ERROR",
+        }
+
+    # 4. Extract and analyze safely
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        extract_res = safe_extract_zip(BytesIO(zip_bytes), tmp_path)
+        if not extract_res.get("success"):
+            return extract_res
+
+        analysis = analyze_repository_directory(
+            repo_root=tmp_path,
+            repo_name=full_name,
+            commit_sha=commit_sha,
+            allow_cloud=allow_cloud,
+        )
+
+        # Index text chunks for grounded chat retrieval
+        try:
+            from app.tools.github_chat import index_repository_text_files
+            index_repository_text_files(
+                repo_root=tmp_path,
+                repo_name=full_name,
+                commit_sha=commit_sha,
+                repo_id=repo_id,
+            )
+        except Exception:
+            pass
+
+        stored = github_store_analysis(analysis, repo_id=repo_id)
+
+        # Update last_synced_at on repository
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        conn = sqlite3.connect(str(db.DB_PATH))
+        try:
+            conn.execute("UPDATE github_repositories SET last_synced_at = ? WHERE id = ?", (now, repo_id))
+            conn.commit()
+        finally:
+            conn.close()
+
+        stored["cached"] = False
+        return stored
+
+
+def github_analyze_zip_upload(
+    zip_bytes: bytes, filename: str, allow_cloud: bool = False
+) -> dict:
+    """
+    Safely extract and analyze a user-uploaded repository ZIP snapshot.
+    Enforces upload limits, traversal guards, and zero execution.
+    """
+    if len(zip_bytes) > MAX_ZIP_UPLOAD_SIZE:
+        max_mb = MAX_ZIP_UPLOAD_SIZE // (1024 * 1024)
+        return {
+            "success": False,
+            "error": f"Uploaded ZIP file exceeds maximum size limit ({max_mb} MB).",
+            "status": "LIMIT_EXCEEDED",
+        }
+
+    # Hash the archive content for snapshot identification
+    commit_sha = hashlib.sha256(zip_bytes).hexdigest()[:12]
+    clean_repo_name = Path(filename).stem or "uploaded-archive"
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        extract_res = safe_extract_zip(BytesIO(zip_bytes), tmp_path)
+        if not extract_res.get("success"):
+            return extract_res
+
+        analysis = analyze_repository_directory(
+            repo_root=tmp_path,
+            repo_name=clean_repo_name,
+            commit_sha=f"snapshot-{commit_sha}",
+            allow_cloud=allow_cloud,
+        )
+
+        # Index text chunks for grounded chat retrieval
+        try:
+            from app.tools.github_chat import index_repository_text_files
+            index_repository_text_files(
+                repo_root=tmp_path,
+                repo_name=clean_repo_name,
+                commit_sha=f"snapshot-{commit_sha}",
+                repo_id=None,
+            )
+        except Exception:
+            pass
+
+        stored = github_store_analysis(analysis, repo_id=None)
+        stored["cached"] = False
+        return stored
+

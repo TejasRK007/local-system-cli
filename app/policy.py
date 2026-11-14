@@ -63,6 +63,29 @@ _ACTION_RISK_MAP: dict[str, str] = {
     "github_list_issues": "low",
     "github_inspect_pr": "low",
     "github_create_issue": "medium",
+    "github_analyze_repo": "low",
+    "github_upload_zip": "low",
+    "github_repo_chat": "low",
+    "github_clear_chat": "low",
+    # Milestone 9 - Prompt 4: Developer Workbench & Safe Automation
+    "github_get_overview": "low",
+    "github_get_issue": "low",
+    "github_summarize_issue": "low",
+    "github_update_issue": "medium",
+    "github_add_issue_comment": "medium",
+    "github_close_issue": "medium",
+    "github_list_prs": "low",
+    "github_get_pr": "low",
+    "github_get_pr_diff": "low",
+    "github_review_pr": "low",
+    "github_create_pr_comment": "medium",
+    "github_list_commits": "low",
+    "github_compare_commits": "low",
+    "github_list_branches": "low",
+    "github_list_workflows": "low",
+    "github_get_workflow_run": "low",
+    "github_analyze_workflow_failure": "low",
+    "github_rerun_workflow": "medium",
 }
 
 
@@ -119,11 +142,22 @@ def get_action_risk(action: str) -> str:
 
 def requires_approval(risk: str) -> bool:
     """
-    Return True if the risk level requires explicit user approval
+    Return True if the risk level (or action name) requires explicit user approval
     before the operation is executed.
 
     LOW    → no approval needed.
     MEDIUM → approval required.
     HIGH   → approval required.
     """
-    return risk in ("medium", "high")
+    val = risk.lower().strip()
+    if val in ("medium", "high"):
+        return True
+    if val == "low":
+        return False
+    # If an action name was passed directly, resolve its risk tier
+    action_risk = _ACTION_RISK_MAP.get(val, "low")
+    return action_risk in ("medium", "high")
+
+
+# Backward-compatible alias
+get_risk_level = get_action_risk

@@ -83,7 +83,45 @@ from app.tools.github_tools import (
     github_remove_repository,
     github_get_repo_metadata,
     github_store_account,
+    github_analyze_connected_repo,
+    github_analyze_zip_upload,
+    github_get_latest_analysis,
+    github_get_analysis_by_id,
     _ensure_github_tables,
+)
+from app.tools.github_chat import (
+    clear_chat_history,
+    create_chat_session,
+    execute_repository_chat,
+    get_chat_history,
+    list_analyzed_repos_for_chat,
+)
+from app.tools.github_workbench import (
+    GitHubApprovalRequiredError,
+    GitHubAuthError,
+    GitHubDangerousOperationBlockedError,
+    GitHubNotFoundError,
+    GitHubRateLimitError,
+    GitHubWorkbenchError,
+    github_add_issue_comment_safe,
+    github_analyze_workflow_failure,
+    github_compare_commits,
+    github_create_issue_safe,
+    github_create_pr_comment_safe,
+    github_get_issue_detail,
+    github_get_pr_detail,
+    github_get_pr_diff,
+    github_get_repo_overview,
+    github_get_workflow_run_details,
+    github_list_repo_branches,
+    github_list_repo_commits,
+    github_list_repo_issues,
+    github_list_repo_prs,
+    github_list_workflow_runs,
+    github_rerun_workflow_safe,
+    github_review_pr,
+    github_summarize_issue,
+    github_update_issue_safe,
 )
 from app.tools.system_tools import get_system_info
 from app.workspaces import WorkspaceManager
@@ -286,6 +324,78 @@ class EmailToggleStarRequest(BaseModel):
 
 class GitHubAddRepoRequest(BaseModel):
     repo: str
+
+
+class GitHubAnalyzeRepoRequest(BaseModel):
+    force_refresh: bool = False
+
+
+class GitHubChatQueryRequest(BaseModel):
+    repo_name: str
+    message: str
+    repo_id: Optional[int] = None
+    commit_sha: Optional[str] = None
+    session_id: Optional[int] = None
+
+
+class GitHubChatClearRequest(BaseModel):
+    repo_name: str
+    session_id: Optional[int] = None
+
+
+class GitHubChatNewSessionRequest(BaseModel):
+    repo_name: str
+    commit_sha: Optional[str] = None
+    repo_id: Optional[int] = None
+    title: Optional[str] = "New Chat"
+
+
+# Milestone 9 - Prompt 4: Developer Workbench Models
+class GitHubIssueCreateRequest(BaseModel):
+    repo_name: str
+    title: str
+    body: str = ""
+    labels: Optional[List[str]] = None
+    assignees: Optional[List[str]] = None
+    approved: bool = False
+
+
+class GitHubIssueUpdateRequest(BaseModel):
+    repo_name: str
+    state: Optional[str] = None
+    title: Optional[str] = None
+    body: Optional[str] = None
+    labels: Optional[List[str]] = None
+    approved: bool = False
+
+
+class GitHubIssueCommentRequest(BaseModel):
+    repo_name: str
+    body: str
+    approved: bool = False
+
+
+class GitHubIssueSummarizeRequest(BaseModel):
+    repo_name: str
+
+
+class GitHubPRReviewRequest(BaseModel):
+    repo_name: str
+
+
+class GitHubPRCommentRequest(BaseModel):
+    repo_name: str
+    body: str
+    approved: bool = False
+
+
+class GitHubWorkflowAnalyzeRequest(BaseModel):
+    repo_name: str
+
+
+class GitHubWorkflowRerunRequest(BaseModel):
+    repo_name: str
+    approved: bool = False
 
 
 class CalendarEventRequest(BaseModel):
@@ -2804,6 +2914,502 @@ def api_github_repos_remove(repo_id: int) -> Dict[str, Any]:
 def api_github_repos_metadata(full_name: str) -> Dict[str, Any]:
     """Fetch live metadata for a repository."""
     return github_get_repo_metadata(full_name)
+
+
+# -----------------------------------------------------------------------------
+# GitHub AI Repository Intelligence Endpoints (Milestone 9 - Prompt 2)
+# -----------------------------------------------------------------------------
+
+
+def _is_cloud_llm_allowed() -> bool:
+    """Check user consent for cloud LLM processing."""
+    try:
+        from app.tools.email_tools import email_get_privacy_settings
+        settings = email_get_privacy_settings()
+        return bool(settings.get("allow_cloud_processing", False))
+    except Exception:
+        return False
+
+
+@server_app.post("/api/github/repos/{repo_id}/analyze")
+def api_github_repos_analyze(
+    repo_id: int, req: Optional[GitHubAnalyzeRepoRequest] = None
+) -> Dict[str, Any]:
+    """
+    Trigger static evidence-grounded AI analysis of a connected GitHub repository.
+    Strictly zero code execution. Respects cloud LLM privacy consent.
+    """
+    force = req.force_refresh if req else False
+    allow_cloud = _is_cloud_llm_allowed()
+    return github_analyze_connected_repo(
+        repo_id=repo_id, force_refresh=force, allow_cloud=allow_cloud
+    )
+
+
+@server_app.get("/api/github/repos/{repo_id}/analysis")
+def api_github_repos_get_analysis(repo_id: int) -> Dict[str, Any]:
+    """Get the latest analysis report for a connected repository."""
+    analysis = github_get_latest_analysis(repo_id)
+    if not analysis:
+        return {"success": False, "status": "NO_ANALYSIS", "message": "Repository has not been analyzed yet."}
+    return analysis
+
+
+@server_app.post("/api/github/repos/upload-zip")
+async def api_github_repos_upload_zip(
+    request: Request, filename: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Upload and analyze a repository snapshot ZIP archive.
+    Accepts multipart/form-data or application/zip stream.
+    Enforces upload limits, traversal guards, symlink checks, and zero code execution.
+    """
+    content_type = request.headers.get("content-type", "")
+    body = await request.body()
+
+    if not body:
+        raise HTTPException(status_code=400, detail="Empty upload body.")
+
+    resolved_filename = filename or request.headers.get("x-filename", "")
+    contents = body
+
+    if "multipart/form-data" in content_type and "boundary=" in content_type:
+        boundary = content_type.split("boundary=")[-1].strip().split(";")[0].strip('"').encode()
+        parts = body.split(b"--" + boundary)
+        extracted = False
+        for part in parts:
+            if b'filename="' in part:
+                header_end = part.find(b"\r\n\r\n")
+                if header_end != -1:
+                    header = part[:header_end].decode("utf-8", errors="ignore")
+                    m = re.search(r'filename="([^"]+)"', header)
+                    if m:
+                        resolved_filename = m.group(1)
+                    contents = part[header_end + 4:]
+                    if contents.endswith(b"\r\n"):
+                        contents = contents[:-2]
+                    extracted = True
+                    break
+        if not extracted:
+            raise HTTPException(status_code=400, detail="No file entry found in multipart upload.")
+
+    if not resolved_filename:
+        resolved_filename = "archive.zip"
+
+    if not resolved_filename.lower().endswith(".zip"):
+        raise HTTPException(status_code=400, detail="Uploaded file must be a .zip archive.")
+
+    allow_cloud = _is_cloud_llm_allowed()
+    result = github_analyze_zip_upload(
+        zip_bytes=contents,
+        filename=resolved_filename,
+        allow_cloud=allow_cloud,
+    )
+    if not result.get("success"):
+        status_code = 400
+        if result.get("status") in ("SECURITY_VIOLATION", "SUSPICIOUS_ENTRY"):
+            status_code = 403
+        elif result.get("status") == "LIMIT_EXCEEDED":
+            status_code = 413
+        raise HTTPException(status_code=status_code, detail=result.get("error", "ZIP analysis failed."))
+    return result
+
+
+@server_app.get("/api/github/analysis/{analysis_id}")
+def api_github_get_analysis_by_id(analysis_id: int) -> Dict[str, Any]:
+    """Get a stored repository analysis report by analysis ID."""
+    analysis = github_get_analysis_by_id(analysis_id)
+    if not analysis:
+        raise HTTPException(status_code=404, detail=f"Analysis id={analysis_id} not found.")
+    return analysis
+
+
+# -----------------------------------------------------------------------------
+# GitHub AI Repository Chat Endpoints (Milestone 9 - Prompt 3)
+# -----------------------------------------------------------------------------
+
+
+@server_app.get("/api/github/chat/repos")
+def api_github_chat_repos() -> Dict[str, Any]:
+    """List all analyzed and indexed repositories available for chat."""
+    return list_analyzed_repos_for_chat()
+
+
+@server_app.post("/api/github/chat/query")
+def api_github_chat_query(req: GitHubChatQueryRequest) -> Dict[str, Any]:
+    """
+    Execute a grounded repository code question answering query.
+    Retrieves relevant code chunks from SQLite FTS5 index and invokes model.
+    """
+    msg = req.message.strip()
+    if not msg:
+        raise HTTPException(status_code=400, detail="Question message cannot be empty.")
+
+    # Determine commit_sha if not provided
+    commit_sha = req.commit_sha
+    if not commit_sha:
+        from app.tools.github_tools import github_get_latest_analysis
+        latest = github_get_latest_analysis(req.repo_id) if req.repo_id else None
+        if latest:
+            commit_sha = latest.get("commit_sha", "snapshot")
+        else:
+            # Look up from analyses table by repo_name
+            conn = db.get_connection()
+            try:
+                cur = conn.execute(
+                    "SELECT commit_sha FROM github_repo_analyses WHERE repo_name = ? ORDER BY id DESC LIMIT 1",
+                    (req.repo_name,),
+                )
+                r = cur.fetchone()
+                commit_sha = r["commit_sha"] if r else "snapshot"
+            finally:
+                conn.close()
+
+    allow_cloud = _is_cloud_llm_allowed()
+    return execute_repository_chat(
+        repo_name=req.repo_name,
+        commit_sha=commit_sha,
+        question=msg,
+        session_id=req.session_id,
+        repo_id=req.repo_id,
+        allow_cloud=allow_cloud,
+    )
+
+
+@server_app.get("/api/github/chat/history")
+def api_github_chat_history(
+    repo_name: str, session_id: Optional[int] = None
+) -> Dict[str, Any]:
+    """Retrieve chat history messages for a specific repository."""
+    if not repo_name:
+        raise HTTPException(status_code=400, detail="repo_name query parameter is required.")
+    return get_chat_history(repo_name=repo_name, session_id=session_id)
+
+
+@server_app.post("/api/github/chat/clear")
+def api_github_chat_clear(req: GitHubChatClearRequest) -> Dict[str, Any]:
+    """Clear chat history for a specific repository or session."""
+    return clear_chat_history(repo_name=req.repo_name, session_id=req.session_id)
+
+
+@server_app.post("/api/github/chat/new")
+def api_github_chat_new_session(req: GitHubChatNewSessionRequest) -> Dict[str, Any]:
+    """Start a new scoped chat session for a repository."""
+    commit_sha = req.commit_sha or "snapshot"
+    return create_chat_session(
+        repo_name=req.repo_name,
+        commit_sha=commit_sha,
+        title=req.title or "New Chat",
+        repo_id=req.repo_id,
+    )
+
+
+# -----------------------------------------------------------------------------
+# Milestone 9 - Prompt 4: Developer Workbench REST Endpoints
+# -----------------------------------------------------------------------------
+
+@server_app.get("/api/github/workbench/overview")
+def api_github_workbench_overview(repo_name: str) -> Dict[str, Any]:
+    if not repo_name:
+        raise HTTPException(status_code=400, detail="repo_name is required.")
+    try:
+        return github_get_repo_overview(repo_name)
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except GitHubAuthError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except GitHubNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@server_app.get("/api/github/workbench/issues")
+def api_github_workbench_issues(
+    repo_name: str,
+    state: str = "open",
+    labels: Optional[str] = None,
+    assignee: Optional[str] = None,
+    search: Optional[str] = None,
+    page: int = 1,
+    per_page: int = 30,
+) -> Dict[str, Any]:
+    if not repo_name:
+        raise HTTPException(status_code=400, detail="repo_name is required.")
+    try:
+        return github_list_repo_issues(
+            repo_name=repo_name,
+            state=state,
+            labels=labels,
+            assignee=assignee,
+            search=search,
+            page=page,
+            per_page=per_page,
+        )
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except GitHubAuthError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@server_app.get("/api/github/workbench/issues/{issue_number}")
+def api_github_workbench_issue_detail(repo_name: str, issue_number: int) -> Dict[str, Any]:
+    if not repo_name:
+        raise HTTPException(status_code=400, detail="repo_name is required.")
+    try:
+        return github_get_issue_detail(repo_name, issue_number)
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except GitHubNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@server_app.post("/api/github/workbench/issues/{issue_number}/summarize")
+def api_github_workbench_issue_summarize(
+    issue_number: int, req: GitHubIssueSummarizeRequest
+) -> Dict[str, Any]:
+    allow_cloud = _is_cloud_llm_allowed()
+    try:
+        return github_summarize_issue(req.repo_name, issue_number, allow_cloud=allow_cloud)
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@server_app.post("/api/github/workbench/issues/create")
+def api_github_workbench_issue_create(req: GitHubIssueCreateRequest) -> Dict[str, Any]:
+    try:
+        return github_create_issue_safe(
+            repo_name=req.repo_name,
+            title=req.title,
+            body=req.body,
+            labels=req.labels,
+            assignees=req.assignees,
+            approved=req.approved,
+        )
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@server_app.post("/api/github/workbench/issues/{issue_number}/update")
+def api_github_workbench_issue_update(
+    issue_number: int, req: GitHubIssueUpdateRequest
+) -> Dict[str, Any]:
+    try:
+        return github_update_issue_safe(
+            repo_name=req.repo_name,
+            issue_number=issue_number,
+            state=req.state,
+            title=req.title,
+            body=req.body,
+            labels=req.labels,
+            approved=req.approved,
+        )
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@server_app.post("/api/github/workbench/issues/{issue_number}/comment")
+def api_github_workbench_issue_comment(
+    issue_number: int, req: GitHubIssueCommentRequest
+) -> Dict[str, Any]:
+    try:
+        return github_add_issue_comment_safe(
+            repo_name=req.repo_name,
+            issue_number=issue_number,
+            body=req.body,
+            approved=req.approved,
+        )
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@server_app.get("/api/github/workbench/prs")
+def api_github_workbench_prs(
+    repo_name: str, state: str = "open", page: int = 1, per_page: int = 30
+) -> Dict[str, Any]:
+    if not repo_name:
+        raise HTTPException(status_code=400, detail="repo_name is required.")
+    try:
+        return github_list_repo_prs(repo_name=repo_name, state=state, page=page, per_page=per_page)
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@server_app.get("/api/github/workbench/prs/{pr_number}")
+def api_github_workbench_pr_detail(repo_name: str, pr_number: int) -> Dict[str, Any]:
+    if not repo_name:
+        raise HTTPException(status_code=400, detail="repo_name is required.")
+    try:
+        return github_get_pr_detail(repo_name, pr_number)
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except GitHubNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@server_app.get("/api/github/workbench/prs/{pr_number}/diff")
+def api_github_workbench_pr_diff(repo_name: str, pr_number: int) -> Dict[str, Any]:
+    if not repo_name:
+        raise HTTPException(status_code=400, detail="repo_name is required.")
+    try:
+        return github_get_pr_diff(repo_name, pr_number)
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@server_app.post("/api/github/workbench/prs/{pr_number}/review")
+def api_github_workbench_pr_review(
+    pr_number: int, req: GitHubPRReviewRequest
+) -> Dict[str, Any]:
+    allow_cloud = _is_cloud_llm_allowed()
+    try:
+        return github_review_pr(req.repo_name, pr_number, allow_cloud=allow_cloud)
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@server_app.post("/api/github/workbench/prs/{pr_number}/comment")
+def api_github_workbench_pr_comment(
+    pr_number: int, req: GitHubPRCommentRequest
+) -> Dict[str, Any]:
+    try:
+        return github_create_pr_comment_safe(
+            repo_name=req.repo_name,
+            pr_number=pr_number,
+            body=req.body,
+            approved=req.approved,
+        )
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@server_app.get("/api/github/workbench/commits")
+def api_github_workbench_commits(
+    repo_name: str, branch: Optional[str] = None, page: int = 1, per_page: int = 30
+) -> Dict[str, Any]:
+    if not repo_name:
+        raise HTTPException(status_code=400, detail="repo_name is required.")
+    try:
+        return github_list_repo_commits(repo_name=repo_name, branch=branch, page=page, per_page=per_page)
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@server_app.get("/api/github/workbench/compare")
+def api_github_workbench_compare(
+    repo_name: str, base: str, head: str
+) -> Dict[str, Any]:
+    if not repo_name or not base or not head:
+        raise HTTPException(status_code=400, detail="repo_name, base, and head are required.")
+    try:
+        return github_compare_commits(repo_name, base, head)
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@server_app.get("/api/github/workbench/branches")
+def api_github_workbench_branches(repo_name: str) -> Dict[str, Any]:
+    if not repo_name:
+        raise HTTPException(status_code=400, detail="repo_name is required.")
+    try:
+        return github_list_repo_branches(repo_name)
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@server_app.get("/api/github/workbench/actions/runs")
+def api_github_workbench_workflow_runs(
+    repo_name: str,
+    status: Optional[str] = None,
+    branch: Optional[str] = None,
+    page: int = 1,
+    per_page: int = 20,
+) -> Dict[str, Any]:
+    if not repo_name:
+        raise HTTPException(status_code=400, detail="repo_name is required.")
+    try:
+        return github_list_workflow_runs(
+            repo_name=repo_name, status=status, branch=branch, page=page, per_page=per_page
+        )
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@server_app.get("/api/github/workbench/actions/runs/{run_id}")
+def api_github_workbench_workflow_run_details(repo_name: str, run_id: int) -> Dict[str, Any]:
+    if not repo_name:
+        raise HTTPException(status_code=400, detail="repo_name is required.")
+    try:
+        return github_get_workflow_run_details(repo_name, run_id)
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except GitHubNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@server_app.post("/api/github/workbench/actions/runs/{run_id}/analyze")
+def api_github_workbench_workflow_analyze(
+    run_id: int, req: GitHubWorkflowAnalyzeRequest
+) -> Dict[str, Any]:
+    allow_cloud = _is_cloud_llm_allowed()
+    try:
+        return github_analyze_workflow_failure(req.repo_name, run_id, allow_cloud=allow_cloud)
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@server_app.post("/api/github/workbench/actions/runs/{run_id}/rerun")
+def api_github_workbench_workflow_rerun(
+    run_id: int, req: GitHubWorkflowRerunRequest
+) -> Dict[str, Any]:
+    try:
+        return github_rerun_workflow_safe(
+            repo_name=req.repo_name, run_id=run_id, approved=req.approved
+        )
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @server_app.post("/api/browser/fetch")

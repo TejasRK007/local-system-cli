@@ -1255,94 +1255,794 @@
         </div>
       </section>
 
-      <!-- TAB: GITHUB -->
+      <!-- TAB: GITHUB (Milestone 9 - Prompts 1, 2, 3, 4) -->
       <section class="view-pane" id="tab-github">
         <div class="view-header-bar">
           <div style="display:flex; align-items:center; gap:12px;">
-            <h1 class="view-title">GitHub Integration</h1>
+            <h1 class="view-title">GitHub Integration & Developer Workbench</h1>
             <span class="risk-badge risk-low" id="github-connection-badge">Not Connected</span>
           </div>
           <div class="view-header-actions">
             <button class="pill-btn pill-btn-outline" id="btn-github-refresh" title="Refresh repositories">↻ Refresh</button>
+            <button class="pill-btn pill-btn-primary" id="btn-github-upload-zip-trigger" title="Upload and analyze repository ZIP archive">⬆ Upload ZIP</button>
+            <input type="file" id="github-zip-file-input" accept=".zip" style="display:none;">
             <button class="pill-btn pill-btn-dark" id="btn-github-connect" style="display:none;">Connect GitHub</button>
             <button class="pill-btn pill-btn-outline" id="btn-github-disconnect" style="display:none;">Disconnect</button>
           </div>
         </div>
 
-        <!-- GitHub Stats Overview -->
-        <div class="github-stats-row" id="github-stats-row">
-          <div class="github-stat-card">
-            <div class="github-stat-value" id="github-stat-account-val">—</div>
-            <div class="github-stat-label">Connected Account</div>
-          </div>
-          <div class="github-stat-card">
-            <div class="github-stat-value" id="github-stat-total-val">0</div>
-            <div class="github-stat-label">Total Repos</div>
-          </div>
-          <div class="github-stat-card">
-            <div class="github-stat-value" id="github-stat-public-val">0</div>
-            <div class="github-stat-label">Public Repos</div>
-          </div>
-          <div class="github-stat-card">
-            <div class="github-stat-value" id="github-stat-private-val">0</div>
-            <div class="github-stat-label">Private Repos</div>
+        <!-- Global Active Repository Selector Toolbar -->
+        <div class="github-active-repo-bar">
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; width:100%;">
+            <label for="github-global-repo-select" style="font-size:12px; font-weight:600; color:#475569;">Active Repository:</label>
+            <select id="github-global-repo-select" class="github-select" style="max-width:320px;">
+              <option value="">Select a repository...</option>
+            </select>
+            <span class="github-badge" id="github-global-repo-badge" style="display:none;"></span>
+            <div style="margin-left:auto; display:flex; gap:8px;">
+              <button class="pill-btn pill-btn-outline" id="btn-global-repo-analyze" style="font-size:11px; padding:3px 8px; display:none;">⚡ Analyze</button>
+              <button class="pill-btn pill-btn-outline" id="btn-global-repo-chat" style="font-size:11px; padding:3px 8px; display:none;">💬 Code Chat</button>
+            </div>
           </div>
         </div>
 
-        <!-- Connect Card (shown when not connected) -->
-        <div class="github-connect-card" id="github-connect-card">
-          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5" style="margin:0 auto 4px;">
-            <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
-          </svg>
-          <h2>Connect Your GitHub Account</h2>
-          <p>Securely connect via OAuth to manage and browse your repositories right from this dashboard.</p>
-          <button class="btn-github-oauth" id="btn-github-oauth-main">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <!-- GitHub Subnav Switcher (8 Workbench Tabs) -->
+        <div class="github-subnav-bar">
+          <button class="github-subnav-btn active" id="btn-github-subnav-overview" title="Repository Overview">
+            <span>📊 Overview</span>
+          </button>
+          <button class="github-subnav-btn" id="btn-github-subnav-repos" title="Connected Repositories">
+            <span>📦 Repositories</span>
+          </button>
+          <button class="github-subnav-btn" id="btn-github-subnav-analysis" title="Static AI Intelligence">
+            <span>⚡ Analysis</span>
+          </button>
+          <button class="github-subnav-btn" id="btn-github-subnav-chat" title="Grounded Code Chat">
+            <span>💬 Code Chat</span>
+          </button>
+          <button class="github-subnav-btn" id="btn-github-subnav-issues" title="Issues Workbench">
+            <span>🐛 Issues</span>
+          </button>
+          <button class="github-subnav-btn" id="btn-github-subnav-prs" title="Pull Requests & Reviews">
+            <span>🔀 Pull Requests</span>
+          </button>
+          <button class="github-subnav-btn" id="btn-github-subnav-commits" title="Commits & Branches">
+            <span>🌿 Commits & Branches</span>
+          </button>
+          <button class="github-subnav-btn" id="btn-github-subnav-actions" title="GitHub Actions CI/CD">
+            <span>⚙️ Actions</span>
+          </button>
+        </div>
+
+        <!-- 1. TAB PANEL: OVERVIEW -->
+        <div id="github-workbench-overview-view">
+          <div id="github-overview-empty" class="github-chat-state-box">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5" style="margin-bottom:12px;">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+            </svg>
+            <h3>Select a Repository</h3>
+            <p>Select a connected repository above to view overview metrics, issues, pull requests, commits, and GitHub Actions.</p>
+          </div>
+          <div id="github-overview-content" style="display:none;">
+            <div class="github-overview-header-card">
+              <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
+                <div>
+                  <h2 id="overview-repo-name" style="margin:0 0 6px; font-size:20px; font-weight:700;">owner/repo</h2>
+                  <p id="overview-repo-desc" style="margin:0; font-size:13px; color:#64748b; max-width:600px;">Repository description...</p>
+                </div>
+                <div style="display:flex; gap:8px; align-items:center;">
+                  <span class="github-badge" id="overview-branch-badge">Default: main</span>
+                  <span class="github-badge" id="overview-visibility-badge">Public</span>
+                  <a id="overview-github-link" href="#" target="_blank" class="pill-btn pill-btn-outline" style="font-size:11px; padding:4px 10px;">Open on GitHub ↗</a>
+                </div>
+              </div>
+            </div>
+
+            <!-- 4 Stats Cards -->
+            <div class="github-stats-row" style="margin: 16px 0;">
+              <div class="github-stat-card">
+                <div class="github-stat-value" id="overview-stat-issues">0</div>
+                <div class="github-stat-label">Open Issues</div>
+              </div>
+              <div class="github-stat-card">
+                <div class="github-stat-value" id="overview-stat-prs">0</div>
+                <div class="github-stat-label">Open Pull Requests</div>
+              </div>
+              <div class="github-stat-card">
+                <div class="github-stat-value" id="overview-stat-branches">0</div>
+                <div class="github-stat-label">Branches</div>
+              </div>
+              <div class="github-stat-card">
+                <div class="github-stat-value" id="overview-stat-failures" style="color:#ef4444;">0</div>
+                <div class="github-stat-label">Recent Workflow Failures</div>
+              </div>
+            </div>
+
+            <!-- Split 2-Column Feed -->
+            <div class="github-report-grid-2">
+              <div class="github-report-section">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                  <h3 style="margin:0;">Recent Commits</h3>
+                  <button class="pill-btn pill-btn-outline" id="btn-overview-view-all-commits" style="font-size:11px; padding:3px 8px;">View All &rarr;</button>
+                </div>
+                <div id="overview-recent-commits-list" class="github-items-list"></div>
+              </div>
+
+              <div class="github-report-section">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                  <h3 style="margin:0;">Recent GitHub Actions</h3>
+                  <button class="pill-btn pill-btn-outline" id="btn-overview-view-all-actions" style="font-size:11px; padding:3px 8px;">View All &rarr;</button>
+                </div>
+                <div id="overview-recent-actions-list" class="github-items-list"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. TAB PANEL: REPOSITORIES -->
+        <div id="github-repos-main-view" style="display:none;">
+          <!-- GitHub Stats Overview -->
+          <div class="github-stats-row" id="github-stats-row">
+            <div class="github-stat-card">
+              <div class="github-stat-value" id="github-stat-account-val">—</div>
+              <div class="github-stat-label">Connected Account</div>
+            </div>
+            <div class="github-stat-card">
+              <div class="github-stat-value" id="github-stat-total-val">0</div>
+              <div class="github-stat-label">Total Repos</div>
+            </div>
+            <div class="github-stat-card">
+              <div class="github-stat-value" id="github-stat-public-val">0</div>
+              <div class="github-stat-label">Public Repos</div>
+            </div>
+            <div class="github-stat-card">
+              <div class="github-stat-value" id="github-stat-private-val">0</div>
+              <div class="github-stat-label">Private Repos</div>
+            </div>
+          </div>
+
+          <!-- Connect Card (shown when not connected) -->
+          <div class="github-connect-card" id="github-connect-card">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5" style="margin:0 auto 4px;">
               <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
             </svg>
-            Connect with GitHub
-          </button>
-          <div class="github-privacy-note">🔒 Only repository metadata is accessed. Source code is never sent to any cloud AI.</div>
+            <h2>Connect Your GitHub Account</h2>
+            <p>Securely connect via OAuth to manage and browse your repositories right from this dashboard.</p>
+            <button class="btn-github-oauth" id="btn-github-oauth-main">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
+              </svg>
+              Connect with GitHub
+            </button>
+            <div class="github-privacy-note">🔒 Only repository metadata is accessed. Source code is never sent to any cloud AI.</div>
+          </div>
+
+          <!-- Add Repository Panel (shown only when connected) -->
+          <div id="github-repo-add-panel" style="display:none;">
+            <h3>Add Repository</h3>
+            <div class="github-add-row">
+              <input id="github-repo-url-input" placeholder="https://github.com/owner/repository" type="text">
+              <button class="pill-btn pill-btn-dark" id="btn-github-add-repo-url">Add Repository</button>
+            </div>
+            <div class="github-add-divider">— or select from your repos —</div>
+            <div class="github-add-row">
+              <select id="github-user-repos-select">
+                <option value="">Select from your repositories...</option>
+              </select>
+              <button class="pill-btn pill-btn-outline" id="btn-github-add-selected">Add Selected</button>
+            </div>
+            <div id="github-add-repo-status"></div>
+          </div>
+
+          <!-- Connected Repositories Panel (shown only when connected) -->
+          <div id="github-repos-panel" style="display:none;">
+            <div class="github-repos-toolbar">
+              <input class="github-search-input" id="github-repos-search" placeholder="Search repositories..." type="text">
+              <select id="github-repos-filter">
+                <option value="all">All</option>
+                <option value="public">Public</option>
+                <option value="private">Private</option>
+              </select>
+              <select id="github-repos-sort">
+                <option value="updated">Recently Updated</option>
+                <option value="name">Name</option>
+                <option value="stars">Stars</option>
+              </select>
+            </div>
+            <div class="github-repos-grid" id="github-repos-grid">
+              <div class="empty-state" id="github-repos-empty">No repositories connected. Add one above.</div>
+            </div>
+          </div>
         </div>
 
-        <!-- Add Repository Panel (shown only when connected) -->
-        <div id="github-repo-add-panel" style="display:none;">
-          <h3>Add Repository</h3>
-          <div class="github-add-row">
-            <input id="github-repo-url-input" placeholder="https://github.com/owner/repository" type="text">
-            <button class="pill-btn pill-btn-dark" id="btn-github-add-repo-url">Add Repository</button>
+        <!-- 3. TAB PANEL: REPOSITORY ANALYSIS -->
+        <div id="github-analysis-container" style="display:none;">
+          <div class="github-analysis-header">
+            <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+              <button class="pill-btn pill-btn-outline" id="btn-github-analysis-back">← Back to Repositories</button>
+              <h2 id="github-analysis-title" style="margin:0; font-size:18px; font-weight:700;">Repository Intelligence</h2>
+              <span class="github-badge" id="github-analysis-commit-badge">Commit: —</span>
+              <span class="github-badge" id="github-analysis-date-badge">Analyzed: —</span>
+              <span class="github-badge" id="github-analysis-provider-badge">Ollama (Local)</span>
+            </div>
+            <div style="display:flex; gap:10px;">
+              <button class="pill-btn pill-btn-primary" id="btn-github-analysis-rerun">↻ Re-analyze</button>
+              <button class="pill-btn pill-btn-outline" id="btn-github-analysis-chat">💬 Chat with Code</button>
+            </div>
           </div>
-          <div class="github-add-divider">— or select from your repos —</div>
-          <div class="github-add-row">
-            <select id="github-user-repos-select">
-              <option value="">Select from your repositories...</option>
-            </select>
-            <button class="pill-btn pill-btn-outline" id="btn-github-add-selected">Add Selected</button>
+
+          <!-- Loading State -->
+          <div id="github-analysis-loading" class="github-analysis-state" style="display:none;">
+            <div class="github-spinner"></div>
+            <h3 id="github-analysis-loading-title">Analyzing Repository...</h3>
+            <p id="github-analysis-loading-desc">Extracting snapshot, inspecting manifests, redacting secrets, and synthesizing architectural report.</p>
           </div>
-          <div id="github-add-repo-status"></div>
+
+          <!-- Error State -->
+          <div id="github-analysis-error" class="github-analysis-error-banner" style="display:none;"></div>
+
+          <!-- Analysis Content -->
+          <div id="github-analysis-content" style="display:none;">
+            <!-- 4 Summary Cards -->
+            <div class="github-summary-cards">
+              <div class="github-summary-card">
+                <div class="github-summary-card-label">Primary Languages</div>
+                <div class="github-summary-card-value" id="analysis-card-languages">—</div>
+                <div id="analysis-card-lang-bar" class="github-lang-progress-bar"></div>
+              </div>
+              <div class="github-summary-card">
+                <div class="github-summary-card-label">Frameworks & Libraries</div>
+                <div class="github-summary-card-value" id="analysis-card-frameworks">—</div>
+                <div id="analysis-card-framework-tags" class="github-tags-row"></div>
+              </div>
+              <div class="github-summary-card">
+                <div class="github-summary-card-label">Dependencies</div>
+                <div class="github-summary-card-value" id="analysis-card-dependencies">0</div>
+                <div class="github-summary-card-sub" id="analysis-card-manifests">Manifests detected</div>
+              </div>
+              <div class="github-summary-card">
+                <div class="github-summary-card-label">Codebase Coverage</div>
+                <div class="github-summary-card-value" id="analysis-card-files">0 / 0</div>
+                <div class="github-summary-card-sub" id="analysis-card-coverage-sub">Inspected vs skipped files</div>
+              </div>
+            </div>
+
+            <!-- Analysis Navigation Tabs -->
+            <div class="github-analysis-tabs">
+              <button class="github-tab-btn active" data-analysis-panel="panel-analysis-overview">Overview</button>
+              <button class="github-tab-btn" data-analysis-panel="panel-analysis-architecture">Architecture & Flow</button>
+              <button class="github-tab-btn" data-analysis-panel="panel-analysis-folders">Folder Structure & Explorer</button>
+              <button class="github-tab-btn" data-analysis-panel="panel-analysis-dependencies">Dependencies</button>
+              <button class="github-tab-btn" data-analysis-panel="panel-analysis-instructions">Run & Test Instructions</button>
+              <button class="github-tab-btn" data-analysis-panel="panel-analysis-findings">Findings & Observations</button>
+            </div>
+
+            <!-- Panels -->
+            <div class="github-analysis-panel" id="panel-analysis-overview">
+              <div class="github-report-section">
+                <h3>Repository Purpose & Overview</h3>
+                <div class="github-report-box" id="analysis-overview-summary"></div>
+              </div>
+              <div class="github-report-grid-2">
+                <div class="github-report-section">
+                  <h3>Entry Points & Main Files</h3>
+                  <div id="analysis-overview-entry-points" class="github-items-list"></div>
+                </div>
+                <div class="github-report-section">
+                  <h3>Language Distribution</h3>
+                  <div id="analysis-overview-languages" class="github-items-list"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="github-analysis-panel" id="panel-analysis-architecture" style="display:none;">
+              <div class="github-report-section">
+                <h3>Main Components & Responsibilities</h3>
+                <div id="analysis-arch-components" class="github-components-grid"></div>
+              </div>
+              <div class="github-report-section">
+                <h3>Internal Dependencies & Data / Control Flow</h3>
+                <div class="github-report-box" id="analysis-arch-flow"></div>
+                <div class="github-grounding-note" id="analysis-arch-grounding"></div>
+              </div>
+            </div>
+
+            <div class="github-analysis-panel" id="panel-analysis-folders" style="display:none;">
+              <div class="github-explorer-split">
+                <div class="github-tree-column">
+                  <div class="github-column-header">
+                    <h4>Repository File Explorer</h4>
+                    <span id="analysis-tree-stats" style="font-size:11.5px; color:#64748b;">0 files</span>
+                  </div>
+                  <div class="github-file-tree" id="analysis-file-tree"></div>
+                </div>
+                <div class="github-modules-column">
+                  <div class="github-column-header">
+                    <h4>Folder-by-Folder & Module Explanations</h4>
+                  </div>
+                  <div id="analysis-folder-modules" class="github-items-list"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="github-analysis-panel" id="panel-analysis-dependencies" style="display:none;">
+              <div class="github-report-section">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                  <h3 style="margin:0;">Discovered Packages & Dependencies</h3>
+                  <div style="font-size:12.5px; color:#64748b;" id="analysis-deps-counter">0 total</div>
+                </div>
+                <div class="github-table-wrapper">
+                  <table class="github-data-table">
+                    <thead>
+                      <tr>
+                        <th>Package</th>
+                        <th>Version Constraint</th>
+                        <th>Type</th>
+                        <th>Source Manifest</th>
+                      </tr>
+                    </thead>
+                    <tbody id="analysis-deps-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div class="github-analysis-panel" id="panel-analysis-instructions" style="display:none;">
+              <div class="github-report-grid-2">
+                <div class="github-report-section">
+                  <h3>Build & Run Instructions</h3>
+                  <div id="analysis-run-instructions" class="github-instructions-box"></div>
+                </div>
+                <div class="github-report-section">
+                  <h3>Test Organization & Execution</h3>
+                  <div id="analysis-test-instructions" class="github-instructions-box"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="github-analysis-panel" id="panel-analysis-findings" style="display:none;">
+              <div class="github-report-section">
+                <div class="github-alert-notice">
+                  ℹ️ <strong>Transparency Note:</strong> All findings below are automated architectural and maintainability observations derived from static repository heuristics, not verified vulnerabilities.
+                </div>
+                <div id="analysis-observations-list" class="github-observations-list"></div>
+              </div>
+              <div class="github-report-section">
+                <h3>Unknowns & Files Not Inspected</h3>
+                <div class="github-report-box" id="analysis-unknowns-box"></div>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <!-- Connected Repositories Panel (shown only when connected) -->
-        <div id="github-repos-panel" style="display:none;">
-          <div class="github-repos-toolbar">
-            <input class="github-search-input" id="github-repos-search" placeholder="Search repositories..." type="text">
-            <select id="github-repos-filter">
-              <option value="all">All</option>
-              <option value="public">Public</option>
-              <option value="private">Private</option>
-            </select>
-            <select id="github-repos-sort">
-              <option value="updated">Recently Updated</option>
-              <option value="name">Name</option>
-              <option value="stars">Stars</option>
-            </select>
+        <!-- 4. TAB PANEL: REPOSITORY CHAT -->
+        <div id="github-chat-container" style="display:none;">
+          <div class="github-chat-header-bar">
+            <div class="github-chat-header-left">
+              <label for="github-chat-repo-select" style="font-size:12px; font-weight:600; color:#475569;">Repository:</label>
+              <select id="github-chat-repo-select" class="github-select" style="max-width:320px;">
+                <option value="">Select analyzed repository...</option>
+              </select>
+              <span class="github-badge" id="github-chat-commit-badge" style="display:none;">Commit: —</span>
+              <span class="github-badge" id="github-chat-indexed-badge" style="display:none; background:#ecfdf5; color:#047857; border-color:#a7f3d0;">Indexed</span>
+            </div>
+            <div class="github-chat-header-right">
+              <button class="pill-btn pill-btn-outline" id="btn-github-chat-new" title="Start a fresh chat session">＋ New Chat</button>
+              <button class="pill-btn pill-btn-outline" id="btn-github-chat-clear" title="Clear chat history for this repository">🗑 Clear History</button>
+              <button class="pill-btn pill-btn-outline" id="btn-github-chat-open-analysis" title="View static intelligence report" style="display:none;">📊 View Analysis</button>
+            </div>
           </div>
-          <div class="github-repos-grid" id="github-repos-grid">
-            <div class="empty-state" id="github-repos-empty">No repositories connected. Add one above.</div>
+
+          <!-- Stale Commit Warning Banner -->
+          <div id="github-chat-stale-banner" class="github-stale-banner" style="display:none;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:16px;">⚠️</span>
+              <div>
+                <strong>Repository Out of Date:</strong>
+                <span id="github-chat-stale-text">The remote repository has newer commits since indexing. Answers are grounded in the previously indexed commit.</span>
+              </div>
+            </div>
+            <button class="pill-btn pill-btn-primary" id="btn-github-chat-reanalyze" style="padding:4px 12px; font-size:11.5px;">⚡ Re-analyze Now</button>
+          </div>
+
+          <!-- Empty State -->
+          <div id="github-chat-empty-state" class="github-chat-state-box">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5" style="margin-bottom:12px;">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+            </svg>
+            <h3>Select a Repository to Start Chatting</h3>
+            <p>Choose an analyzed repository above or analyze a new repository to ask questions grounded directly in its source code.</p>
+          </div>
+
+          <!-- No-Index State -->
+          <div id="github-chat-noindex-state" class="github-chat-state-box" style="display:none;">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="1.5" style="margin-bottom:12px;">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+            <h3>Code Index Not Available</h3>
+            <p>This repository has not been indexed yet. Run analysis to extract and index text files for grounded code Q&A.</p>
+            <button class="pill-btn pill-btn-primary" id="btn-github-chat-trigger-analyze" style="margin-top:10px;">⚡ Analyze Repository Now</button>
+          </div>
+
+          <!-- Active Chat Container -->
+          <div id="github-chat-active-area" style="display:none; flex-direction:column; flex:1; height:620px;">
+            <div class="github-chat-chips-bar" id="github-chat-chips">
+              <span class="github-chip-label">Quick Prompts:</span>
+              <button class="github-prompt-chip" data-query="Explain the overall architecture and main components.">Explain architecture</button>
+              <button class="github-prompt-chip" data-query="Where is authentication or credential handling implemented?">Where is authentication?</button>
+              <button class="github-prompt-chip" data-query="How does the application connect to the database or storage?">How does DB connect?</button>
+              <button class="github-prompt-chip" data-query="Where are unit or integration tests located and how are they organized?">Where are tests?</button>
+              <button class="github-prompt-chip" data-query="How do I install dependencies and run this project?">How do I run this?</button>
+            </div>
+
+            <div class="github-chat-messages" id="github-chat-messages"></div>
+
+            <div id="github-chat-loading" class="github-chat-inline-loader" style="display:none;">
+              <div class="github-spinner-sm"></div>
+              <span>Searching code chunks and synthesizing grounded answer...</span>
+            </div>
+
+            <div class="github-chat-input-bar">
+              <textarea id="github-chat-input" rows="2" placeholder="Ask anything about the codebase (e.g. 'Where is endpoint /api/tasks defined?')..."></textarea>
+              <button class="pill-btn pill-btn-primary" id="btn-github-chat-send" title="Send message (Enter)">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+                Send
+              </button>
+            </div>
+            <div class="github-chat-footer-note">
+              🔒 Code retrieval is repository-isolated. Source snippets remain strictly local when cloud LLM is disabled.
+            </div>
+          </div>
+        </div>
+
+        <!-- 5. TAB PANEL: ISSUES WORKBENCH -->
+        <div id="github-workbench-issues-view" style="display:none;">
+          <div id="github-issues-empty-prompt" class="github-chat-state-box">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5" style="margin-bottom:12px;">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+            <h3>Select a Repository</h3>
+            <p>Select an active repository above to search, inspect, summarize, and draft issues.</p>
+          </div>
+          <div id="github-issues-active-content" style="display:none;">
+            <div class="github-toolbar-row">
+              <div style="display:flex; gap:10px; align-items:center; flex:1; flex-wrap:wrap;">
+                <input type="text" id="github-issues-search-input" class="github-search-input" placeholder="Search issues by title or description..." style="max-width:320px;">
+                <select id="github-issues-state-select" class="github-select" style="max-width:130px;">
+                  <option value="open">Open</option>
+                  <option value="closed">Closed</option>
+                  <option value="all">All</option>
+                </select>
+                <button class="pill-btn pill-btn-outline" id="btn-github-issues-refresh" title="Refresh Issues">↻</button>
+              </div>
+              <div>
+                <button class="pill-btn pill-btn-primary" id="btn-github-issues-new">＋ New Issue</button>
+              </div>
+            </div>
+
+            <div class="github-workbench-split">
+              <!-- Left: Issues List -->
+              <div class="github-workbench-list-pane">
+                <div id="github-issues-loading" class="github-chat-inline-loader" style="display:none;">
+                  <div class="github-spinner-sm"></div><span>Loading issues...</span>
+                </div>
+                <div id="github-issues-list-container" class="github-workbench-items-list"></div>
+              </div>
+
+              <!-- Right: Issue Detail & AI Investigation Pane -->
+              <div class="github-workbench-detail-pane" id="github-issue-detail-pane">
+                <div class="github-detail-placeholder" id="github-issue-placeholder">
+                  <p>Select an issue from the list to view discussion and AI investigation steps.</p>
+                </div>
+                <div id="github-issue-selected-content" style="display:none;">
+                  <div class="github-detail-header">
+                    <div>
+                      <span class="github-badge" id="issue-detail-state-badge">Open</span>
+                      <h3 id="issue-detail-title" style="margin:8px 0 4px; font-size:17px; font-weight:700;">Issue Title</h3>
+                      <div class="github-meta-sub" id="issue-detail-meta">Opened by user • Date</div>
+                    </div>
+                    <div style="display:flex; gap:8px;">
+                      <button class="pill-btn pill-btn-outline" id="btn-issue-toggle-state">Close Issue</button>
+                      <button class="pill-btn pill-btn-primary" id="btn-issue-ai-investigate">✨ AI Investigation</button>
+                    </div>
+                  </div>
+
+                  <!-- AI Investigation Summary Box -->
+                  <div id="issue-ai-box" class="github-ai-box" style="display:none;">
+                    <div class="github-ai-box-title">
+                      <span>✨ AI Issue Summary & Investigation Steps</span>
+                      <span id="issue-ai-provider-chip" style="font-size:10px; color:#64748b;">Grounded Analysis</span>
+                    </div>
+                    <div id="issue-ai-summary" class="github-ai-box-body"></div>
+                    <div id="issue-ai-steps" style="margin-top:10px;"></div>
+                    <div id="issue-ai-duplicates" style="margin-top:10px;"></div>
+                  </div>
+
+                  <!-- Issue Body -->
+                  <div class="github-detail-body-box" id="issue-detail-body"></div>
+
+                  <!-- Comments Feed -->
+                  <h4 style="margin:20px 0 10px; font-size:14px;">Comments (<span id="issue-comments-counter">0</span>)</h4>
+                  <div id="issue-comments-feed" class="github-comments-feed"></div>
+
+                  <!-- Add Comment Box -->
+                  <div class="github-comment-input-wrap">
+                    <textarea id="issue-comment-textarea" rows="3" placeholder="Write a comment... (Requires explicit confirmation before posting)"></textarea>
+                    <div style="display:flex; justify-content:flex-end; margin-top:8px;">
+                      <button class="pill-btn pill-btn-primary" id="btn-issue-submit-comment">Post Comment</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 6. TAB PANEL: PULL REQUESTS & REVIEWS -->
+        <div id="github-workbench-prs-view" style="display:none;">
+          <div id="github-prs-empty-prompt" class="github-chat-state-box">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5" style="margin-bottom:12px;">
+              <circle cx="18" cy="18" r="3"></circle>
+              <circle cx="6" cy="6" r="3"></circle>
+              <path d="M13 6h3a2 2 0 0 1 2 2v7"></path>
+              <line x1="6" y1="9" x2="6" y2="21"></line>
+            </svg>
+            <h3>Select a Repository</h3>
+            <p>Select an active repository above to inspect pull requests, view diffs, and run AI code reviews.</p>
+          </div>
+          <div id="github-prs-active-content" style="display:none;">
+            <div class="github-toolbar-row">
+              <div style="display:flex; gap:10px; align-items:center;">
+                <select id="github-prs-state-select" class="github-select" style="max-width:130px;">
+                  <option value="open">Open PRs</option>
+                  <option value="closed">Closed PRs</option>
+                  <option value="all">All PRs</option>
+                </select>
+                <button class="pill-btn pill-btn-outline" id="btn-github-prs-refresh">↻</button>
+              </div>
+            </div>
+
+            <div class="github-workbench-split">
+              <!-- Left: PRs List -->
+              <div class="github-workbench-list-pane">
+                <div id="github-prs-loading" class="github-chat-inline-loader" style="display:none;">
+                  <div class="github-spinner-sm"></div><span>Loading pull requests...</span>
+                </div>
+                <div id="github-prs-list-container" class="github-workbench-items-list"></div>
+              </div>
+
+              <!-- Right: PR Detail, Review & Diffs -->
+              <div class="github-workbench-detail-pane" id="github-pr-detail-pane">
+                <div class="github-detail-placeholder" id="github-pr-placeholder">
+                  <p>Select a pull request from the list to view changes, diffs, and AI code review.</p>
+                </div>
+                <div id="github-pr-selected-content" style="display:none;">
+                  <div class="github-detail-header">
+                    <div>
+                      <div style="display:flex; align-items:center; gap:8px;">
+                        <span class="github-badge" id="pr-detail-state-badge">Open</span>
+                        <span id="pr-detail-branches" style="font-size:12px; font-family:monospace; color:#475569;">feature &rarr; main</span>
+                      </div>
+                      <h3 id="pr-detail-title" style="margin:8px 0 4px; font-size:17px; font-weight:700;">PR Title</h3>
+                      <div class="github-meta-sub" id="pr-detail-meta">By user • Commits • Additions / Deletions</div>
+                    </div>
+                    <div style="display:flex; gap:8px;">
+                      <button class="pill-btn pill-btn-primary" id="btn-pr-ai-review">✨ AI Review</button>
+                    </div>
+                  </div>
+
+                  <!-- AI Review Box -->
+                  <div id="pr-ai-box" class="github-ai-box" style="display:none;">
+                    <div class="github-ai-box-title">
+                      <span>✨ AI Code Review & Security Check</span>
+                      <span style="font-size:10px; color:#047857;">Read-only analysis</span>
+                    </div>
+                    <div id="pr-ai-summary" class="github-ai-box-body"></div>
+                    <div id="pr-ai-observations" class="github-observations-list" style="margin-top:10px;"></div>
+                    <div class="github-safety-notice-sm">
+                      🛡 <strong>Safety Guardrail:</strong> Automated merges and automated approvals are permanently disabled.
+                    </div>
+                  </div>
+
+                  <!-- Changed Files & Diffs View -->
+                  <h4 style="margin:20px 0 10px; font-size:14px;">Changed Files & Unified Diff (<span id="pr-files-counter">0</span> files)</h4>
+                  <div id="pr-files-list" class="github-items-list" style="margin-bottom:12px;"></div>
+                  <div id="pr-diff-viewer" class="github-diff-block"></div>
+
+                  <!-- PR Comment Box -->
+                  <div class="github-comment-input-wrap">
+                    <textarea id="pr-comment-textarea" rows="3" placeholder="Write a review comment on this PR... (Requires confirmation)"></textarea>
+                    <div style="display:flex; justify-content:flex-end; margin-top:8px;">
+                      <button class="pill-btn pill-btn-primary" id="btn-pr-submit-comment">Post PR Comment</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 7. TAB PANEL: COMMITS & BRANCHES -->
+        <div id="github-workbench-commits-view" style="display:none;">
+          <div id="github-commits-empty-prompt" class="github-chat-state-box">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5" style="margin-bottom:12px;">
+              <circle cx="12" cy="18" r="3"></circle>
+              <circle cx="6" cy="6" r="3"></circle>
+              <circle cx="18" cy="6" r="3"></circle>
+              <path d="M18 9v2a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9"></path>
+              <line x1="12" y1="12" x2="12" y2="15"></line>
+            </svg>
+            <h3>Select a Repository</h3>
+            <p>Select an active repository above to inspect commit history, compare branches, and review changes.</p>
+          </div>
+          <div id="github-commits-active-content" style="display:none;">
+            <div class="github-tabs-pills" style="margin-bottom:16px;">
+              <button class="github-pill-tab active" id="btn-commits-tab-history">Commit History</button>
+              <button class="github-pill-tab" id="btn-commits-tab-compare">Compare Branches / Commits</button>
+              <button class="github-pill-tab" id="btn-commits-tab-branches">Branch List</button>
+            </div>
+
+            <!-- 1. Commit History Tab -->
+            <div id="panel-commits-history">
+              <div id="github-commits-list" class="github-items-list"></div>
+            </div>
+
+            <!-- 2. Compare Tab -->
+            <div id="panel-commits-compare" style="display:none;">
+              <div class="github-compare-bar">
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <input type="text" id="github-compare-base-input" class="github-search-input" placeholder="Base (e.g. main)" style="max-width:180px;">
+                  <span>...</span>
+                  <input type="text" id="github-compare-head-input" class="github-search-input" placeholder="Head (e.g. feature)" style="max-width:180px;">
+                  <button class="pill-btn pill-btn-primary" id="btn-github-run-compare">Compare</button>
+                </div>
+              </div>
+              <div id="github-compare-results" style="margin-top:14px; display:none;">
+                <div id="github-compare-badge-row" style="margin-bottom:10px;"></div>
+                <div id="github-compare-files-list" class="github-items-list"></div>
+              </div>
+            </div>
+
+            <!-- 3. Branch List Tab -->
+            <div id="panel-commits-branches" style="display:none;">
+              <div class="github-alert-notice" style="margin-bottom:12px;">
+                🔒 <strong>Branch Protection:</strong> All branch operations are strictly read-only. Force-pushes and deletion of default/protected branches are blocked.
+              </div>
+              <div id="github-branches-list" class="github-items-list"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 8. TAB PANEL: GITHUB ACTIONS -->
+        <div id="github-workbench-actions-view" style="display:none;">
+          <div id="github-actions-empty-prompt" class="github-chat-state-box">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5" style="margin-bottom:12px;">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+            </svg>
+            <h3>Select a Repository</h3>
+            <p>Select an active repository above to inspect GitHub Actions workflow runs and AI failure diagnostics.</p>
+          </div>
+          <div id="github-actions-active-content" style="display:none;">
+            <div class="github-toolbar-row">
+              <div style="display:flex; gap:10px; align-items:center;">
+                <select id="github-actions-status-select" class="github-select" style="max-width:140px;">
+                  <option value="">All Statuses</option>
+                  <option value="success">Success</option>
+                  <option value="failure">Failure</option>
+                  <option value="in_progress">In Progress</option>
+                </select>
+                <button class="pill-btn pill-btn-outline" id="btn-github-actions-refresh">↻</button>
+              </div>
+            </div>
+
+            <div class="github-workbench-split">
+              <!-- Left: Workflow Runs List -->
+              <div class="github-workbench-list-pane">
+                <div id="github-actions-loading" class="github-chat-inline-loader" style="display:none;">
+                  <div class="github-spinner-sm"></div><span>Loading workflow runs...</span>
+                </div>
+                <div id="github-actions-runs-container" class="github-workbench-items-list"></div>
+              </div>
+
+              <!-- Right: Run Details & Failure Diagnostics -->
+              <div class="github-workbench-detail-pane" id="github-action-detail-pane">
+                <div class="github-detail-placeholder" id="github-action-placeholder">
+                  <p>Select a workflow run from the list to view jobs, steps, and failure analysis.</p>
+                </div>
+                <div id="github-action-selected-content" style="display:none;">
+                  <div class="github-detail-header">
+                    <div>
+                      <div style="display:flex; align-items:center; gap:8px;">
+                        <span class="github-badge" id="action-detail-conclusion-badge">Success</span>
+                        <span id="action-detail-branch" style="font-size:12px; font-family:monospace; color:#475569;">main</span>
+                      </div>
+                      <h3 id="action-detail-name" style="margin:8px 0 4px; font-size:17px; font-weight:700;">Workflow Name</h3>
+                      <div class="github-meta-sub" id="action-detail-meta">Triggered by user • Commit</div>
+                    </div>
+                    <div style="display:flex; gap:8px;">
+                      <button class="pill-btn pill-btn-primary" id="btn-action-ai-analyze" style="display:none;">✨ Analyze Failure</button>
+                      <button class="pill-btn pill-btn-outline" id="btn-action-safe-rerun">↻ Rerun</button>
+                    </div>
+                  </div>
+
+                  <!-- AI Failure Diagnostics Box -->
+                  <div id="action-ai-box" class="github-ai-box" style="display:none;">
+                    <div class="github-ai-box-title">
+                      <span>✨ AI Workflow Failure Diagnostics</span>
+                      <span style="font-size:10px; color:#ef4444;">Evidence-grounded</span>
+                    </div>
+                    <div id="action-ai-body" class="github-ai-box-body"></div>
+                    <div id="action-ai-suggestions" style="margin-top:10px;"></div>
+                  </div>
+
+                  <!-- Jobs & Steps Breakdown -->
+                  <h4 style="margin:20px 0 10px; font-size:14px;">Jobs & Execution Steps</h4>
+                  <div id="action-jobs-container" class="github-items-list"></div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section> <!-- closes tab-github -->
     </main>
+  </div>
+
+  <!-- GITHUB SAFETY APPROVAL MODAL -->
+  <div class="modal-backdrop hidden" id="github-approval-modal">
+    <div class="modern-modal-card" style="max-width: 520px;">
+      <div class="modal-badge-row">
+        <span class="risk-badge risk-medium" id="github-modal-risk-badge">MEDIUM RISK</span>
+        <span style="font-size:11px; color:#64748b; margin-left:auto;">CONFIRMATION REQUIRED</span>
+      </div>
+      <h3 class="modal-title" id="github-modal-title">Approve GitHub Action</h3>
+      <p class="modal-desc" id="github-modal-desc">Review the action preview below before executing this write operation.</p>
+
+      <div class="github-approval-preview-card" id="github-modal-preview"></div>
+
+      <div class="modal-btn-row" style="margin-top:18px;">
+        <button class="pill-btn pill-btn-outline" id="btn-github-modal-cancel">Cancel</button>
+        <button class="pill-btn pill-btn-primary" id="btn-github-modal-confirm">Approve & Execute</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- GITHUB CREATE ISSUE MODAL -->
+  <div class="modal-backdrop hidden" id="github-create-issue-modal">
+    <div class="modern-modal-card" style="max-width: 560px;">
+      <div class="modal-badge-row">
+        <span class="risk-badge risk-low">DRAFT ISSUE</span>
+        <span style="font-size:11px; color:#64748b; margin-left:auto;">PREVIEW BEFORE POSTING</span>
+      </div>
+      <h3 class="modal-title">Draft New Issue</h3>
+      <p class="modal-desc">Create a new issue on the active repository. Requires confirmation before posting.</p>
+
+      <div style="display:flex; flex-direction:column; gap:12px; margin-top:14px;">
+        <div>
+          <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:#475569;">Title</label>
+          <input type="text" id="modal-issue-title-input" class="github-search-input" placeholder="Issue title..." style="width:100%;">
+        </div>
+        <div>
+          <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:#475569;">Description (Markdown)</label>
+          <textarea id="modal-issue-body-textarea" rows="5" class="github-search-input" placeholder="Detailed description of the issue..." style="width:100%; resize:vertical; font-family:inherit;"></textarea>
+        </div>
+        <div>
+          <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:#475569;">Labels (comma-separated)</label>
+          <input type="text" id="modal-issue-labels-input" class="github-search-input" placeholder="bug, enhancement..." style="width:100%;">
+        </div>
+      </div>
+
+      <div class="modal-btn-row" style="margin-top:20px;">
+        <button class="pill-btn pill-btn-outline" id="btn-create-issue-modal-cancel">Cancel</button>
+        <button class="pill-btn pill-btn-primary" id="btn-create-issue-modal-submit">Review & Post</button>
+      </div>
+    </div>
   </div>
 
   <!-- ADD WORKSPACE MODAL -->

@@ -35,7 +35,43 @@ from .email_tools import (
 )
 from .file_actions import create_directory, delete_file, move_file, rename_file
 from .filesystem import search_files
-from .github_tools import github_create_issue, github_inspect_pr, github_list_issues
+from .github_chat import (
+    clear_chat_history,
+    create_chat_session,
+    execute_repository_chat,
+    get_chat_history,
+    list_analyzed_repos_for_chat,
+)
+from .github_tools import (
+    github_analyze_connected_repo,
+    github_analyze_zip_upload,
+    github_create_issue,
+    github_get_analysis_by_id,
+    github_get_latest_analysis,
+    github_inspect_pr,
+    github_list_issues,
+)
+from .github_workbench import (
+    github_add_issue_comment_safe,
+    github_analyze_workflow_failure,
+    github_compare_commits,
+    github_create_issue_safe,
+    github_create_pr_comment_safe,
+    github_get_issue_detail,
+    github_get_pr_detail,
+    github_get_pr_diff,
+    github_get_repo_overview,
+    github_get_workflow_run_details,
+    github_list_repo_branches,
+    github_list_repo_commits,
+    github_list_repo_issues,
+    github_list_repo_prs,
+    github_list_workflow_runs,
+    github_rerun_workflow_safe,
+    github_review_pr,
+    github_summarize_issue,
+    github_update_issue_safe,
+)
 from .metadata_tools import get_file_metadata
 from .system_tools import find_process, get_system_info, list_processes
 
