@@ -517,15 +517,24 @@ The FastAPI server exposes a complete REST API:
 | `POST` | `/api/tunnel/start` | Start public Cloudflare tunnel. |
 | `POST` | `/api/tunnel/stop` | Terminate active Cloudflare tunnel. |
 
-### Productivity (Email, Calendar, Docs, GitHub)
+### Productivity & Email Intelligence (M8 Upgrade)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/api/email/inbox` | List recent inbox messages. |
-| `GET` | `/api/email/read` | Fetch full content of specific email. |
+| `GET` | `/api/email/inbox` | List recent inbox messages with category filters. |
+| `GET` | `/api/email/read` | Fetch full content and classification metadata of an email. |
+| `GET` | `/api/email/intelligence/stats` | Aggregated counts for all 6 categories and review_required. |
+| `POST` | `/api/email/classify` | Trigger AI semantic classification for a message or inbox batch. |
+| `POST` | `/api/email/category/update` | Manually correct an email's intelligence category. |
+| `POST` | `/api/email/sender/reputation` | Set sender reputation to `trusted`, `blocked`, or `neutral`. |
+| `GET` | `/api/email/senders` | List registered trusted and blocked senders. |
+| `GET` | `/api/email/cleanup/candidates` | List eligible cleanup emails (unnecessary & promotional). |
+| `POST` | `/api/email/cleanup/execute` | Safely move selected unnecessary emails to Trash with audit logging. |
+| `GET` | `/api/email/context` | Retrieve full thread history, sender interactions, and commitments. |
+| `POST` | `/api/email/context_reply` | Draft context-grounded AI reply (5 modes) without auto-sending. |
 | `POST` | `/api/email/summarize` | Generate AI summary of an email thread. |
-| `POST` | `/api/email/generate_reply` | Generate AI context-aware reply draft. |
-| `POST` | `/api/email/draft` | Save an email draft. |
-| `POST` | `/api/email/send` | Send an email message. |
+| `POST` | `/api/email/generate_reply` | Generate AI tone-based reply draft. |
+| `POST` | `/api/email/draft` | Save an email draft locally. |
+| `POST` | `/api/email/send` | Send an email message (requires explicit user confirmation). |
 | `GET` | `/api/auth/google/status` | Check Google OAuth authentication status. |
 | `GET` | `/api/auth/google/login` | Initiate Google OAuth2 login flow. |
 | `GET` | `/api/auth/google/callback` | Google OAuth2 callback redirect handler. |
@@ -533,7 +542,7 @@ The FastAPI server exposes a complete REST API:
 | `POST` | `/api/calendar/create` | Create a calendar event (`title`, `start_time`, `end_time`). |
 | `DELETE` | `/api/calendar/events/{id}` | Delete a calendar event. |
 | `POST` | `/api/calendar/google/sync` | Sync calendar via iCal/ICS link or Google Calendar. |
-| `POST` | `/api/docs/read` | Read document contents safely. |
+| `POST` | `/api/docs/read` | Read document contents safely with secret masking. |
 | `POST` | `/api/docs/summarize` | Summarize document using AI. |
 | `POST` | `/api/browser/fetch` | Fetch sanitized readable web page content. |
 | `GET` | `/api/github/issues` | Query repository issues from GitHub. |

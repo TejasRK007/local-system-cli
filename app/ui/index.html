@@ -134,6 +134,12 @@
               </svg>
               <span>Documents</span>
             </button>
+            <button class="nav-item" data-tab="tab-github" id="nav-btn-github">
+              <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
+              </svg>
+              <span>GitHub</span>
+            </button>
             <button class="nav-item" data-tab="tab-browser" id="nav-btn-browser">
               <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="12" cy="12" r="10"></circle>
@@ -649,43 +655,70 @@
                   <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
                 </svg>
               </button>
-              <!-- Category Tabs -->
+              <!-- Email Intelligence Category Tabs -->
               <div class="inbox-category-tabs">
-                <button class="inbox-cat-tab active" data-category="all">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-                    <polyline points="22,6 12,13 2,6"></polyline>
-                  </svg>
-                  <span>Primary</span>
+                <button class="inbox-cat-tab active" data-category="all" title="All active emails">
+                  <span>All</span>
                   <span class="tab-badge" id="tab-badge-all">0</span>
                 </button>
-                <button class="inbox-cat-tab" data-category="unread">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"></circle>
-                  </svg>
-                  <span>Unread</span>
-                  <span class="tab-badge badge-unread" id="tab-badge-unread">0</span>
+                <button class="inbox-cat-tab" data-category="work" title="Important / Work emails">
+                  <span class="cat-dot cat-dot-work"></span>
+                  <span>Work</span>
+                  <span class="tab-badge badge-work" id="tab-badge-work">0</span>
                 </button>
-                <button class="inbox-cat-tab" data-category="urgent">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <line x1="12" y1="8" x2="12" y2="12"></line>
-                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                  </svg>
-                  <span>Urgent</span>
-                  <span class="tab-badge badge-urgent" id="tab-badge-urgent">0</span>
+                <button class="inbox-cat-tab" data-category="college" title="College / Education announcements & academics">
+                  <span class="cat-dot cat-dot-college"></span>
+                  <span>College</span>
+                  <span class="tab-badge badge-college" id="tab-badge-college">0</span>
                 </button>
-                <button class="inbox-cat-tab" data-category="action">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
-                  </svg>
-                  <span>Action Needed</span>
-                  <span class="tab-badge badge-action" id="tab-badge-action">0</span>
+                <button class="inbox-cat-tab" data-category="personal" title="Personal conversations and family">
+                  <span class="cat-dot cat-dot-personal"></span>
+                  <span>Personal</span>
+                  <span class="tab-badge badge-personal" id="tab-badge-personal">0</span>
+                </button>
+                <button class="inbox-cat-tab" data-category="promotions" title="Promotions and advertisements">
+                  <span class="cat-dot cat-dot-promotions"></span>
+                  <span>Promotions</span>
+                  <span class="tab-badge badge-promotions" id="tab-badge-promotions">0</span>
+                </button>
+                <button class="inbox-cat-tab" data-category="spam" title="Spam, suspicious links & scams">
+                  <span class="cat-dot cat-dot-spam"></span>
+                  <span>Spam / Suspicious</span>
+                  <span class="tab-badge badge-spam" id="tab-badge-spam">0</span>
+                </button>
+                <button class="inbox-cat-tab" data-category="unnecessary" title="Unwanted automated newsletters & notifications">
+                  <span class="cat-dot cat-dot-unnecessary"></span>
+                  <span>Unnecessary</span>
+                  <span class="tab-badge badge-unnecessary" id="tab-badge-unnecessary">0</span>
+                </button>
+                <button class="inbox-cat-tab" data-category="review_required" title="Low-confidence emails requiring human review">
+                  <span class="cat-dot cat-dot-review"></span>
+                  <span>Review Required</span>
+                  <span class="tab-badge badge-review" id="tab-badge-review">0</span>
                 </button>
               </div>
             </div>
 
             <div class="table-toolbar-right">
+              <button class="pill-btn pill-btn-outline btn-sm" id="btn-email-privacy-toggle" title="Cloud LLM Privacy & Consent Settings (Groq vs Ollama)">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                </svg>
+                <span id="email-privacy-label">Privacy: Local Ollama</span>
+              </button>
+              <button class="pill-btn pill-btn-outline btn-sm" id="btn-classify-inbox" title="Re-run AI classification on incoming emails">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z"></path>
+                </svg>
+                <span>Classify Inbox</span>
+              </button>
+              <button class="pill-btn pill-btn-danger btn-sm" id="btn-open-bulk-cleanup" title="Safely clean unnecessary and promotional emails">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+                <span>Clean Unnecessary Emails</span>
+              </button>
               <span class="pagination-info" id="email-pagination-info">Messages</span>
               <button class="thread-toggle-pill" id="btn-toggle-threaded" title="Toggle grouped threads">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -754,6 +787,52 @@
                     <span class="detail-timestamp" id="detail-timestamp">Date / Time</span>
                   </div>
                 </div>
+              </div>
+
+              <!-- Email Intelligence Classification & Sender Reputation Bar -->
+              <div class="detail-intel-bar" id="detail-intel-bar">
+                <div class="intel-bar-left">
+                  <span class="intel-bar-label">Category:</span>
+                  <select id="detail-category-select" class="detail-cat-select" title="Manually reclassify email category">
+                    <option value="work">Important / Work</option>
+                    <option value="college">College / Education</option>
+                    <option value="personal">Personal</option>
+                    <option value="promotions">Promotions / Advertisements</option>
+                    <option value="spam">Spam / Suspicious</option>
+                    <option value="unnecessary">Unnecessary / Irrelevant</option>
+                    <option value="review_required">Review Required</option>
+                  </select>
+                  <span id="detail-confidence-pill" class="confidence-pill" title="AI Classification Confidence">--% Conf</span>
+                  <span id="detail-review-flag" class="review-flag-badge hidden">⚠️ Review Required</span>
+                </div>
+                <div class="intel-bar-right">
+                  <span id="detail-sender-rep-label" class="sender-rep-label">Sender: Neutral</span>
+                  <button type="button" class="pill-btn pill-btn-outline btn-xs" id="btn-sender-trust" title="Mark sender as trusted">
+                    <span>✓ Trust Sender</span>
+                  </button>
+                  <button type="button" class="pill-btn pill-btn-outline btn-xs" id="btn-sender-block" title="Block sender and auto-classify to spam">
+                    <span>🚫 Block Sender</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Relevant Conversation Context Used by AI (Collapsible Card) -->
+            <div class="email-context-card" id="email-context-card">
+              <div class="email-context-header">
+                <div class="email-context-title">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                  </svg>
+                  <h4>Conversation Context Retrieved for AI</h4>
+                  <span class="context-thread-badge" id="context-thread-badge">Thread History</span>
+                </div>
+                <div class="email-context-actions">
+                  <button type="button" class="pill-btn pill-btn-ghost btn-xs" id="btn-toggle-context-card">Collapse</button>
+                </div>
+              </div>
+              <div class="email-context-body" id="email-context-content">
+                <div class="context-loading">Analyzing thread history and past interactions with sender...</div>
               </div>
             </div>
 
@@ -836,14 +915,14 @@
               </div>
             </div>
 
-            <!-- Smart Reply Drafter Card -->
+            <!-- Smart Reply Drafter Card with 5 Context-Aware Modes -->
             <div class="ai-reply-card" id="ai-reply-card">
               <div class="ai-reply-header">
                 <div class="ai-reply-title-group">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2">
                     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
                   </svg>
-                  <h3>AI Smart Reply Drafter</h3>
+                  <h3>Context-Aware AI Reply Drafter</h3>
                 </div>
                 <div class="tone-selector" id="tone-selector-container">
                   <button class="tone-pill active" data-tone="professional">Professional</button>
@@ -853,24 +932,33 @@
                 </div>
               </div>
 
-              <!-- One-click reply intent chips -->
-              <div class="quick-intents-row">
-                <span class="quick-intents-label">Quick Intent:</span>
-                <button class="intent-chip" data-intent="Acknowledge receipt and thank the sender for the update.">Acknowledge</button>
-                <button class="intent-chip" data-intent="Confirm and approve the request.">Confirm & Approve</button>
-                <button class="intent-chip" data-intent="Politely decline due to current schedule commitments.">Decline</button>
-                <button class="intent-chip" data-intent="Request additional information and next steps.">Ask for Details</button>
-                <button class="pill-btn pill-btn-primary btn-sm" id="btn-quick-send-now" title="Send pre-filled reply immediately with 5s undo window">Instant Send</button>
+              <!-- 6 Context-Aware Reply Action Modes -->
+              <div class="context-reply-actions-bar">
+                <div class="context-reply-actions-label">Choose Reply Mode:</div>
+                <div class="context-reply-buttons-grid">
+                  <button type="button" class="pill-btn pill-btn-primary btn-context-reply" data-reply-type="professional" id="btn-reply-prof" title="Polished, formal professional executive response">
+                    <span>1. Professional Reply</span>
+                  </button>
+                  <button type="button" class="pill-btn pill-btn-outline btn-context-reply" data-reply-type="concise" id="btn-reply-concise" title="Crisp, direct acknowledgment and status (2-3 sentences)">
+                    <span>2. Concise Reply</span>
+                  </button>
+                  <button type="button" class="pill-btn pill-btn-outline btn-context-reply" data-reply-type="friendly" id="btn-reply-friendly" title="Warm, positive, maintaining rapport">
+                    <span>3. Friendly Reply</span>
+                  </button>
+                  <button type="button" class="pill-btn pill-btn-outline btn-context-reply" data-reply-type="detailed" id="btn-reply-detailed" title="Thorough, point-by-point breakdown addressing all questions">
+                    <span>4. Detailed Reply</span>
+                  </button>
+                  <button type="button" class="pill-btn pill-btn-outline btn-context-reply" data-reply-type="decline" id="btn-reply-decline" title="Polite, respectful decline with reasoning">
+                    <span>5. Decline Reply</span>
+                  </button>
+                  <button type="button" class="pill-btn pill-btn-outline btn-context-reply" data-reply-type="custom" id="btn-reply-custom" title="Custom instructions from guidance input">
+                    <span>6. Custom Instructions</span>
+                  </button>
+                </div>
               </div>
 
               <div class="reply-guidance-row">
-                <input type="text" id="reply-guidance-input" placeholder="Custom instructions for AI (e.g. Schedule meeting for 3 PM tomorrow)...">
-                <button class="pill-btn pill-btn-dark" id="btn-generate-ai-reply">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z"></path>
-                  </svg>
-                  <span>Draft Reply</span>
-                </button>
+                <input type="text" id="reply-guidance-input" placeholder="Custom instructions for AI (e.g. Confirm 2 PM meeting, request updated deck)...">
               </div>
 
               <div class="reply-compose-box">
@@ -885,18 +973,28 @@
                   </div>
                 </div>
                 <div class="form-group-compact">
-                  <label>Reply Body</label>
-                  <textarea id="reply-body" rows="6" placeholder="Your reply will be generated here, or type directly..."></textarea>
+                  <label>Reply Body (Editable before sending)</label>
+                  <textarea id="reply-body" rows="6" placeholder="Your context-aware AI reply will be generated here. You can review and edit it before sending..."></textarea>
                 </div>
                 <div class="reply-actions-row">
-                  <button class="pill-btn pill-btn-outline" id="btn-stage-reply-draft">Stage Draft (Medium Risk)</button>
-                  <button class="pill-btn pill-btn-dark" id="btn-send-reply">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <line x1="22" y1="2" x2="11" y2="13"></line>
-                      <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                  <span class="reply-safety-callout">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <line x1="12" y1="16" x2="12" y2="12"></line>
+                      <line x1="12" y1="8" x2="12.01" y2="8"></line>
                     </svg>
-                    <span>Send Reply</span>
-                  </button>
+                    <span>Explicit approval required. AI never sends emails automatically.</span>
+                  </span>
+                  <div style="display: flex; gap: 8px;">
+                    <button class="pill-btn pill-btn-outline" id="btn-stage-reply-draft">Stage Draft (Medium Risk)</button>
+                    <button class="pill-btn pill-btn-dark" id="btn-send-reply">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                      </svg>
+                      <span>Send Reply</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1156,6 +1254,94 @@
           </ul>
         </div>
       </section>
+
+      <!-- TAB: GITHUB -->
+      <section class="view-pane" id="tab-github">
+        <div class="view-header-bar">
+          <div style="display:flex; align-items:center; gap:12px;">
+            <h1 class="view-title">GitHub Integration</h1>
+            <span class="risk-badge risk-low" id="github-connection-badge">Not Connected</span>
+          </div>
+          <div class="view-header-actions">
+            <button class="pill-btn pill-btn-outline" id="btn-github-refresh" title="Refresh repositories">↻ Refresh</button>
+            <button class="pill-btn pill-btn-dark" id="btn-github-connect" style="display:none;">Connect GitHub</button>
+            <button class="pill-btn pill-btn-outline" id="btn-github-disconnect" style="display:none;">Disconnect</button>
+          </div>
+        </div>
+
+        <!-- GitHub Stats Overview -->
+        <div class="github-stats-row" id="github-stats-row">
+          <div class="github-stat-card">
+            <div class="github-stat-value" id="github-stat-account-val">—</div>
+            <div class="github-stat-label">Connected Account</div>
+          </div>
+          <div class="github-stat-card">
+            <div class="github-stat-value" id="github-stat-total-val">0</div>
+            <div class="github-stat-label">Total Repos</div>
+          </div>
+          <div class="github-stat-card">
+            <div class="github-stat-value" id="github-stat-public-val">0</div>
+            <div class="github-stat-label">Public Repos</div>
+          </div>
+          <div class="github-stat-card">
+            <div class="github-stat-value" id="github-stat-private-val">0</div>
+            <div class="github-stat-label">Private Repos</div>
+          </div>
+        </div>
+
+        <!-- Connect Card (shown when not connected) -->
+        <div class="github-connect-card" id="github-connect-card">
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5" style="margin:0 auto 4px;">
+            <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
+          </svg>
+          <h2>Connect Your GitHub Account</h2>
+          <p>Securely connect via OAuth to manage and browse your repositories right from this dashboard.</p>
+          <button class="btn-github-oauth" id="btn-github-oauth-main">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
+            </svg>
+            Connect with GitHub
+          </button>
+          <div class="github-privacy-note">🔒 Only repository metadata is accessed. Source code is never sent to any cloud AI.</div>
+        </div>
+
+        <!-- Add Repository Panel (shown only when connected) -->
+        <div id="github-repo-add-panel" style="display:none;">
+          <h3>Add Repository</h3>
+          <div class="github-add-row">
+            <input id="github-repo-url-input" placeholder="https://github.com/owner/repository" type="text">
+            <button class="pill-btn pill-btn-dark" id="btn-github-add-repo-url">Add Repository</button>
+          </div>
+          <div class="github-add-divider">— or select from your repos —</div>
+          <div class="github-add-row">
+            <select id="github-user-repos-select">
+              <option value="">Select from your repositories...</option>
+            </select>
+            <button class="pill-btn pill-btn-outline" id="btn-github-add-selected">Add Selected</button>
+          </div>
+          <div id="github-add-repo-status"></div>
+        </div>
+
+        <!-- Connected Repositories Panel (shown only when connected) -->
+        <div id="github-repos-panel" style="display:none;">
+          <div class="github-repos-toolbar">
+            <input class="github-search-input" id="github-repos-search" placeholder="Search repositories..." type="text">
+            <select id="github-repos-filter">
+              <option value="all">All</option>
+              <option value="public">Public</option>
+              <option value="private">Private</option>
+            </select>
+            <select id="github-repos-sort">
+              <option value="updated">Recently Updated</option>
+              <option value="name">Name</option>
+              <option value="stars">Stars</option>
+            </select>
+          </div>
+          <div class="github-repos-grid" id="github-repos-grid">
+            <div class="empty-state" id="github-repos-empty">No repositories connected. Add one above.</div>
+          </div>
+        </div>
+      </section> <!-- closes tab-github -->
     </main>
   </div>
 
@@ -1750,6 +1936,63 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=44"></script>
+  <!-- Modal: Bulk Cleanup Unnecessary Emails -->
+  <div class="modal-backdrop hidden" id="modal-bulk-cleanup">
+    <div class="modal-card bulk-cleanup-modal-card">
+      <div class="modal-header">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+          <h2 class="modal-title">Bulk Cleanup: Unnecessary & Promotional Emails</h2>
+        </div>
+        <button class="modal-close-icon-btn" id="btn-close-cleanup-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="cleanup-safety-alert">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2" style="flex-shrink:0;">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+          </svg>
+          <div>
+            <strong>Strict Protection Policy:</strong> Work, College, Personal, and Review-Required emails are strictly excluded from deletion. Only items categorized as <em>Unnecessary / Irrelevant</em> or <em>Promotions</em> are listed below. Selected items are moved safely to Trash.
+          </div>
+        </div>
+        <div class="cleanup-toolbar-row">
+          <label class="cleanup-select-all-label">
+            <input type="checkbox" id="cleanup-select-all-check">
+            <span>Select All Candidates</span>
+          </label>
+          <span class="cleanup-selection-count" id="cleanup-count-display">Selected: 0 emails</span>
+        </div>
+        <div class="cleanup-table-wrapper">
+          <table class="cleanup-table">
+            <thead>
+              <tr>
+                <th style="width: 38px;"></th>
+                <th>Sender</th>
+                <th>Subject</th>
+                <th>Category</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody id="cleanup-table-body">
+              <tr><td colspan="5" style="text-align:center; padding:18px; color:#64748b;">Loading cleanup candidates...</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="cleanup-status-message hidden" id="cleanup-status-message"></div>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center; padding-top: 14px; border-top: 1px solid #f1f5f9;">
+        <span style="font-size: 12px; color: #64748b;">All actions logged with audit trails. Reversible in email Trash.</span>
+        <div style="display:flex; gap:10px;">
+          <button class="pill-btn pill-btn-outline" id="btn-cancel-cleanup">Cancel</button>
+          <button class="pill-btn pill-btn-danger" id="btn-confirm-cleanup" disabled>Move Selected to Trash</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js?v=46"></script>
 </body>
 </html>

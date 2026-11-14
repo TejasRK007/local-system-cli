@@ -5206,3 +5206,580 @@ html, body {
   margin: 12px 0 8px 0;
 }
 
+/* ==========================================================================
+   Email Intelligence & Safety Styles
+   ========================================================================== */
+.cat-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 5px;
+}
+.cat-dot-work { background: #2563eb; }
+.cat-dot-college { background: #7c3aed; }
+.cat-dot-personal { background: #059669; }
+.cat-dot-promotions { background: #d97706; }
+.cat-dot-spam { background: #dc2626; }
+.cat-dot-unnecessary { background: #64748b; }
+.cat-dot-review { background: #ea580c; }
+
+.badge-work { background: #dbeafe !important; color: #1e40af !important; }
+.badge-college { background: #ede9fe !important; color: #5b21b6 !important; }
+.badge-personal { background: #dcfce7 !important; color: #166534 !important; }
+.badge-promotions { background: #fef3c7 !important; color: #92400e !important; }
+.badge-spam { background: #fee2e2 !important; color: #991b1b !important; }
+.badge-unnecessary { background: #f1f5f9 !important; color: #475569 !important; }
+.badge-review { background: #ffedd5 !important; color: #9a3412 !important; }
+
+.row-cat-pill {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 9999px;
+  margin-right: 8px;
+  text-transform: capitalize;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.row-cat-work { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+.row-cat-college { background: #f5f3ff; color: #6d28d9; border: 1px solid #ddd6fe; }
+.row-cat-personal { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+.row-cat-promotions { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
+.row-cat-spam { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+.row-cat-unnecessary { background: #f8fafc; color: #475569; border: 1px solid #e2e8f0; }
+.row-cat-review_required { background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }
+
+.pill-btn-danger {
+  background: #dc2626 !important;
+  color: #ffffff !important;
+  border: 1px solid #dc2626 !important;
+}
+.pill-btn-danger:hover {
+  background: #b91c1c !important;
+  border-color: #b91c1c !important;
+}
+
+/* Detail Intelligence Classification Bar */
+.detail-intel-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14px;
+  padding: 10px 14px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.intel-bar-left, .intel-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.intel-bar-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+}
+.detail-cat-select {
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #0f172a;
+  cursor: pointer;
+}
+.confidence-pill {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 9999px;
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+}
+.review-flag-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 9999px;
+  background: #fff7ed;
+  color: #c2410c;
+  border: 1px solid #fed7aa;
+  animation: pulse-orange 2s infinite ease-in-out;
+}
+@keyframes pulse-orange {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.65; }
+}
+.sender-rep-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  margin-right: 4px;
+}
+.sender-rep-label.trusted {
+  color: #059669;
+}
+.sender-rep-label.blocked {
+  color: #dc2626;
+}
+
+/* Email Context Card */
+.email-context-card {
+  margin-bottom: 18px;
+  background: #ffffff;
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  padding: 16px 20px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+}
+.email-context-card.collapsed .email-context-body {
+  display: none;
+}
+.email-context-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.email-context-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.email-context-title h4 {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #1e3a8a;
+  margin: 0;
+}
+.context-thread-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background: #eff6ff;
+  color: #2563eb;
+  border: 1px solid #bfdbfe;
+}
+.email-context-body {
+  margin-top: 12px;
+  font-size: 12.5px;
+  color: #334155;
+  line-height: 1.6;
+}
+.context-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+.context-block {
+  background: #f8fafc;
+  border: 1px solid #f1f5f9;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.context-block-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+  margin-bottom: 6px;
+}
+.context-pill-tag {
+  display: inline-block;
+  font-size: 11px;
+  background: #e2e8f0;
+  color: #1e293b;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-right: 4px;
+  margin-bottom: 4px;
+}
+
+/* Context-Aware Reply Buttons Grid */
+.context-reply-actions-bar {
+  margin-top: 12px;
+  padding: 12px 14px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+.context-reply-actions-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 8px;
+}
+.context-reply-buttons-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.btn-context-reply {
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  padding: 6px 14px !important;
+  transition: all 0.15s ease;
+}
+.btn-context-reply.active {
+  background: #2563eb !important;
+  color: #ffffff !important;
+  border-color: #2563eb !important;
+}
+.reply-safety-callout {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+/* Bulk Cleanup Modal Styles */
+.bulk-cleanup-modal-card {
+  max-width: 800px !important;
+  width: 90% !important;
+}
+.cleanup-safety-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 12.5px;
+  color: #166534;
+  margin-bottom: 14px;
+  line-height: 1.5;
+}
+.cleanup-toolbar-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  padding: 0 4px;
+}
+.cleanup-select-all-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #334155;
+  cursor: pointer;
+}
+.cleanup-selection-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: #2563eb;
+}
+.cleanup-table-wrapper {
+  max-height: 360px;
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+.cleanup-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.cleanup-table th {
+  background: #f8fafc;
+  padding: 8px 12px;
+  text-align: left;
+  font-weight: 600;
+  color: #475569;
+  border-bottom: 1px solid #e2e8f0;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.cleanup-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  color: #1e293b;
+}
+.cleanup-table tr:hover {
+  background: #f8fafc;
+}
+.cleanup-status-message {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.cleanup-status-message.success {
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+}
+.cleanup-status-message.error {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
+
+
+/* ==========================================================================
+   GitHub Integration Dashboard Styles (Milestone 9)
+   ========================================================================== */
+.github-stats-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.github-stat-card {
+  background: var(--bg-card, #ffffff);
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 12px;
+  padding: 16px 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.github-stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-primary, #0f172a);
+  letter-spacing: -0.5px;
+}
+.github-stat-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted, #64748b);
+}
+
+.github-connect-card {
+  text-align: center;
+  padding: 48px 24px;
+  background: var(--bg-card, #ffffff);
+  border: 1px dashed var(--border-color, #cbd5e1);
+  border-radius: 16px;
+  margin-bottom: 24px;
+}
+.github-connect-card h2 {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 12px 0 8px;
+  color: var(--text-primary, #0f172a);
+}
+.github-connect-card p {
+  color: var(--text-muted, #64748b);
+  max-width: 480px;
+  margin: 0 auto 20px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.btn-github-oauth {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #24292f;
+  color: #ffffff;
+  border: 1px solid #24292f;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+.btn-github-oauth:hover {
+  background: #000000;
+  transform: translateY(-1px);
+}
+.github-privacy-note {
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--text-muted, #64748b);
+}
+
+#github-repo-add-panel {
+  background: var(--bg-card, #ffffff);
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 12px;
+  padding: 20px 24px;
+  margin-bottom: 24px;
+}
+#github-repo-add-panel h3 {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0 0 14px 0;
+  color: var(--text-primary, #0f172a);
+}
+.github-add-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.github-add-row input,
+.github-add-row select {
+  flex: 1;
+  padding: 9px 14px;
+  border: 1px solid var(--border-color, #cbd5e1);
+  border-radius: 8px;
+  font-size: 13.5px;
+  background: var(--bg-main, #ffffff);
+  color: var(--text-primary, #0f172a);
+  outline: none;
+}
+.github-add-row input:focus,
+.github-add-row select:focus {
+  border-color: #2563eb;
+}
+.github-add-divider {
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted, #94a3b8);
+  font-weight: 500;
+  margin: 12px 0;
+}
+#github-add-repo-status {
+  margin-top: 10px;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+#github-add-repo-status.success {
+  color: #059669;
+}
+#github-add-repo-status.error {
+  color: #dc2626;
+}
+
+#github-repos-panel {
+  background: var(--bg-card, #ffffff);
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 12px;
+  padding: 20px 24px;
+}
+.github-repos-toolbar {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 18px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.github-search-input {
+  flex: 1;
+  min-width: 200px;
+  padding: 8px 14px;
+  border: 1px solid var(--border-color, #cbd5e1);
+  border-radius: 8px;
+  font-size: 13px;
+  background: var(--bg-main, #ffffff);
+  color: var(--text-primary, #0f172a);
+}
+.github-repos-toolbar select {
+  padding: 8px 12px;
+  border: 1px solid var(--border-color, #cbd5e1);
+  border-radius: 8px;
+  font-size: 13px;
+  background: var(--bg-main, #ffffff);
+  color: var(--text-primary, #0f172a);
+}
+.github-repos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+.github-repo-card {
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 10px;
+  padding: 16px;
+  background: var(--bg-card, #ffffff);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.github-repo-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+.github-repo-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+.github-repo-title {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: #2563eb;
+  word-break: break-all;
+  text-decoration: none;
+}
+.github-repo-title:hover {
+  text-decoration: underline;
+}
+.github-visibility-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  flex-shrink: 0;
+}
+.github-visibility-badge.public {
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+}
+.github-visibility-badge.private {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+.github-repo-desc {
+  font-size: 12.5px;
+  color: var(--text-muted, #475569);
+  line-height: 1.5;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.github-repo-meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 12px;
+  color: var(--text-muted, #64748b);
+  flex-wrap: wrap;
+}
+.github-meta-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.github-lang-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.github-repo-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid var(--border-color, #f1f5f9);
+  padding-top: 12px;
+  margin-top: 4px;
+}

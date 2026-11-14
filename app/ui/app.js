@@ -3258,6 +3258,9 @@ function initProductivityTools() {
   // Initialize Email Copilot
   initEmailCopilot();
 
+  // Initialize GitHub Dashboard
+  initGithubDashboard();
+
   // Initialize Calendar Scheduler Controls
   initCalendarSchedulerControls();
 }
@@ -3685,6 +3688,175 @@ function initEmailCopilot() {
       if (activeEmailId) {
         generateSmartReply(activeEmailId);
       }
+    });
+  });
+
+  // Re-run AI semantic classification across inbox
+  document.getElementById("btn-classify-inbox")?.addEventListener("click", async () => {
+    const btn = document.getElementById("btn-classify-inbox");
+    const origHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<span>Classifying Inbox...</span>`;
+    try {
+      const res = await fetch("/api/email/classify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ force: true })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showSystemToast(`Classification complete: ${data.processed_count || 0} emails categorized.`);
+        await fetchEmailIntelligenceStats();
+        await fetchEmailInbox();
+      } else {
+        alert("Classification warning: " + (data.error || "Failed"));
+      }
+    } catch (e) {
+      alert("Classification error: " + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = origHtml;
+    }
+  });
+
+  // Bulk cleanup modal triggers
+  document.getElementById("btn-open-bulk-cleanup")?.addEventListener("click", openBulkCleanupModal);
+  document.getElementById("btn-close-cleanup-modal")?.addEventListener("click", () => {
+    document.getElementById("modal-bulk-cleanup")?.classList.add("hidden");
+  });
+  document.getElementById("btn-cancel-cleanup")?.addEventListener("click", () => {
+    document.getElementById("modal-bulk-cleanup")?.classList.add("hidden");
+  });
+  document.getElementById("btn-confirm-cleanup")?.addEventListener("click", executeBulkCleanup);
+
+  // Cloud Privacy Settings Button
+  const btnPrivacy = document.getElementById("btn-email-privacy-toggle");
+  if (btnPrivacy) {
+    const updatePrivacyBtn = (allowed) => {
+      btnPrivacy.textContent = allowed ? "Cloud AI: Enabled (Groq)" : "Cloud AI: Local Only";
+      btnPrivacy.style.color = allowed ? "#15803d" : "#475569";
+    };
+    fetch("/api/email/privacy_settings")
+      .then(r => r.json())
+      .then(d => { if (d.success) updatePrivacyBtn(d.allow_cloud_processing); })
+      .catch(() => {});
+
+    btnPrivacy.addEventListener("click", async () => {
+      try {
+        const curRes = await fetch("/api/email/privacy_settings");
+        const curData = await curRes.json();
+        const currentlyAllowed = curData.allow_cloud_processing || false;
+        const nextState = !currentlyAllowed;
+        if (nextState) {
+          const agree = confirm("PRIVACY CONSENT REQUIRED:\n\nEnabling Cloud AI permits transmitting email snippets and conversation threads to Groq Cloud LLM for advanced classification and drafting.\n\nDo you grant consent to enable Cloud processing?");
+          if (!agree) return;
+        }
+        const postRes = await fetch("/api/email/privacy_settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ allow_cloud_processing: nextState })
+        });
+        const postData = await postRes.json();
+        if (postData.success) {
+          updatePrivacyBtn(postData.allow_cloud_processing);
+          showSystemToast(nextState ? "Cloud AI processing enabled with consent." : "Cloud AI disabled. Local processing only.");
+        }
+      } catch (err) {
+        alert("Failed to update privacy settings: " + err.message);
+      }
+    });
+  }
+
+  // Manual Category Correction listener
+  document.getElementById("detail-category-select")?.addEventListener("change", async (e) => {
+    if (!activeEmailId) return;
+    const newCat = e.target.value;
+    try {
+      const res = await fetch("/api/email/category/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message_id: activeEmailId, category: newCat })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showSystemToast(`Category manually updated to: ${newCat.replace('_', ' ')}`);
+        await fetchEmailIntelligenceStats();
+      }
+    } catch (err) {
+      alert("Failed to update category: " + err.message);
+    }
+  });
+
+  // Trust Sender button
+  document.getElementById("btn-sender-trust")?.addEventListener("click", async () => {
+    if (!activeEmailMsg) return;
+    const avatar = getSenderAvatar(activeEmailMsg.sender);
+    const email = avatar.rawEmail || activeEmailMsg.sender;
+    try {
+      const res = await fetch("/api/email/sender/reputation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sender_email: email, reputation: "trusted", display_name: avatar.cleanName })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showSystemToast(`Sender ${email} marked as TRUSTED.`);
+        const repLabel = document.getElementById("detail-sender-rep-label");
+        if (repLabel) {
+          repLabel.textContent = "Sender: Trusted";
+          repLabel.className = "sender-rep-label trusted";
+        }
+        await fetchEmailIntelligenceStats();
+      }
+    } catch (err) {
+      alert("Error updating sender: " + err.message);
+    }
+  });
+
+  // Block Sender button
+  document.getElementById("btn-sender-block")?.addEventListener("click", async () => {
+    if (!activeEmailMsg) return;
+    const avatar = getSenderAvatar(activeEmailMsg.sender);
+    const email = avatar.rawEmail || activeEmailMsg.sender;
+    const confirmed = confirm(`Are you sure you want to block sender ${email}? All future emails from this sender will be marked as spam.`);
+    if (!confirmed) return;
+    try {
+      const res = await fetch("/api/email/sender/reputation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sender_email: email, reputation: "blocked", display_name: avatar.cleanName })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showSystemToast(`Sender ${email} BLOCKED and classified as spam.`);
+        const repLabel = document.getElementById("detail-sender-rep-label");
+        if (repLabel) {
+          repLabel.textContent = "Sender: Blocked";
+          repLabel.className = "sender-rep-label blocked";
+        }
+        await fetchEmailIntelligenceStats();
+      }
+    } catch (err) {
+      alert("Error blocking sender: " + err.message);
+    }
+  });
+
+  // Toggle Context Card Accordion
+  document.getElementById("btn-toggle-context-card")?.addEventListener("click", () => {
+    const card = document.getElementById("email-context-card");
+    const btn = document.getElementById("btn-toggle-context-card");
+    if (card) {
+      const isCollapsed = card.classList.toggle("collapsed");
+      if (btn) btn.textContent = isCollapsed ? "Expand" : "Collapse";
+    }
+  });
+
+  // 5 Specialized Context-Aware Reply Buttons
+  document.querySelectorAll(".btn-context-reply").forEach(btn => {
+    btn.addEventListener("click", () => {
+      if (!activeEmailId) return alert("Select an email first.");
+      const replyType = btn.getAttribute("data-reply-type") || "ai_smart";
+      generateContextAwareReply(activeEmailId, replyType);
     });
   });
 
@@ -4366,6 +4538,7 @@ async function fetchEmailInbox(query = "") {
     if (badgeAction) badgeAction.textContent = actionCount;
 
     fetchNotifications();
+    fetchEmailIntelligenceStats();
 
     let displayItems = items;
     if (isThreadedView) {
@@ -4410,11 +4583,14 @@ async function fetchEmailInbox(query = "") {
       const cleanSnippetText = cleanSnippet(msg.body_preview || msg.body);
       const relativeTime = formatEmailTime(msg.received_at);
 
-      let badgeHtml = "";
+      const catKey = msg.classification_category || msg.category || "work";
+      const catLabel = catKey === "review_required" ? "Review" : (catKey.charAt(0).toUpperCase() + catKey.slice(1));
+      let badgeHtml = `<span class="row-cat-pill row-cat-${catKey}">${catLabel}</span>`;
+
       if (msg.priority === "high" || msg.category === "urgent") {
-        badgeHtml = `<span class="row-badge row-badge-urgent">Urgent</span>`;
+        badgeHtml += `<span class="row-badge row-badge-urgent">Urgent</span>`;
       } else if ((msg.subject || "").toLowerCase().includes("security") || (msg.subject || "").toLowerCase().includes("password")) {
-        badgeHtml = `<span class="row-badge row-badge-security">Security</span>`;
+        badgeHtml += `<span class="row-badge row-badge-security">Security</span>`;
       }
 
       const threadBadgeHtml = msg.threadCount && msg.threadCount > 1
@@ -4425,8 +4601,8 @@ async function fetchEmailInbox(query = "") {
         <div class="row-check-cell">
           <input type="checkbox" class="row-checkbox">
         </div>
-        <div class="row-star-cell" title="Star message">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <div class="row-star-cell ${msg.is_starred ? 'starred' : ''}" title="${msg.is_starred ? 'Starred' : 'Star message'}">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="${msg.is_starred ? '#eab308' : 'none'}" stroke="${msg.is_starred ? '#eab308' : 'currentColor'}" stroke-width="2">
             <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
           </svg>
         </div>
@@ -4462,9 +4638,28 @@ async function fetchEmailInbox(query = "") {
 
       // Internal row action controls
       row.querySelector(".row-checkbox")?.addEventListener("click", (e) => e.stopPropagation());
-      row.querySelector(".row-star-cell")?.addEventListener("click", (e) => {
+      row.querySelector(".row-star-cell")?.addEventListener("click", async (e) => {
         e.stopPropagation();
-        e.currentTarget.classList.toggle("starred");
+        const starEl = e.currentTarget;
+        try {
+          const res = await fetch("/api/email/star", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message_id: msg.id })
+          });
+          const data = await res.json();
+          if (data.success) {
+            const isNowStarred = data.is_starred;
+            starEl.classList.toggle("starred", isNowStarred);
+            const svg = starEl.querySelector("svg");
+            if (svg) {
+              svg.setAttribute("fill", isNowStarred ? "#eab308" : "none");
+              svg.setAttribute("stroke", isNowStarred ? "#eab308" : "currentColor");
+            }
+          }
+        } catch (err) {
+          console.warn("Error toggling star:", err);
+        }
       });
       row.querySelector(".btn-row-read-toggle")?.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -4499,7 +4694,7 @@ async function loadEmailDetails(messageId) {
     document.getElementById("detail-subject-title").textContent = msg.subject || "(No Subject)";
     document.getElementById("detail-sender-name").textContent = avatar.cleanName;
     document.getElementById("detail-sender-email").textContent = avatar.rawEmail ? `<${avatar.rawEmail}>` : "";
-    
+
     // Avatar badge
     const avatarBadge = document.getElementById("detail-sender-avatar");
     if (avatarBadge) {
@@ -4512,40 +4707,34 @@ async function loadEmailDetails(messageId) {
     const dateFormatted = msg.received_at ? new Date(msg.received_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : "";
     document.getElementById("detail-timestamp").textContent = dateFormatted;
 
+    // Email Intelligence Category & Sender Metadata
+    const catSelect = document.getElementById("detail-category-select");
+    if (catSelect) {
+      catSelect.value = msg.classification_category || msg.category || "work";
+    }
+
+    const confPill = document.getElementById("detail-confidence-pill");
+    if (confPill) {
+      const conf = Math.round((msg.classification_confidence !== undefined ? msg.classification_confidence : 0.95) * 100);
+      confPill.textContent = `${conf}% Conf`;
+    }
+
+    const reviewFlag = document.getElementById("detail-review-flag");
+    if (reviewFlag) {
+      reviewFlag.classList.toggle("hidden", !msg.is_flagged_review && (msg.classification_category !== "review_required"));
+    }
+
+    const repLabel = document.getElementById("detail-sender-rep-label");
+    if (repLabel) {
+      const rep = msg.sender_reputation || "neutral";
+      repLabel.textContent = `Sender: ${rep.charAt(0).toUpperCase() + rep.slice(1)}`;
+      repLabel.className = `sender-rep-label ${rep}`;
+    }
+
     // Body with clean link & image parsing
     const bodyContainer = document.getElementById("detail-body-text");
     if (bodyContainer) {
       bodyContainer.innerHTML = formatEmailBody(msg.body);
-    }
-
-    // Original formatted HTML view in isolated sandbox frame
-    const htmlFrame = document.getElementById("email-html-frame");
-    if (htmlFrame) {
-      const htmlContent = msg.raw_html || `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="utf-8">
-          <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; line-height: 1.6; color: #1e293b; background: #fff; }
-            p { margin-bottom: 1em; }
-          </style>
-        </head>
-        <body>
-          ${formatEmailBody(msg.body)}
-        </body>
-        </html>
-      `;
-      htmlFrame.srcdoc = htmlContent;
-    }
-
-    // Respect user's selected view mode (Clean Text vs Formatted View)
-    if (currentEmailViewMode === "html") {
-      document.getElementById("detail-body-html")?.classList.remove("hidden");
-      document.getElementById("detail-body-text")?.classList.add("hidden");
-    } else {
-      document.getElementById("detail-body-text")?.classList.remove("hidden");
-      document.getElementById("detail-body-html")?.classList.add("hidden");
     }
 
     // Populate dynamic instant reply suggestions directly under body
@@ -4607,6 +4796,36 @@ async function loadEmailDetails(messageId) {
       chipsContainer.appendChild(customPill);
     }
 
+    // Original formatted HTML view in isolated sandbox frame
+    const htmlFrame = document.getElementById("email-html-frame");
+    if (htmlFrame) {
+      const htmlContent = msg.raw_html || `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; line-height: 1.6; color: #1e293b; background: #fff; }
+            p { margin-bottom: 1em; }
+          </style>
+        </head>
+        <body>
+          ${formatEmailBody(msg.body)}
+        </body>
+        </html>
+      `;
+      htmlFrame.srcdoc = htmlContent;
+    }
+
+    // Respect user's selected view mode (Clean Text vs Formatted View)
+    if (currentEmailViewMode === "html") {
+      document.getElementById("detail-body-html")?.classList.remove("hidden");
+      document.getElementById("detail-body-text")?.classList.add("hidden");
+    } else {
+      document.getElementById("detail-body-text")?.classList.remove("hidden");
+      document.getElementById("detail-body-html")?.classList.add("hidden");
+    }
+
     // Pre-fill composer
     const replyToInput = document.getElementById("reply-to");
     const replySubjectInput = document.getElementById("reply-subject");
@@ -4621,8 +4840,380 @@ async function loadEmailDetails(messageId) {
 
     // Load AI Executive Summary
     fetchEmailSummary(messageId, false, msg.summary);
+
+    // Load Conversation Context (Thread History, Prior Sender Interactions, Commitments)
+    loadEmailConversationContext(messageId);
   } catch (e) {
     console.error("Failed to load message:", e);
+  }
+}
+
+async function fetchEmailIntelligenceStats() {
+  try {
+    const res = await fetch("/api/email/intelligence/stats");
+    const data = await res.json();
+    if (data.success && data.stats) {
+      const s = data.stats;
+      const bAll = document.getElementById("tab-badge-all");
+      const bWork = document.getElementById("tab-badge-work");
+      const bCollege = document.getElementById("tab-badge-college");
+      const bPersonal = document.getElementById("tab-badge-personal");
+      const bPromotions = document.getElementById("tab-badge-promotions");
+      const bSpam = document.getElementById("tab-badge-spam");
+      const bUnnecessary = document.getElementById("tab-badge-unnecessary");
+      const bReview = document.getElementById("tab-badge-review");
+
+      if (bAll) bAll.textContent = s.total || 0;
+      if (bWork) bWork.textContent = s.work || 0;
+      if (bCollege) bCollege.textContent = s.college || 0;
+      if (bPersonal) bPersonal.textContent = s.personal || 0;
+      if (bPromotions) bPromotions.textContent = s.promotions || 0;
+      if (bSpam) bSpam.textContent = s.spam || 0;
+      if (bUnnecessary) bUnnecessary.textContent = s.unnecessary || 0;
+      if (bReview) bReview.textContent = s.review_required || 0;
+    }
+  } catch (err) {
+    console.warn("Failed to fetch intelligence stats:", err);
+  }
+}
+
+async function openBulkCleanupModal() {
+  const modal = document.getElementById("modal-bulk-cleanup");
+  const tbody = document.getElementById("cleanup-table-body");
+  const countDisp = document.getElementById("cleanup-count-display");
+  const confirmBtn = document.getElementById("btn-confirm-cleanup");
+  const selectAll = document.getElementById("cleanup-select-all-check");
+  const statusMsg = document.getElementById("cleanup-status-message");
+
+  if (!modal || !tbody) return;
+  modal.classList.remove("hidden");
+  if (statusMsg) statusMsg.classList.add("hidden");
+  if (selectAll) selectAll.checked = false;
+  if (confirmBtn) {
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = "Move Selected to Trash";
+  }
+  if (countDisp) countDisp.textContent = "Selected: 0 emails";
+  tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:18px; color:#64748b;">Loading cleanup candidates...</td></tr>`;
+
+  try {
+    const res = await fetch("/api/email/cleanup/candidates");
+    const data = await res.json();
+    const candidates = data.candidates || [];
+
+    if (!candidates.length) {
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:22px; color:#059669; font-weight:600;">✓ Inbox is clean! No unnecessary or promotional emails found.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = "";
+    candidates.forEach(m => {
+      const tr = document.createElement("tr");
+      tr.dataset.id = m.id;
+      const avatar = getSenderAvatar(m.sender);
+      const dateStr = formatEmailTime(m.received_at);
+      const catKey = m.classification_category || m.category;
+      const catClass = catKey === "promotions" ? "row-cat-promotions" : "row-cat-unnecessary";
+      const catName = catKey === "promotions" ? "Promotion" : "Unnecessary";
+      const confPct = Math.round((m.classification_confidence || 0.9) * 100);
+      const reasonText = m.classification_reason || "Identified promotional/unnecessary marketing pattern";
+
+      tr.innerHTML = `
+        <td><input type="checkbox" class="cleanup-row-check" data-id="${m.id}"></td>
+        <td><strong>${escapeHtml(avatar.cleanName)}</strong></td>
+        <td>${escapeHtml(m.subject || "(No Subject)")}</td>
+        <td><span class="row-cat-pill ${catClass}">${catName}</span></td>
+        <td><span class="confidence-badge" style="font-size:11px; padding:2px 6px; border-radius:4px; background:#f1f5f9; font-weight:600; color:#334155;">${confPct}%</span></td>
+        <td style="font-size:11.5px; color:#475569; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(reasonText)}">${escapeHtml(reasonText)}</td>
+        <td style="color:#64748b; white-space:nowrap;">${dateStr}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    const updateSelectedCount = () => {
+      const checkedBoxes = Array.from(tbody.querySelectorAll(".cleanup-row-check:checked"));
+      const count = checkedBoxes.length;
+      if (countDisp) countDisp.textContent = `Selected: ${count} of ${candidates.length} emails`;
+      if (confirmBtn) {
+        confirmBtn.disabled = count === 0;
+        confirmBtn.textContent = count > 0 ? `Move ${count} Selected to Trash` : "Move Selected to Trash";
+      }
+      if (selectAll) {
+        selectAll.checked = count === candidates.length && candidates.length > 0;
+      }
+    };
+
+    tbody.querySelectorAll(".cleanup-row-check").forEach(cb => {
+      cb.addEventListener("change", updateSelectedCount);
+    });
+
+    if (selectAll) {
+      selectAll.onchange = (e) => {
+        const isChecked = e.target.checked;
+        tbody.querySelectorAll(".cleanup-row-check").forEach(cb => { cb.checked = isChecked; });
+        updateSelectedCount();
+      };
+    }
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#dc2626; padding:18px;">Error loading cleanup candidates: ${err.message}</td></tr>`;
+  }
+}
+
+async function executeBulkCleanup() {
+  const tbody = document.getElementById("cleanup-table-body");
+  const confirmBtn = document.getElementById("btn-confirm-cleanup");
+  const statusMsg = document.getElementById("cleanup-status-message");
+  const selectedBoxes = Array.from(tbody?.querySelectorAll(".cleanup-row-check:checked") || []);
+  const ids = selectedBoxes.map(b => b.dataset.id).filter(Boolean);
+
+  if (!ids.length) return alert("Please select at least one email to clean.");
+
+  const confirmed = confirm(`Are you sure you want to move ${ids.length} unnecessary/promotional email(s) to Trash?\n\nThis operation is safely reversible from the email Trash folder and is recorded in the security audit trail.`);
+  if (!confirmed) return;
+
+  if (confirmBtn) {
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = "Moving to Trash...";
+  }
+
+  try {
+    const res = await fetch("/api/email/cleanup/execute", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message_ids: ids, confirm: true })
+    });
+    const data = await res.json();
+    if (data.success) {
+      if (statusMsg) {
+        statusMsg.className = "cleanup-status-message success";
+        statusMsg.textContent = `Success: Moved ${data.deleted_count || ids.length} email(s) to Trash with audit logging.`;
+        statusMsg.classList.remove("hidden");
+      }
+      showSystemToast(`Cleaned ${data.deleted_count || ids.length} unnecessary emails.`);
+      setTimeout(() => {
+        document.getElementById("modal-bulk-cleanup")?.classList.add("hidden");
+      }, 1200);
+      await fetchEmailIntelligenceStats();
+      await fetchEmailInbox();
+    } else {
+      if (statusMsg) {
+        statusMsg.className = "cleanup-status-message error";
+        statusMsg.textContent = `Cleanup error: ${data.error || "Operation failed"}. Failed IDs: ${(data.failed_ids || []).join(", ")}`;
+        statusMsg.classList.remove("hidden");
+      }
+    }
+  } catch (err) {
+    alert("Bulk cleanup error: " + err.message);
+  } finally {
+    if (confirmBtn) {
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = "Move Selected to Trash";
+    }
+  }
+}
+
+async function loadEmailConversationContext(messageId) {
+  const contextBody = document.getElementById("email-context-content");
+  const threadBadge = document.getElementById("context-thread-badge");
+  if (!contextBody) return;
+
+  contextBody.innerHTML = `<div class="context-loading">Analyzing thread history and past interactions with sender...</div>`;
+
+  try {
+    const res = await fetch(`/api/email/context?id=${encodeURIComponent(messageId)}`);
+    const data = await res.json();
+    if (!data.success) {
+      contextBody.innerHTML = `<div style="color:#64748b; padding:8px;">No prior conversation context found for this sender.</div>`;
+      return;
+    }
+
+    if (threadBadge) {
+      threadBadge.textContent = `${data.thread_message_count || 1} Message(s) in Thread`;
+    }
+
+    // 1. Thread Chronological Turns ("Who said what")
+    let turnsHtml = "";
+    const turns = data.chronological_turns && data.chronological_turns.length > 0 
+      ? data.chronological_turns 
+      : (data.thread_messages || []).map((t, idx) => ({
+          speaker: (t.sender || "").split("<")[0].trim() || "Participant",
+          date: formatEmailTime(t.received_at),
+          text: cleanSnippet(t.body_snippet || t.body || "").slice(0, 140) + "..."
+        }));
+
+    if (turns.length > 0) {
+      turnsHtml = `
+        <div class="context-block" style="grid-column: 1 / -1;">
+          <div class="context-block-title" style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Chronological Conversation Sequence (${turns.length})</span>
+            <span style="font-size:11px; font-weight:normal; color:#64748b;">Chronological order</span>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:6px; max-height:160px; overflow-y:auto; padding-right:4px;">
+            ${turns.map((t, idx) => `
+              <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:6px 10px; font-size:11.5px;">
+                <div style="display:flex; justify-content:space-between; margin-bottom:2px;">
+                  <strong style="color:#0f172a;">${escapeHtml(t.speaker || "Participant")}</strong>
+                  <span style="color:#64748b; font-size:10.5px;">${t.date ? escapeHtml(t.date) : `#${idx+1}`}</span>
+                </div>
+                <div style="color:#334155; line-height:1.4;">${escapeHtml(t.text || "")}</div>
+              </div>
+            `).join("")}
+          </div>
+        </div>
+      `;
+    }
+
+    // 2. Confirmed Commitments vs. Suggestions & Questions
+    let commitmentsHtml = "";
+    const confirmed = data.confirmed_commitments || data.commitments || [];
+    const suggestions = data.suggestions || [];
+    const questions = data.pending_questions || [];
+
+    if (confirmed.length > 0 || suggestions.length > 0 || questions.length > 0) {
+      commitmentsHtml = `
+        <div class="context-block">
+          <div class="context-block-title">Commitments & Open Items</div>
+          <div style="display:flex; flex-direction:column; gap:6px; font-size:11.5px;">
+            ${confirmed.map(c => `
+              <div style="display:flex; align-items:flex-start; gap:6px;">
+                <span style="color:#16a34a; font-weight:700;">✓</span>
+                <div><span style="font-weight:600; color:#15803d;">[Confirmed Commitment]</span> ${escapeHtml(c)}</div>
+              </div>
+            `).join("")}
+            ${suggestions.map(s => `
+              <div style="display:flex; align-items:flex-start; gap:6px;">
+                <span style="color:#d97706; font-weight:700;">•</span>
+                <div><span style="font-weight:600; color:#b45309;">[Suggestion/Idea]</span> ${escapeHtml(s)}</div>
+              </div>
+            `).join("")}
+            ${questions.map(q => `
+              <div style="display:flex; align-items:flex-start; gap:6px;">
+                <span style="color:#2563eb; font-weight:700;">?</span>
+                <div><span style="font-weight:600; color:#1d4ed8;">[Pending Question]</span> ${escapeHtml(q)}</div>
+              </div>
+            `).join("")}
+          </div>
+        </div>
+      `;
+    }
+
+    // 3. Persistent SQLite Email Memory
+    let memoryHtml = "";
+    const memories = data.memories || [];
+    if (memories.length > 0) {
+      memoryHtml = `
+        <div class="context-block">
+          <div class="context-block-title">Persistent Email Memory (${memories.length})</div>
+          <div style="display:flex; flex-direction:column; gap:6px; font-size:11.5px;">
+            ${memories.map(m => `
+              <div style="background:#f1f5f9; padding:6px 8px; border-radius:4px; border-left:3px solid #2563eb;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                  <strong style="color:#1e293b; text-transform:capitalize;">${escapeHtml(m.key_topic || m.category)}</strong>
+                  <span style="font-size:10px; padding:1px 5px; border-radius:3px; background:${m.status === 'completed' ? '#dcfce7; color:#15803d;' : '#fef3c7; color:#b45309;'} font-weight:600;">${escapeHtml(m.status || 'pending')}</span>
+                </div>
+                <div style="color:#334155; margin-top:2px;">${escapeHtml(m.content)}</div>
+                ${m.due_date ? `<div style="font-size:10.5px; color:#64748b; margin-top:2px;">Due: ${escapeHtml(m.due_date)}</div>` : ''}
+              </div>
+            `).join("")}
+          </div>
+        </div>
+      `;
+    }
+
+    // 4. Decisions & Deadlines
+    let decisionsHtml = "";
+    const decisions = data.decisions || [];
+    const deadlines = data.deadlines || [];
+    if (decisions.length > 0 || deadlines.length > 0) {
+      decisionsHtml = `
+        <div class="context-block">
+          <div class="context-block-title">Decisions & Deadlines</div>
+          <div style="display:flex; flex-direction:column; gap:4px; font-size:11.5px;">
+            ${decisions.map(d => `<div style="color:#0f172a;"><span style="color:#059669; font-weight:700;">★</span> <strong>Decision:</strong> ${escapeHtml(d)}</div>`).join("")}
+            ${deadlines.map(dl => `<div style="color:#b91c1c;"><span style="font-weight:700;">⏰</span> <strong>Deadline:</strong> ${escapeHtml(dl)}</div>`).join("")}
+          </div>
+        </div>
+      `;
+    }
+
+    // 5. Prior Sender Communications
+    let senderHistoryHtml = "";
+    if (data.sender_history && data.sender_history.length > 0) {
+      senderHistoryHtml = `
+        <div class="context-block">
+          <div class="context-block-title">Prior Communications (${data.sender_history.length})</div>
+          <div style="font-size:11.5px; max-height:100px; overflow-y:auto;">
+            ${data.sender_history.map(s => `
+              <div style="margin-bottom:4px;">
+                <span style="color:#2563eb;">•</span> <strong>${escapeHtml(s.subject)}</strong> (${formatEmailTime(s.received_at)})
+              </div>
+            `).join("")}
+          </div>
+        </div>
+      `;
+    }
+
+    contextBody.innerHTML = `
+      <div class="context-grid">
+        ${turnsHtml}
+        ${commitmentsHtml}
+        ${memoryHtml}
+        ${decisionsHtml}
+        ${senderHistoryHtml || `<div class="context-block"><div class="context-block-title">Sender History</div><div style="color:#64748b; font-size:11.5px;">First interaction recorded in this mailbox.</div></div>`}
+      </div>
+    `;
+  } catch (err) {
+    contextBody.innerHTML = `<div style="color:#dc2626; padding:8px;">Failed to load context: ${err.message}</div>`;
+  }
+}
+
+async function generateContextAwareReply(messageId, replyType) {
+  const replyBodyArea = document.getElementById("reply-body");
+  const replySubjInput = document.getElementById("reply-subject");
+  const replyToInput = document.getElementById("reply-to");
+  const guidanceInput = document.getElementById("reply-guidance-input");
+  const userGuidance = guidanceInput ? guidanceInput.value.trim() : "";
+
+  // Set active button state
+  document.querySelectorAll(".btn-context-reply").forEach(btn => {
+    btn.classList.toggle("active", btn.getAttribute("data-reply-type") === replyType);
+  });
+
+  const activeBtn = document.querySelector(`.btn-context-reply[data-reply-type="${replyType}"]`);
+  const origText = activeBtn ? activeBtn.innerHTML : "";
+  if (activeBtn) {
+    activeBtn.disabled = true;
+    activeBtn.innerHTML = `<span>Synthesizing Context...</span>`;
+  }
+
+  try {
+    const res = await fetch("/api/email/context_reply", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message_id: messageId,
+        reply_type: replyType,
+        user_guidance: userGuidance
+      })
+    });
+    const data = await res.json();
+    if (data.success && data.body) {
+      if (replyBodyArea) replyBodyArea.value = data.body;
+      if (replySubjInput && data.subject) replySubjInput.value = data.subject;
+      if (replyToInput && data.to) replyToInput.value = data.to;
+      showSystemToast(`Context reply drafted (${replyType.replace('_', ' ')}). Please review before sending.`);
+      document.getElementById("ai-reply-card")?.scrollIntoView({ behavior: "smooth" });
+      replyBodyArea?.focus();
+    } else {
+      alert("Drafting error: " + (data.error || "Could not generate reply"));
+    }
+  } catch (err) {
+    alert("Reply generation failed: " + err.message);
+  } finally {
+    if (activeBtn) {
+      activeBtn.disabled = false;
+      activeBtn.innerHTML = origText;
+    }
   }
 }
 
@@ -5633,4 +6224,414 @@ async function fetchAuditLogs() {
 
 function initAudit() {
   document.getElementById("btn-refresh-audit")?.addEventListener("click", fetchAuditLogs);
+}
+
+
+// ============================================================================
+// GitHub Integration Dashboard (Milestone 9)
+// ============================================================================
+
+let githubConnectedAccount = null;
+let githubTrackedRepos = [];
+
+const GITHUB_LANG_COLORS = {
+  Python: "#3572A5", JavaScript: "#f1e05a", TypeScript: "#3178c6",
+  Java: "#b07219", "C++": "#f34b7d", C: "#555555", "C#": "#178600",
+  Go: "#00ADD8", Rust: "#dea584", PHP: "#4F5D95", Ruby: "#701516",
+  Swift: "#F05138", Kotlin: "#A97BFF", Dart: "#00B4AB", HTML: "#e34c26",
+  CSS: "#563d7c", Shell: "#89e051", Vue: "#41b883", default: "#64748b"
+};
+
+async function initGithubDashboard() {
+  // Check URL query parameters for OAuth redirect callbacks
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get("github_auth") === "success") {
+    const login = urlParams.get("login") || "";
+    window.history.replaceState({}, document.title, window.location.pathname + "#tab-github");
+    setTimeout(() => {
+      document.querySelector('.nav-item[data-tab="tab-github"]')?.click();
+      showSystemToast(login ? `GitHub account @${login} connected successfully!` : "GitHub account connected successfully!");
+    }, 150);
+  } else if (urlParams.get("github_error")) {
+    const err = urlParams.get("github_error");
+    window.history.replaceState({}, document.title, window.location.pathname + "#tab-github");
+    setTimeout(() => {
+      document.querySelector('.nav-item[data-tab="tab-github"]')?.click();
+      alert("GitHub Connection Failed: " + err);
+    }, 150);
+  }
+
+  // Load initial status
+  await loadGithubStatus();
+
+  // Navigation button click refresh
+  document.getElementById("nav-btn-github")?.addEventListener("click", () => {
+    loadGithubStatus();
+  });
+
+  // Connect Buttons (both header button and main card button)
+  const triggerGithubLogin = () => {
+    window.location.href = "/api/github/auth/login";
+  };
+  document.getElementById("btn-github-connect")?.addEventListener("click", triggerGithubLogin);
+  document.getElementById("btn-github-oauth-main")?.addEventListener("click", triggerGithubLogin);
+
+  // Disconnect Button
+  document.getElementById("btn-github-disconnect")?.addEventListener("click", async () => {
+    if (!confirm("Are you sure you want to disconnect your GitHub account? Connected repositories will remain tracked.")) {
+      return;
+    }
+    try {
+      const res = await fetch("/api/github/auth/disconnect", { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        showSystemToast("GitHub account disconnected.");
+        await loadGithubStatus();
+      } else {
+        alert("Disconnect failed: " + (data.error || "Unknown error"));
+      }
+    } catch (e) {
+      alert("Disconnect error: " + e.message);
+    }
+  });
+
+  // Refresh Button
+  document.getElementById("btn-github-refresh")?.addEventListener("click", async () => {
+    await loadGithubStatus();
+    showSystemToast("GitHub dashboard refreshed.");
+  });
+
+  // Add Repository by URL
+  document.getElementById("btn-github-add-repo-url")?.addEventListener("click", async () => {
+    const input = document.getElementById("github-repo-url-input");
+    const statusEl = document.getElementById("github-add-repo-status");
+    const val = input ? input.value.trim() : "";
+    if (!val) {
+      if (statusEl) {
+        statusEl.className = "error";
+        statusEl.textContent = "Please enter a repository URL or owner/repo format.";
+      }
+      return;
+    }
+
+    const btn = document.getElementById("btn-github-add-repo-url");
+    const origText = btn ? btn.innerHTML : "";
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Adding...";
+    }
+    if (statusEl) {
+      statusEl.className = "";
+      statusEl.textContent = "Validating and fetching repository...";
+    }
+
+    try {
+      const res = await fetch("/api/github/repos/add", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repo: val })
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (input) input.value = "";
+        if (statusEl) {
+          statusEl.className = "success";
+          statusEl.textContent = `Repository '${data.full_name}' added successfully!`;
+        }
+        showSystemToast(`Repository '${data.full_name}' added.`);
+        await loadGithubStatus();
+      } else {
+        if (statusEl) {
+          statusEl.className = "error";
+          statusEl.textContent = data.error || "Failed to add repository.";
+        }
+      }
+    } catch (e) {
+      if (statusEl) {
+        statusEl.className = "error";
+        statusEl.textContent = "Error: " + e.message;
+      }
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = origText;
+      }
+    }
+  });
+
+  // Add Repository from User Dropdown
+  document.getElementById("btn-github-add-selected")?.addEventListener("click", async () => {
+    const select = document.getElementById("github-user-repos-select");
+    const statusEl = document.getElementById("github-add-repo-status");
+    const val = select ? select.value.trim() : "";
+    if (!val) {
+      if (statusEl) {
+        statusEl.className = "error";
+        statusEl.textContent = "Please select a repository from the list.";
+      }
+      return;
+    }
+
+    const btn = document.getElementById("btn-github-add-selected");
+    const origText = btn ? btn.innerHTML : "";
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Adding...";
+    }
+
+    try {
+      const res = await fetch("/api/github/repos/add", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repo: val })
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (statusEl) {
+          statusEl.className = "success";
+          statusEl.textContent = `Repository '${data.full_name}' added!`;
+        }
+        showSystemToast(`Repository '${data.full_name}' added.`);
+        await loadGithubStatus();
+      } else {
+        if (statusEl) {
+          statusEl.className = "error";
+          statusEl.textContent = data.error || "Failed to add repository.";
+        }
+      }
+    } catch (e) {
+      if (statusEl) {
+        statusEl.className = "error";
+        statusEl.textContent = "Error: " + e.message;
+      }
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = origText;
+      }
+    }
+  });
+
+  // Search, filter, and sort listeners
+  document.getElementById("github-repos-search")?.addEventListener("input", filterAndRenderConnectedRepos);
+  document.getElementById("github-repos-filter")?.addEventListener("change", filterAndRenderConnectedRepos);
+  document.getElementById("github-repos-sort")?.addEventListener("change", filterAndRenderConnectedRepos);
+}
+
+async function loadGithubStatus() {
+  try {
+    const res = await fetch("/api/github/auth/status");
+    const data = await res.json();
+
+    const isConnected = !!data.connected;
+    githubConnectedAccount = isConnected ? data : null;
+
+    // Update connection badge
+    const badge = document.getElementById("github-connection-badge");
+    if (badge) {
+      badge.textContent = isConnected ? `Connected: @${data.login}` : "Not Connected";
+      badge.className = `risk-badge ${isConnected ? "risk-low" : "risk-med"}`;
+    }
+
+    // Update stat card values
+    const acctVal = document.getElementById("github-stat-account-val");
+    if (acctVal) acctVal.textContent = isConnected ? `@${data.login}` : "—";
+
+    const totalVal = document.getElementById("github-stat-total-val");
+    if (totalVal) totalVal.textContent = data.total_repos_connected ?? 0;
+
+    const pubVal = document.getElementById("github-stat-public-val");
+    if (pubVal) pubVal.textContent = isConnected ? (data.public_repos ?? 0) : "—";
+
+    const privVal = document.getElementById("github-stat-private-val");
+    if (privVal) privVal.textContent = isConnected ? (data.private_repos ?? 0) : "—";
+
+    // Toggle panels based on connection status
+    const connectCard = document.getElementById("github-connect-card");
+    const addPanel = document.getElementById("github-repo-add-panel");
+    const reposPanel = document.getElementById("github-repos-panel");
+    const headerConnectBtn = document.getElementById("btn-github-connect");
+    const headerDisconnectBtn = document.getElementById("btn-github-disconnect");
+
+    if (isConnected) {
+      if (connectCard) connectCard.style.display = "none";
+      if (addPanel) addPanel.style.display = "block";
+      if (reposPanel) reposPanel.style.display = "block";
+      if (headerConnectBtn) headerConnectBtn.style.display = "none";
+      if (headerDisconnectBtn) headerDisconnectBtn.style.display = "inline-flex";
+
+      // Load user repos dropdown
+      loadGithubUserReposDropdown();
+    } else {
+      if (connectCard) connectCard.style.display = "block";
+      if (addPanel) addPanel.style.display = "none";
+      // If there are locally tracked repos, we can still show the repos panel
+      if (reposPanel) reposPanel.style.display = (data.total_repos_connected > 0) ? "block" : "none";
+      if (headerConnectBtn) headerConnectBtn.style.display = "inline-flex";
+      if (headerDisconnectBtn) headerDisconnectBtn.style.display = "none";
+    }
+
+    // Always load connected repos (even if disconnected, they are stored locally in DB)
+    await loadGithubConnectedRepos();
+  } catch (err) {
+    console.error("Error loading GitHub status:", err);
+  }
+}
+
+async function loadGithubUserReposDropdown() {
+  const select = document.getElementById("github-user-repos-select");
+  if (!select) return;
+
+  try {
+    const res = await fetch("/api/github/repos/user?per_page=100");
+    const data = await res.json();
+    if (data.success && Array.isArray(data.repos)) {
+      select.innerHTML = '<option value="">Select from your repositories...</option>';
+      data.repos.forEach(r => {
+        const opt = document.createElement("option");
+        opt.value = r.full_name;
+        opt.textContent = `${r.full_name} (${r.private ? "Private" : "Public"})`;
+        select.appendChild(opt);
+      });
+    }
+  } catch (e) {
+    console.error("Error loading user repos for dropdown:", e);
+  }
+}
+
+async function loadGithubConnectedRepos() {
+  try {
+    const res = await fetch("/api/github/repos/connected");
+    const data = await res.json();
+    if (data.success && Array.isArray(data.repos)) {
+      githubTrackedRepos = data.repos;
+      filterAndRenderConnectedRepos();
+    }
+  } catch (e) {
+    console.error("Error loading connected repos:", e);
+  }
+}
+
+function filterAndRenderConnectedRepos() {
+  const grid = document.getElementById("github-repos-grid");
+  if (!grid) return;
+
+  const searchVal = (document.getElementById("github-repos-search")?.value || "").toLowerCase().trim();
+  const filterVal = document.getElementById("github-repos-filter")?.value || "all";
+  const sortVal = document.getElementById("github-repos-sort")?.value || "updated";
+
+  let filtered = [...githubTrackedRepos];
+
+  // Search filter
+  if (searchVal) {
+    filtered = filtered.filter(r =>
+      (r.full_name && r.full_name.toLowerCase().includes(searchVal)) ||
+      (r.description && r.description.toLowerCase().includes(searchVal)) ||
+      (r.language && r.language.toLowerCase().includes(searchVal))
+    );
+  }
+
+  // Visibility filter
+  if (filterVal === "public") {
+    filtered = filtered.filter(r => !r.private);
+  } else if (filterVal === "private") {
+    filtered = filtered.filter(r => !!r.private);
+  }
+
+  // Sorting
+  if (sortVal === "name") {
+    filtered.sort((a, b) => (a.full_name || "").localeCompare(b.full_name || ""));
+  } else if (sortVal === "stars") {
+    filtered.sort((a, b) => (b.stars || 0) - (a.stars || 0));
+  } else {
+    // updated
+    filtered.sort((a, b) => {
+      const dateA = a.last_synced_at || a.added_at || "";
+      const dateB = b.last_synced_at || b.added_at || "";
+      return dateB.localeCompare(dateA);
+    });
+  }
+
+  if (filtered.length === 0) {
+    grid.innerHTML = '<div class="empty-state" style="grid-column: 1 / -1; padding: 32px 16px; text-align: center; color: #94a3b8;">No matching repositories found.</div>';
+    return;
+  }
+
+  grid.innerHTML = "";
+  filtered.forEach(repo => {
+    const card = document.createElement("div");
+    card.className = "github-repo-card";
+
+    const langColor = GITHUB_LANG_COLORS[repo.language] || GITHUB_LANG_COLORS.default;
+    const visibilityClass = repo.private ? "private" : "public";
+    const visibilityText = repo.private ? "Private" : "Public";
+    const updatedTime = repo.last_synced_at || repo.added_at || "Recently";
+
+    card.innerHTML = `
+      <div>
+        <div class="github-repo-header">
+          <a href="${escapeHtml(repo.html_url || `https://github.com/${repo.full_name}`)}" target="_blank" class="github-repo-title">
+            ${escapeHtml(repo.full_name)}
+          </a>
+          <span class="github-visibility-badge ${visibilityClass}">${visibilityText}</span>
+        </div>
+        <p class="github-repo-desc">${escapeHtml(repo.description || "No description provided.")}</p>
+      </div>
+
+      <div>
+        <div class="github-repo-meta">
+          ${repo.language ? `
+            <div class="github-meta-item">
+              <span class="github-lang-dot" style="background:${langColor};"></span>
+              <span>${escapeHtml(repo.language)}</span>
+            </div>
+          ` : ""}
+          <div class="github-meta-item">
+            <span>★</span>
+            <span>${repo.stars || 0}</span>
+          </div>
+          <div class="github-meta-item">
+            <span>⎇</span>
+            <span>${escapeHtml(repo.default_branch || "main")}</span>
+          </div>
+          <div class="github-meta-item" style="font-size:11px; color:#94a3b8;">
+            <span>Updated ${escapeHtml(updatedTime)}</span>
+          </div>
+        </div>
+
+        <div class="github-repo-actions">
+          <a href="${escapeHtml(repo.html_url || `https://github.com/${repo.full_name}`)}" target="_blank" class="pill-btn pill-btn-outline" style="font-size:11px; padding:4px 10px;">
+            Open on GitHub ↗
+          </a>
+          <button class="pill-btn pill-btn-outline btn-github-remove" data-id="${repo.id}" data-name="${escapeHtml(repo.full_name)}" style="font-size:11px; padding:4px 10px; color:#dc2626; border-color:#fecaca;">
+            Remove
+          </button>
+        </div>
+      </div>
+    `;
+
+    // Add remove event listener
+    const removeBtn = card.querySelector(".btn-github-remove");
+    removeBtn?.addEventListener("click", async () => {
+      const repoId = removeBtn.getAttribute("data-id");
+      const repoName = removeBtn.getAttribute("data-name");
+      if (!confirm(`Remove repository '${repoName}' from this dashboard?\n(This will NOT delete the repository from GitHub)`)) {
+        return;
+      }
+      try {
+        const res = await fetch(`/api/github/repos/${repoId}`, { method: "DELETE" });
+        const d = await res.json();
+        if (d.success) {
+          showSystemToast(`Removed '${repoName}' from dashboard.`);
+          await loadGithubStatus();
+        } else {
+          alert("Removal failed: " + (d.error || "Unknown error"));
+        }
+      } catch (e) {
+        alert("Removal error: " + e.message);
+      }
+    });
+
+    grid.appendChild(card);
+  });
 }

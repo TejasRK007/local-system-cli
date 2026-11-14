@@ -45,19 +45,46 @@ from app.tools.document_tools import (
     summarize_document,
 )
 from app.tools.email_tools import (
+    email_bulk_cleanup,
+    email_classify_all,
+    email_classify_message,
     email_draft,
+    email_generate_context_aware_reply,
     email_generate_reply,
     email_get_account,
+    email_get_cleanup_candidates,
+    email_get_intelligence_stats,
+    email_get_memories,
+    email_get_privacy_settings,
+    email_get_sender_reputation,
     email_link_account,
     email_link_google_oauth,
+    email_list_senders,
     email_mark_all_read,
     email_read,
+    email_retrieve_context,
     email_search,
     email_send,
+    email_set_privacy_settings,
     email_summarize,
     email_sync,
+    email_toggle_star,
+    email_update_category,
+    email_update_memory_status,
+    email_update_sender_reputation,
 )
-from app.tools.github_tools import github_list_issues
+from app.tools.github_tools import (
+    github_list_issues,
+    github_connection_status,
+    github_disconnect_account,
+    github_list_user_repos,
+    github_list_connected_repos,
+    github_add_repository,
+    github_remove_repository,
+    github_get_repo_metadata,
+    github_store_account,
+    _ensure_github_tables,
+)
 from app.tools.system_tools import get_system_info
 from app.workspaces import WorkspaceManager
 
@@ -213,6 +240,52 @@ class EmailLinkAccountRequest(BaseModel):
     smtp_port: Optional[int] = 587
     username: Optional[str] = ""
     password: Optional[str] = ""
+
+
+class EmailClassifyRequest(BaseModel):
+    message_id: Optional[str] = None
+    force: bool = False
+
+
+class EmailCategoryUpdateRequest(BaseModel):
+    message_id: str
+    category: str
+
+
+class EmailSenderReputationRequest(BaseModel):
+    sender_email: str
+    reputation: str  # trusted, blocked, neutral
+    display_name: Optional[str] = ""
+
+
+class EmailBulkCleanupRequest(BaseModel):
+    message_ids: List[str]
+    confirm: bool = True
+
+
+class EmailContextReplyRequest(BaseModel):
+    message_id: str
+    reply_type: Optional[str] = "professional"  # professional, concise, friendly, detailed, decline, custom, ai_smart, new_context_draft
+    user_guidance: Optional[str] = ""
+
+
+class EmailPrivacySettingsRequest(BaseModel):
+    allow_cloud_processing: bool
+
+
+class EmailMemoryUpdateRequest(BaseModel):
+    memory_id: int
+    is_completed: bool = True
+    is_expired: bool = False
+
+
+class EmailToggleStarRequest(BaseModel):
+    message_id: str
+    is_starred: Optional[bool] = None
+
+
+class GitHubAddRepoRequest(BaseModel):
+    repo: str
 
 
 class CalendarEventRequest(BaseModel):
@@ -2264,31 +2337,55 @@ def api_email_account_link(req: EmailLinkAccountRequest) -> Dict[str, Any]:
     )
 
 
+def _get_google_redirect_uri(request: Optional[Request] = None) -> str:
+    env_uri = os.getenv("GOOGLE_REDIRECT_URI", "").strip()
+    if env_uri:
+        return env_uri
+    if request:
+        base = str(request.base_url).rstrip("/")
+        return f"{base}/api/auth/google/callback"
+    return "http://localhost:8000/api/auth/google/callback"
+
+
 @server_app.get("/api/auth/google/status")
-def api_auth_google_status() -> Dict[str, Any]:
+def api_auth_google_status(request: Request) -> Dict[str, Any]:
     client_id = os.getenv("GOOGLE_CLIENT_ID", "").strip()
     client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
+    redirect_uri = _get_google_redirect_uri(request)
     return {
         "configured": bool(client_id and client_secret),
         "client_id": client_id,
-        "redirect_uri": os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/api/auth/google/callback"),
+        "redirect_uri": redirect_uri,
     }
 
 
 @server_app.get("/api/auth/google/login")
-def api_auth_google_login() -> RedirectResponse:
+def api_auth_google_login(request: Request) -> RedirectResponse:
     import urllib.parse
     client_id = os.getenv("GOOGLE_CLIENT_ID", "").strip()
-    redirect_uri = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/api/auth/google/callback").strip()
+    redirect_uri = _get_google_redirect_uri(request)
 
     if not client_id:
-        raise HTTPException(status_code=400, detail="GOOGLE_CLIENT_ID is not configured in .env")
+        raise HTTPException(
+            status_code=400,
+            detail="GOOGLE_CLIENT_ID is not configured in .env. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET."
+        )
+
+    # Scopes required for complete Gmail (read, thread context, modify labels, move to trash, compose, send) & Calendar sync
+    scopes = [
+        "openid",
+        "email",
+        "profile",
+        "https://www.googleapis.com/auth/gmail.modify",
+        "https://www.googleapis.com/auth/gmail.send",
+        "https://www.googleapis.com/auth/calendar.events",
+    ]
 
     params = {
         "client_id": client_id,
         "redirect_uri": redirect_uri,
         "response_type": "code",
-        "scope": "openid email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send",
+        "scope": " ".join(scopes),
         "access_type": "offline",
         "prompt": "consent",
     }
@@ -2300,6 +2397,7 @@ def api_auth_google_login() -> RedirectResponse:
 def api_auth_google_callback(
     code: Optional[str] = None,
     error: Optional[str] = None,
+    request: Request = None,
 ) -> RedirectResponse:
     import json
     import urllib.error
@@ -2314,7 +2412,7 @@ def api_auth_google_callback(
 
     client_id = os.getenv("GOOGLE_CLIENT_ID", "").strip()
     client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
-    redirect_uri = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/api/auth/google/callback").strip()
+    redirect_uri = _get_google_redirect_uri(request)
 
     try:
         token_data = urllib.parse.urlencode({
@@ -2388,6 +2486,105 @@ def api_email_send(req: EmailSendRequest) -> Dict[str, Any]:
     return email_send(req.to, req.subject, req.body, req.draft_id)
 
 
+@server_app.get("/api/email/intelligence/stats")
+def api_email_intelligence_stats() -> Dict[str, Any]:
+    """Retrieve aggregate counts across all 6 core categories and review_required."""
+    return email_get_intelligence_stats()
+
+
+@server_app.post("/api/email/classify")
+def api_email_classify(req: EmailClassifyRequest) -> Dict[str, Any]:
+    """Trigger AI classification for a single email or batch-classify the whole inbox."""
+    if req.message_id:
+        return email_classify_message(message_id=req.message_id, force=req.force)
+    return email_classify_all(force=req.force)
+
+
+@server_app.post("/api/email/category/update")
+def api_email_category_update(req: EmailCategoryUpdateRequest) -> Dict[str, Any]:
+    """Manually correct or change an email's intelligence category."""
+    return email_update_category(message_id=req.message_id, category=req.category)
+
+
+@server_app.post("/api/email/sender/reputation")
+def api_email_sender_reputation(req: EmailSenderReputationRequest) -> Dict[str, Any]:
+    """Mark a sender as trusted, blocked, or neutral."""
+    return email_update_sender_reputation(
+        sender_email=req.sender_email,
+        reputation=req.reputation,
+        display_name=req.display_name or "",
+    )
+
+
+@server_app.get("/api/email/senders")
+def api_email_senders() -> Dict[str, Any]:
+    """List senders and their reputation settings."""
+    return {"success": True, "senders": email_list_senders()}
+
+
+@server_app.get("/api/email/cleanup/candidates")
+def api_email_cleanup_candidates() -> Dict[str, Any]:
+    """List emails eligible for bulk cleanup (unnecessary, promotions)."""
+    return email_get_cleanup_candidates()
+
+
+@server_app.post("/api/email/cleanup/execute")
+def api_email_cleanup_execute(req: EmailBulkCleanupRequest) -> Dict[str, Any]:
+    """Execute safe bulk cleanup moving selected messages to Trash with audit logging."""
+    return email_bulk_cleanup(message_ids=req.message_ids, confirm=req.confirm)
+
+
+@server_app.get("/api/email/context")
+def api_email_context(id: str) -> Dict[str, Any]:
+    """Retrieve complete thread history, sender interaction context, and commitments."""
+    return email_retrieve_context(id)
+
+
+@server_app.post("/api/email/context_reply")
+def api_email_context_reply(req: EmailContextReplyRequest) -> Dict[str, Any]:
+    """Draft context-aware AI reply across 6 specialized modes without auto-sending."""
+    return email_generate_context_aware_reply(
+        message_id=req.message_id,
+        reply_type=req.reply_type or "professional",
+        user_guidance=req.user_guidance or "",
+    )
+
+
+@server_app.get("/api/email/privacy_settings")
+def api_email_get_privacy_settings() -> Dict[str, Any]:
+    """Retrieve current cloud LLM processing consent and active provider status."""
+    return email_get_privacy_settings()
+
+
+@server_app.post("/api/email/privacy_settings")
+def api_email_set_privacy_settings(req: EmailPrivacySettingsRequest) -> Dict[str, Any]:
+    """Update cloud LLM processing consent (Groq vs Ollama local)."""
+    return email_set_privacy_settings(req.allow_cloud_processing)
+
+
+@server_app.get("/api/email/memory")
+def api_email_get_memory(sender_email: Optional[str] = None, message_id: Optional[str] = None) -> Dict[str, Any]:
+    """Retrieve active commitments, deadlines, decisions, and tasks stored in persistent memory."""
+    memories = email_get_memories(sender_email=sender_email, message_id=message_id)
+    return {"success": True, "memories": memories, "count": len(memories)}
+
+
+@server_app.post("/api/email/memory/status")
+def api_email_update_memory_status(req: EmailMemoryUpdateRequest) -> Dict[str, Any]:
+    """Mark an extracted commitment as completed or expired."""
+    return email_update_memory_status(
+        memory_id=req.memory_id,
+        is_completed=req.is_completed,
+        is_expired=req.is_expired,
+    )
+
+
+@server_app.post("/api/email/star")
+def api_email_star(req: EmailToggleStarRequest) -> Dict[str, Any]:
+    """Toggle starred status for an email to protect it from bulk cleanup."""
+    return email_toggle_star(message_id=req.message_id, is_starred=req.is_starred)
+
+
 @server_app.get("/api/calendar/events")
 def api_calendar_events() -> Dict[str, Any]:
     return calendar_list_events()
@@ -2428,6 +2625,185 @@ def api_github_issues(
     repo: str = "TejasRK007/local-system-cli", state: str = "open"
 ) -> Dict[str, Any]:
     return github_list_issues(repo, state=state)
+
+
+# -----------------------------------------------------------------------------
+# GitHub OAuth & Repository Management Endpoints (Milestone 9)
+# -----------------------------------------------------------------------------
+_GITHUB_OAUTH_STATES: set = set()
+
+
+def _get_github_redirect_uri(request: Optional[Request] = None) -> str:
+    env_uri = os.getenv("GITHUB_REDIRECT_URI", "").strip()
+    if env_uri:
+        return env_uri
+    if request:
+        base = str(request.base_url).rstrip("/")
+        return f"{base}/api/github/auth/callback"
+    return "http://localhost:8000/api/github/auth/callback"
+
+
+@server_app.get("/api/github/auth/status")
+def api_github_auth_status() -> Dict[str, Any]:
+    """Return GitHub account connection status, stats, and recently accessed repos."""
+    return github_connection_status()
+
+
+@server_app.get("/api/github/auth/login")
+def api_github_auth_login(request: Request) -> RedirectResponse:
+    """Redirect to GitHub OAuth authorization screen."""
+    import urllib.parse
+    client_id = os.getenv("GITHUB_CLIENT_ID", "").strip()
+    redirect_uri = _get_github_redirect_uri(request)
+
+    if not client_id:
+        raise HTTPException(
+            status_code=400,
+            detail="GITHUB_CLIENT_ID is not configured in .env. Please set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET.",
+        )
+
+    state = secrets.token_urlsafe(16)
+    _GITHUB_OAUTH_STATES.add(state)
+
+    params = {
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "scope": "read:user,repo",
+        "state": state,
+    }
+    auth_url = "https://github.com/login/oauth/authorize?" + urllib.parse.urlencode(params)
+    return RedirectResponse(url=auth_url, status_code=302)
+
+
+@server_app.get("/api/github/auth/callback")
+def api_github_auth_callback(
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+    error: Optional[str] = None,
+    error_description: Optional[str] = None,
+    request: Request = None,
+) -> RedirectResponse:
+    """Handle OAuth redirect callback from GitHub."""
+    import json
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+
+    if error:
+        err_msg = error_description or error
+        return RedirectResponse(
+            url=f"/?github_error={urllib.parse.quote(err_msg)}#tab-github", status_code=302
+        )
+
+    if not code:
+        return RedirectResponse(url="/?github_error=missing_code#tab-github", status_code=302)
+
+    if state and state not in _GITHUB_OAUTH_STATES:
+        return RedirectResponse(url="/?github_error=invalid_state#tab-github", status_code=302)
+    if state in _GITHUB_OAUTH_STATES:
+        _GITHUB_OAUTH_STATES.discard(state)
+
+    client_id = os.getenv("GITHUB_CLIENT_ID", "").strip()
+    client_secret = os.getenv("GITHUB_CLIENT_SECRET", "").strip()
+    redirect_uri = _get_github_redirect_uri(request)
+
+    try:
+        token_payload = json.dumps({
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "code": code,
+            "redirect_uri": redirect_uri,
+        }).encode("utf-8")
+
+        token_req = urllib.request.Request(
+            "https://github.com/login/oauth/access_token",
+            data=token_payload,
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "User-Agent": "LocalAgenticAutomation/1.0",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(token_req, timeout=15) as resp:
+            token_json = json.loads(resp.read().decode("utf-8"))
+
+        access_token = token_json.get("access_token")
+        if not access_token:
+            err_desc = token_json.get("error_description", token_json.get("error", "token_exchange_failed"))
+            return RedirectResponse(
+                url=f"/?github_error={urllib.parse.quote(err_desc)}#tab-github", status_code=302
+            )
+
+        scope = token_json.get("scope", "")
+
+        user_req = urllib.request.Request(
+            "https://api.github.com/user",
+            headers={
+                "Authorization": f"token {access_token}",
+                "Accept": "application/vnd.github.v3+json",
+                "User-Agent": "LocalAgenticAutomation/1.0",
+            },
+        )
+        with urllib.request.urlopen(user_req, timeout=15) as u_resp:
+            user_data = json.loads(u_resp.read().decode("utf-8"))
+
+        github_store_account(
+            login=user_data.get("login", ""),
+            name=user_data.get("name") or user_data.get("login", ""),
+            email=user_data.get("email") or "",
+            avatar_url=user_data.get("avatar_url") or "",
+            public_repos=int(user_data.get("public_repos", 0)),
+            total_private_repos=int(user_data.get("total_private_repos", 0)),
+            access_token=access_token,
+            scope=scope,
+        )
+
+        return RedirectResponse(
+            url=f"/?github_auth=success&login={urllib.parse.quote(user_data.get('login', ''))}#tab-github",
+            status_code=302,
+        )
+    except Exception as exc:
+        err_msg = urllib.parse.quote(str(exc))
+        return RedirectResponse(url=f"/?github_error={err_msg}#tab-github", status_code=302)
+
+
+@server_app.post("/api/github/auth/disconnect")
+def api_github_auth_disconnect() -> Dict[str, Any]:
+    """Disconnect currently authenticated GitHub account."""
+    return github_disconnect_account()
+
+
+@server_app.get("/api/github/repos/user")
+def api_github_repos_user(page: int = 1, per_page: int = 30) -> Dict[str, Any]:
+    """List authenticated user's remote repositories from GitHub."""
+    return github_list_user_repos(page=page, per_page=per_page)
+
+
+@server_app.get("/api/github/repos/connected")
+def api_github_repos_connected(
+    search: str = "", filter: str = "all", sort: str = "updated"
+) -> Dict[str, Any]:
+    """List connected/tracked repositories from local SQLite database."""
+    return github_list_connected_repos(search=search, filter_visibility=filter, sort=sort)
+
+
+@server_app.post("/api/github/repos/add")
+def api_github_repos_add(req: GitHubAddRepoRequest) -> Dict[str, Any]:
+    """Add and track a repository by URL or owner/repo identifier."""
+    return github_add_repository(req.repo)
+
+
+@server_app.delete("/api/github/repos/{repo_id}")
+def api_github_repos_remove(repo_id: int) -> Dict[str, Any]:
+    """Remove a repository from the dashboard (does NOT delete from GitHub)."""
+    return github_remove_repository(repo_id)
+
+
+@server_app.get("/api/github/repos/{full_name:path}/metadata")
+def api_github_repos_metadata(full_name: str) -> Dict[str, Any]:
+    """Fetch live metadata for a repository."""
+    return github_get_repo_metadata(full_name)
 
 
 @server_app.post("/api/browser/fetch")
