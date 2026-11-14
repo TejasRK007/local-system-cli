@@ -593,12 +593,30 @@ html, body {
   height: 34px;
   border-radius: 50%;
   object-fit: cover;
+  flex-shrink: 0;
+}
+
+.user-avatar-google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  border: 1px solid var(--border-light);
+  box-sizing: border-box;
 }
 
 .user-info {
   display: flex;
   flex-direction: column;
   flex: 1;
+  min-width: 0;
+}
+
+.user-name,
+.user-role {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .user-name {

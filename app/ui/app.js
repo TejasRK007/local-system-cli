@@ -4209,6 +4209,30 @@ function initEmailCopilot() {
   });
 }
 
+function updateSidebarAccount(isGoogleOAuth, email) {
+  const card = document.getElementById("sidebar-user-card");
+  const avatar = document.getElementById("sidebar-user-avatar");
+  const googleAvatar = document.getElementById("sidebar-user-google-avatar");
+  const nameEl = document.getElementById("sidebar-user-name");
+  const roleEl = document.getElementById("sidebar-user-role");
+
+  if (isGoogleOAuth && email) {
+    avatar?.classList.add("hidden");
+    googleAvatar?.classList.remove("hidden");
+    googleAvatar?.setAttribute("aria-hidden", "false");
+    if (nameEl) nameEl.textContent = email;
+    if (roleEl) roleEl.textContent = "Google Account";
+    if (card) card.title = `Signed in as ${email}`;
+  } else {
+    avatar?.classList.remove("hidden");
+    googleAvatar?.classList.add("hidden");
+    googleAvatar?.setAttribute("aria-hidden", "true");
+    if (nameEl) nameEl.textContent = "David";
+    if (roleEl) roleEl.textContent = "Admin";
+    if (card) card.title = "David (Admin)";
+  }
+}
+
 async function fetchEmailAccount() {
   const statusLabel = document.getElementById("account-status-text");
   const linkAccountBtn = document.getElementById("btn-open-link-account");
@@ -4220,6 +4244,8 @@ async function fetchEmailAccount() {
       activeAccountType = data.account_type || "demo";
       const isGoogleOAuth = activeAccountType === "google_oauth" || activeAccountType === "google";
       const isRealImap = activeAccountType === "imap" && activeConnectedEmail && !activeConnectedEmail.includes("demo.executive");
+
+      updateSidebarAccount(isGoogleOAuth, activeConnectedEmail);
 
       if (statusLabel) {
         if (isGoogleOAuth) {
@@ -4278,6 +4304,7 @@ async function fetchEmailAccount() {
   } catch (e) {
     if (statusLabel) statusLabel.textContent = "Sandbox: demo.executive@local.ai";
     if (linkAccountBtn) linkAccountBtn.style.display = "inline-flex";
+    updateSidebarAccount(false, "");
   }
 }
 
