@@ -603,6 +603,16 @@ html, body {
   height: 34px;
   border-radius: 50%;
   object-fit: cover;
+  flex-shrink: 0;
+}
+
+.user-avatar-google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  border: 1px solid var(--border-light);
+  box-sizing: border-box;
 }
 
 .user-avatar-google {

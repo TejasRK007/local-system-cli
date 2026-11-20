@@ -868,6 +868,38 @@ function closeLlmConfigModal() {
   if (modal) modal.classList.add("hidden");
 }
 
+function ensureOllamaModelOption(model) {
+  const select = document.getElementById("cfg-ollama-model");
+  if (!select || !model) return;
+  const exists = Array.from(select.options).some((opt) => opt.value === model);
+  if (!exists) {
+    const option = document.createElement("option");
+    option.value = model;
+    option.textContent = model;
+    select.appendChild(option);
+  }
+  select.value = model;
+}
+
+function populateOllamaModelOptions(models, preferred) {
+  const select = document.getElementById("cfg-ollama-model");
+  if (!select) return;
+
+  const current = (preferred || select.value || "").trim();
+  const names = [];
+  (models || []).forEach((raw) => {
+    const name = String(raw || "").trim();
+    if (name && !names.includes(name)) names.push(name);
+  });
+  if (current && !names.includes(current)) names.unshift(current);
+  if (!names.length) return;
+
+  select.innerHTML = names
+    .map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)
+    .join("");
+  select.value = current;
+}
+
 async function fetchLlmStatus() {
   const elActiveProv = document.getElementById("llm-cfg-active-prov");
   const elOllamaStatus = document.getElementById("llm-cfg-ollama-status");
@@ -1263,6 +1295,58 @@ function initLlmConfigModal(onActivateLlm) {
       }
     } finally {
       btnSaveOllama.disabled = false;
+    }
+  });
+
+  btnListOllamaModels?.addEventListener("click", async () => {
+    const mode = getSelectedComputeMode();
+    const labelSpan = btnListOllamaModels.querySelector("span");
+    const originalLabel = labelSpan ? labelSpan.textContent : "Ollama List";
+
+    if (feedbackEl) {
+      feedbackEl.style.display = "block";
+      feedbackEl.style.background = "#eff6ff";
+      feedbackEl.style.color = "#1e40af";
+      feedbackEl.textContent = "Scanning installed Ollama models...";
+    }
+    btnListOllamaModels.disabled = true;
+    if (labelSpan) labelSpan.textContent = "Scanning...";
+
+    try {
+      const res = await fetch("/api/llm/ollama/models", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cpu_mode: mode === "cpu" }),
+      });
+      let data = {};
+      try { data = await res.json(); } catch (_) {}
+
+      const models = Array.isArray(data.models) ? data.models : [];
+      if (res.ok && data.success && models.length) {
+        const currentModel = inputOllamaModel?.value || "";
+        populateOllamaModelOptions(models, models.includes(currentModel) ? currentModel : models[0]);
+        if (feedbackEl) {
+          feedbackEl.style.background = "#f0fdf4";
+          feedbackEl.style.color = "#166534";
+          const startedNote = data.started ? " Ollama daemon was started automatically." : "";
+          feedbackEl.textContent = `Found ${models.length} Ollama model${models.length === 1 ? "" : "s"}. Select one below and click "Use Local Ollama".${startedNote}`;
+        }
+      } else {
+        if (feedbackEl) {
+          feedbackEl.style.background = "#fef2f2";
+          feedbackEl.style.color = "#991b1b";
+          feedbackEl.textContent = data.error || `Could not detect Ollama models (HTTP ${res.status}).`;
+        }
+      }
+    } catch (e) {
+      if (feedbackEl) {
+        feedbackEl.style.background = "#fef2f2";
+        feedbackEl.style.color = "#991b1b";
+        feedbackEl.textContent = "Error: " + e.message;
+      }
+    } finally {
+      btnListOllamaModels.disabled = false;
+      if (labelSpan) labelSpan.textContent = originalLabel;
     }
   });
 
@@ -4498,6 +4582,30 @@ function initEmailCopilot() {
   });
 }
 
+function updateSidebarAccount(isGoogleOAuth, email) {
+  const card = document.getElementById("sidebar-user-card");
+  const avatar = document.getElementById("sidebar-user-avatar");
+  const googleAvatar = document.getElementById("sidebar-user-google-avatar");
+  const nameEl = document.getElementById("sidebar-user-name");
+  const roleEl = document.getElementById("sidebar-user-role");
+
+  if (isGoogleOAuth && email) {
+    avatar?.classList.add("hidden");
+    googleAvatar?.classList.remove("hidden");
+    googleAvatar?.setAttribute("aria-hidden", "false");
+    if (nameEl) nameEl.textContent = email;
+    if (roleEl) roleEl.textContent = "Google Account";
+    if (card) card.title = `Signed in as ${email}`;
+  } else {
+    avatar?.classList.remove("hidden");
+    googleAvatar?.classList.add("hidden");
+    googleAvatar?.setAttribute("aria-hidden", "true");
+    if (nameEl) nameEl.textContent = "David";
+    if (roleEl) roleEl.textContent = "Admin";
+    if (card) card.title = "David (Admin)";
+  }
+}
+
 async function fetchEmailAccount() {
   const statusLabel = document.getElementById("account-status-text");
   const linkAccountBtn = document.getElementById("btn-open-link-account");
@@ -4509,6 +4617,8 @@ async function fetchEmailAccount() {
       activeAccountType = data.account_type || "demo";
       const isGoogleOAuth = activeAccountType === "google_oauth" || activeAccountType === "google";
       const isRealImap = activeAccountType === "imap" && activeConnectedEmail && !activeConnectedEmail.includes("demo.executive");
+
+      updateSidebarAccount(isGoogleOAuth, activeConnectedEmail);
 
       if (statusLabel) {
         if (isGoogleOAuth) {
@@ -4570,6 +4680,7 @@ async function fetchEmailAccount() {
   } catch (e) {
     if (statusLabel) statusLabel.textContent = "Sandbox: demo.executive@local.ai";
     if (linkAccountBtn) linkAccountBtn.style.display = "inline-flex";
+    updateSidebarAccount(false, "");
   }
 }
 
