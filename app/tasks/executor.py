@@ -23,6 +23,7 @@ from app.tools.document_tools import read_document, summarize_document
 from app.tools.email_tools import email_draft, email_read, email_search, email_send
 from app.tools.file_actions import (
     create_directory,
+    create_file,
     delete_file,
     is_allowed_path,
     move_file,
@@ -651,6 +652,138 @@ class StepExecutor:
                 log_event(
                     user_request=f"[{step.step_id}] create_directory {dest_path}",
                     action="create_directory",
+                    risk_level=risk,
+                    approval_required=True,
+                    approval_result="APPROVED",
+                    execution_status="FAILED" if status == "SUCCESS" else status,
+                    result_summary=err_msg,
+                )
+                return False
+
+        # -------------------------------------------------------------
+        # CREATE_FILE ACTION
+        # -------------------------------------------------------------
+        elif action in ("create_file", "touch"):
+            raw_fp = resolved_args.get("file_path") or resolved_args.get("path") or ""
+            content = resolved_args.get("content", "")
+
+            if not raw_fp:
+                TaskManager.update_step_state(
+                    step, StepStatus.FAILED, attempts=0, error_info="Missing file path"
+                )
+                return False
+
+            target_file_path = Path(raw_fp).expanduser().resolve()
+
+            # Policy check: workspace & path authorization
+            auth_ok, auth_reason = WorkspaceManager.authorize_action(
+                "create_file", target_path=target_file_path
+            )
+            if not auth_ok or not is_allowed_path(
+                target_file_path, permission=Permission.WRITE.value
+            ):
+                err_msg = (
+                    auth_reason
+                    if not auth_ok
+                    else "POLICY_VIOLATION: Path outside allowed directories or lacks WRITE "
+                    "permission"
+                )
+                TaskManager.update_step_state(
+                    step, StepStatus.FAILED, attempts=0, error_info=err_msg
+                )
+                log_event(
+                    user_request=f"[{step.step_id}] create_file {target_file_path}",
+                    action="create_file",
+                    risk_level=risk,
+                    approval_required=True,
+                    approval_result="NOT_APPLICABLE",
+                    execution_status="POLICY_VIOLATION",
+                    result_summary=err_msg,
+                )
+                return False
+
+            # Approval gate
+            if requires_approval(risk):
+                TaskManager.update_step_state(step, StepStatus.WAITING_FOR_APPROVAL, attempts=0)
+                TaskManager.update_task_state(task, TaskStatus.WAITING_FOR_APPROVAL)
+
+                prompt_msg = f"Do you want to create file {target_file_path}?"
+                approved = (
+                    confirm_callback(action, prompt_msg, {"File": str(target_file_path)})
+                    if confirm_callback
+                    else True
+                )
+
+                if not approved:
+                    TaskManager.update_step_state(
+                        step, StepStatus.FAILED, attempts=0, error_info="Approval denied by user"
+                    )
+                    log_event(
+                        user_request=f"[{step.step_id}] create_file {target_file_path}",
+                        action="create_file",
+                        risk_level=risk,
+                        approval_required=True,
+                        approval_result="DENIED",
+                        execution_status="CANCELLED",
+                        result_summary=f"Cancelled creation of file {target_file_path}",
+                    )
+                    return False
+
+            # Execution with Recovery & Observation
+            TaskManager.update_step_state(step, StepStatus.RUNNING, attempts=1)
+            TaskManager.update_task_state(task, TaskStatus.RUNNING)
+
+            exec_res = execute_action_with_recovery(
+                action="create_file",
+                action_func=create_file,
+                func_args=(str(target_file_path), content),
+                source_path=None,
+                destination_path=target_file_path,
+                on_retry=on_retry,
+            )
+
+            status = exec_res["status"]
+            summary = exec_res["result_summary"]
+            attempts = exec_res["attempts"]
+
+            # Physical filesystem verification
+            physically_exists = target_file_path.exists() and target_file_path.is_file()
+
+            if status == "SUCCESS" and physically_exists:
+                TaskManager.update_step_state(
+                    step,
+                    StepStatus.SUCCESS,
+                    attempts=attempts,
+                    output={"path": str(target_file_path), "created_file": str(target_file_path)},
+                    error_info=None,
+                )
+                log_event(
+                    user_request=f"[{step.step_id}] create_file {target_file_path}",
+                    action="create_file",
+                    risk_level=risk,
+                    approval_required=True,
+                    approval_result="APPROVED",
+                    execution_status="SUCCESS",
+                    result_summary=summary,
+                )
+                return True
+            else:
+                err_msg = (
+                    summary
+                    if status != "SUCCESS"
+                    else f"Physical verification failed: file does not physically exist at "
+                    f"{target_file_path}"
+                )
+                TaskManager.update_step_state(
+                    step,
+                    StepStatus.FAILED,
+                    attempts=attempts,
+                    output=None,
+                    error_info=err_msg,
+                )
+                log_event(
+                    user_request=f"[{step.step_id}] create_file {target_file_path}",
+                    action="create_file",
                     risk_level=risk,
                     approval_required=True,
                     approval_result="APPROVED",

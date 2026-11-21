@@ -17,6 +17,8 @@ ALLOWED_ACTIONS: frozenset[str] = frozenset(
         "search",
         "create_directory",
         "mkdir",
+        "create_file",
+        "touch",
         "move",
         "rename",
         "delete",
@@ -41,6 +43,15 @@ ALLOWED_ACTIONS: frozenset[str] = frozenset(
         "email_read",
         "email_draft",
         "email_send",
+        "email_classify",
+        "email_classify_message",
+        "email_classify_all",
+        "email_update_category",
+        "email_update_sender_reputation",
+        "email_retrieve_context",
+        "email_generate_context_reply",
+        "email_generate_context_aware_reply",
+        "email_bulk_cleanup",
         "calendar_list_events",
         "calendar_check_conflict",
         "calendar_create_event",
@@ -192,6 +203,39 @@ class PlanValidator:
                         return (
                             False,
                             f"Plan validation failed: step #{order} create_directory unauthorized: "
+                            f"{auth_reason}",
+                        )
+
+            # ---------------------------------------------------------
+            # CREATE_FILE
+            # ---------------------------------------------------------
+            elif action in ("create_file", "touch"):
+                raw_fp = args.get("file_path") or args.get("path")
+                if not raw_fp or not str(raw_fp).strip():
+                    return (
+                        False,
+                        f"Plan validation failed: step #{order} ({action}) missing "
+                        f"required 'file_path' argument.",
+                    )
+
+                fp_str = str(raw_fp).strip()
+                if not fp_str.startswith("$"):
+                    path_obj = Path(fp_str).expanduser()
+                    safe_ok, safe_reason = cls._check_path_safety(path_obj)
+                    if not safe_ok:
+                        return (
+                            False,
+                            f"Plan validation failed: step #{order} target path unsafe: "
+                            f"{safe_reason}",
+                        )
+
+                    auth_ok, auth_reason = WorkspaceManager.authorize_action(
+                        "create_file", target_path=path_obj
+                    )
+                    if not auth_ok:
+                        return (
+                            False,
+                            f"Plan validation failed: step #{order} create_file unauthorized: "
                             f"{auth_reason}",
                         )
 

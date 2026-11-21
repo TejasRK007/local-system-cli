@@ -114,6 +114,7 @@ def test_existing_llm_behavior_intact_when_configured(monkeypatch):
     """Verify LLM client initializes properly when configured and supports mock overrides."""
     fake_key = "gsk_valid_mock_api_key_test_12345"
     monkeypatch.setenv("GROQ_API_KEY", fake_key)
+    monkeypatch.delenv("GROQ_MODEL", raising=False)
 
     app.agent.llm = None
     app.agent.llm_with_tools = None
@@ -127,7 +128,7 @@ def test_existing_llm_behavior_intact_when_configured(monkeypatch):
     client = app.agent.get_llm()
     assert client == mock_instance
     mock_chat_groq.assert_called_once_with(
-        model="openai/gpt-oss-20b",
+        model="llama-3.3-70b-versatile",
         api_key=fake_key,
         temperature=0,
     )

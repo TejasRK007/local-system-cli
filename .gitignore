@@ -44,3 +44,13 @@ uploads/
 
 # Local development/test artifacts
 manual_test/
+my_sandbox/
+cloudflared.exe
+*.zip
+
+# Google Cloud OAuth credentials & tokens
+credentials.json
+client_secret*.json
+token.json
+
+
