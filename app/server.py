@@ -45,19 +45,84 @@ from app.tools.document_tools import (
     summarize_document,
 )
 from app.tools.email_tools import (
+    email_bulk_cleanup,
+    email_classify_all,
+    email_classify_message,
     email_draft,
+    email_generate_context_aware_reply,
     email_generate_reply,
     email_get_account,
+    email_get_cleanup_candidates,
+    email_get_intelligence_stats,
+    email_get_memories,
+    email_get_privacy_settings,
+    email_get_sender_reputation,
     email_link_account,
     email_link_google_oauth,
+    email_list_senders,
     email_mark_all_read,
     email_read,
+    email_retrieve_context,
     email_search,
     email_send,
+    email_set_privacy_settings,
     email_summarize,
     email_sync,
+    email_toggle_star,
+    email_update_category,
+    email_update_memory_status,
+    email_update_sender_reputation,
 )
-from app.tools.github_tools import github_list_issues
+from app.tools.github_tools import (
+    github_list_issues,
+    github_connection_status,
+    github_disconnect_account,
+    github_list_user_repos,
+    github_list_connected_repos,
+    github_add_repository,
+    github_remove_repository,
+    github_get_repo_metadata,
+    github_store_account,
+    github_analyze_connected_repo,
+    github_analyze_zip_upload,
+    github_get_latest_analysis,
+    github_get_analysis_by_id,
+    _ensure_github_tables,
+)
+from app.tools.github_chat import (
+    clear_chat_history,
+    create_chat_session,
+    execute_repository_chat,
+    get_chat_history,
+    list_analyzed_repos_for_chat,
+)
+from app.tools.github_workbench import (
+    GitHubApprovalRequiredError,
+    GitHubAuthError,
+    GitHubDangerousOperationBlockedError,
+    GitHubNotFoundError,
+    GitHubRateLimitError,
+    GitHubWorkbenchError,
+    github_add_issue_comment_safe,
+    github_analyze_workflow_failure,
+    github_compare_commits,
+    github_create_issue_safe,
+    github_create_pr_comment_safe,
+    github_get_issue_detail,
+    github_get_pr_detail,
+    github_get_pr_diff,
+    github_get_repo_overview,
+    github_get_workflow_run_details,
+    github_list_repo_branches,
+    github_list_repo_commits,
+    github_list_repo_issues,
+    github_list_repo_prs,
+    github_list_workflow_runs,
+    github_rerun_workflow_safe,
+    github_review_pr,
+    github_summarize_issue,
+    github_update_issue_safe,
+)
 from app.tools.system_tools import get_system_info
 from app.workspaces import WorkspaceManager
 
@@ -213,6 +278,124 @@ class EmailLinkAccountRequest(BaseModel):
     smtp_port: Optional[int] = 587
     username: Optional[str] = ""
     password: Optional[str] = ""
+
+
+class EmailClassifyRequest(BaseModel):
+    message_id: Optional[str] = None
+    force: bool = False
+
+
+class EmailCategoryUpdateRequest(BaseModel):
+    message_id: str
+    category: str
+
+
+class EmailSenderReputationRequest(BaseModel):
+    sender_email: str
+    reputation: str  # trusted, blocked, neutral
+    display_name: Optional[str] = ""
+
+
+class EmailBulkCleanupRequest(BaseModel):
+    message_ids: List[str]
+    confirm: bool = True
+
+
+class EmailContextReplyRequest(BaseModel):
+    message_id: str
+    reply_type: Optional[str] = "professional"  # professional, concise, friendly, detailed, decline, custom, ai_smart, new_context_draft
+    user_guidance: Optional[str] = ""
+
+
+class EmailPrivacySettingsRequest(BaseModel):
+    allow_cloud_processing: bool
+
+
+class EmailMemoryUpdateRequest(BaseModel):
+    memory_id: int
+    is_completed: bool = True
+    is_expired: bool = False
+
+
+class EmailToggleStarRequest(BaseModel):
+    message_id: str
+    is_starred: Optional[bool] = None
+
+
+class GitHubAddRepoRequest(BaseModel):
+    repo: str
+
+
+class GitHubAnalyzeRepoRequest(BaseModel):
+    force_refresh: bool = False
+
+
+class GitHubChatQueryRequest(BaseModel):
+    repo_name: str
+    message: str
+    repo_id: Optional[int] = None
+    commit_sha: Optional[str] = None
+    session_id: Optional[int] = None
+
+
+class GitHubChatClearRequest(BaseModel):
+    repo_name: str
+    session_id: Optional[int] = None
+
+
+class GitHubChatNewSessionRequest(BaseModel):
+    repo_name: str
+    commit_sha: Optional[str] = None
+    repo_id: Optional[int] = None
+    title: Optional[str] = "New Chat"
+
+
+# Milestone 9 - Prompt 4: Developer Workbench Models
+class GitHubIssueCreateRequest(BaseModel):
+    repo_name: str
+    title: str
+    body: str = ""
+    labels: Optional[List[str]] = None
+    assignees: Optional[List[str]] = None
+    approved: bool = False
+
+
+class GitHubIssueUpdateRequest(BaseModel):
+    repo_name: str
+    state: Optional[str] = None
+    title: Optional[str] = None
+    body: Optional[str] = None
+    labels: Optional[List[str]] = None
+    approved: bool = False
+
+
+class GitHubIssueCommentRequest(BaseModel):
+    repo_name: str
+    body: str
+    approved: bool = False
+
+
+class GitHubIssueSummarizeRequest(BaseModel):
+    repo_name: str
+
+
+class GitHubPRReviewRequest(BaseModel):
+    repo_name: str
+
+
+class GitHubPRCommentRequest(BaseModel):
+    repo_name: str
+    body: str
+    approved: bool = False
+
+
+class GitHubWorkflowAnalyzeRequest(BaseModel):
+    repo_name: str
+
+
+class GitHubWorkflowRerunRequest(BaseModel):
+    repo_name: str
+    approved: bool = False
 
 
 class CalendarEventRequest(BaseModel):
@@ -406,6 +589,34 @@ def set_system_access_mode(payload: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _fetch_installed_ollama_models(timeout: float = 15.0) -> list[Dict[str, Any]]:
+    """Return every model installed in the local Ollama daemon, sorted by name."""
+    import json
+    import urllib.request
+
+    req = urllib.request.Request("http://127.0.0.1:11434/api/tags")
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+
+    models: list[Dict[str, Any]] = []
+    for item in data.get("models", []) or []:
+        name = item.get("name") or item.get("model") or ""
+        if not name:
+            continue
+        details = item.get("details") or {}
+        models.append(
+            {
+                "name": name,
+                "size": item.get("size"),
+                "modified_at": item.get("modified_at"),
+                "parameter_size": details.get("parameter_size") or "",
+                "family": details.get("family") or "",
+            }
+        )
+    models.sort(key=lambda entry: entry["name"].lower())
+    return models
+
+
 @server_app.get("/api/llm/status")
 def api_llm_status() -> Dict[str, Any]:
     """Return real-time status of local Ollama and Groq cloud configurations."""
@@ -418,12 +629,7 @@ def api_llm_status() -> Dict[str, Any]:
     models: list[str] = []
     if ollama_ok:
         try:
-            import json
-            import urllib.request
-            req = urllib.request.Request("http://127.0.0.1:11434/api/tags")
-            with urllib.request.urlopen(req, timeout=2) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                models = [m.get("name") for m in data.get("models", [])]
+            models = [entry["name"] for entry in _fetch_installed_ollama_models(timeout=2)]
         except Exception:
             pass
 
@@ -715,119 +921,62 @@ def api_start_ollama(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]
         return {"success": False, "error": f"Failed to start Ollama: {e}"}
 
 
-def _find_ollama_binary() -> str:
-    """Locate the Ollama executable across Windows, macOS and Linux."""
-    import platform
-    import shutil
-
-    found = shutil.which("ollama") or ""
-    if found:
-        return found
-
-    candidates: list[str] = []
-    if platform.system() == "Windows":
-        local = os.environ.get("LOCALAPPDATA", "")
-        if local:
-            candidates.append(os.path.join(local, "Programs", "Ollama", "ollama.exe"))
-    elif platform.system() == "Darwin":
-        candidates.append("/Applications/Ollama.app/Contents/Resources/ollama")
-    else:
-        candidates.append("/usr/local/bin/ollama")
-
-    for candidate in candidates:
-        if candidate and Path(candidate).exists():
-            return candidate
-    return ""
-
-
 @server_app.post("/api/llm/ollama/models")
 def api_ollama_models(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
-    Detect every Ollama model installed on this machine.
+    Start the local Ollama daemon when needed and list every installed model.
 
-    Starts the Ollama daemon automatically when it is offline, then reads the
-    model list from the local API (falling back to `ollama list`).
+    Accepts optional JSON body:
+      { "cpu_mode": true }   — forwarded to the daemon launcher.
     """
-    import json
-    import subprocess
-    import urllib.request
-
     from app.llm import is_ollama_online
 
-    if payload is None:
-        payload = {}
-
+    body = payload or {}
+    cpu_mode = bool(body.get("cpu_mode", False))
     started = False
-
-    def _list_via_api() -> list[str]:
-        req = urllib.request.Request("http://127.0.0.1:11434/api/tags")
-        with urllib.request.urlopen(req, timeout=3) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        return [m.get("name") for m in data.get("models", []) if m.get("name")]
+    start_message = ""
 
     if not is_ollama_online():
-        start_result = api_start_ollama({"cpu_mode": bool(payload.get("cpu_mode", False))})
-        started = bool(start_result.get("success"))
-        if not started and start_result.get("error"):
+        start_result = api_start_ollama({"cpu_mode": cpu_mode})
+        if not start_result.get("success"):
             return {
                 "success": False,
-                "error": start_result["error"],
                 "models": [],
-                "ollama_online": False,
+                "started": False,
+                "error": start_result.get("error")
+                or start_result.get("message")
+                or "Could not start Ollama.",
             }
+        started = True
+        start_message = start_result.get("message") or "Ollama started."
 
-    models: list[str] = []
-    if is_ollama_online():
-        try:
-            models = _list_via_api()
-        except Exception:
-            models = []
-
-    if not models:
-        ollama_path = _find_ollama_binary()
-        if ollama_path:
-            try:
-                proc = subprocess.run(
-                    [ollama_path, "list"],
-                    capture_output=True,
-                    text=True,
-                    errors="replace",
-                    timeout=20,
-                )
-                for line in (proc.stdout or "").splitlines():
-                    parts = line.split()
-                    if not parts or parts[0].upper() == "NAME":
-                        continue
-                    models.append(parts[0])
-            except Exception:
-                pass
-
-    # Deduplicate while preserving installation order
-    seen: set[str] = set()
-    unique_models: list[str] = []
-    for name in models:
-        if name and name not in seen:
-            seen.add(name)
-            unique_models.append(name)
-
-    if not unique_models:
+    try:
+        models = _fetch_installed_ollama_models()
+    except Exception as e:
         return {
             "success": False,
-            "error": (
-                "No Ollama models found. Pull one first, e.g. "
-                "`ollama pull qwen2.5:3b`."
-            ),
             "models": [],
-            "ollama_online": is_ollama_online(),
             "started": started,
+            "error": f"Ollama is online but its model list could not be read: {e}",
         }
+
+    if not models:
+        message = (
+            "Ollama is running but no models are installed. "
+            "Pull one first, e.g. ollama pull qwen2.5:3b"
+        )
+    elif started:
+        message = f"{start_message} Found {len(models)} installed model(s)."
+    else:
+        message = f"Found {len(models)} installed model(s)."
 
     return {
         "success": True,
-        "models": unique_models,
-        "count": len(unique_models),
-        "ollama_online": True,
+        "models": models,
+        "count": len(models),
         "started": started,
+        "configured_model": os.getenv("OLLAMA_MODEL", "qwen2.5:3b"),
+        "message": message,
     }
 
 
@@ -2380,31 +2529,55 @@ def api_email_account_link(req: EmailLinkAccountRequest) -> Dict[str, Any]:
     )
 
 
+def _get_google_redirect_uri(request: Optional[Request] = None) -> str:
+    env_uri = os.getenv("GOOGLE_REDIRECT_URI", "").strip()
+    if env_uri:
+        return env_uri
+    if request:
+        base = str(request.base_url).rstrip("/")
+        return f"{base}/api/auth/google/callback"
+    return "http://localhost:8000/api/auth/google/callback"
+
+
 @server_app.get("/api/auth/google/status")
-def api_auth_google_status() -> Dict[str, Any]:
+def api_auth_google_status(request: Request) -> Dict[str, Any]:
     client_id = os.getenv("GOOGLE_CLIENT_ID", "").strip()
     client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
+    redirect_uri = _get_google_redirect_uri(request)
     return {
         "configured": bool(client_id and client_secret),
         "client_id": client_id,
-        "redirect_uri": os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/api/auth/google/callback"),
+        "redirect_uri": redirect_uri,
     }
 
 
 @server_app.get("/api/auth/google/login")
-def api_auth_google_login() -> RedirectResponse:
+def api_auth_google_login(request: Request) -> RedirectResponse:
     import urllib.parse
     client_id = os.getenv("GOOGLE_CLIENT_ID", "").strip()
-    redirect_uri = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/api/auth/google/callback").strip()
+    redirect_uri = _get_google_redirect_uri(request)
 
     if not client_id:
-        raise HTTPException(status_code=400, detail="GOOGLE_CLIENT_ID is not configured in .env")
+        raise HTTPException(
+            status_code=400,
+            detail="GOOGLE_CLIENT_ID is not configured in .env. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET."
+        )
+
+    # Scopes required for complete Gmail (read, thread context, modify labels, move to trash, compose, send) & Calendar sync
+    scopes = [
+        "openid",
+        "email",
+        "profile",
+        "https://www.googleapis.com/auth/gmail.modify",
+        "https://www.googleapis.com/auth/gmail.send",
+        "https://www.googleapis.com/auth/calendar.events",
+    ]
 
     params = {
         "client_id": client_id,
         "redirect_uri": redirect_uri,
         "response_type": "code",
-        "scope": "openid email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send",
+        "scope": " ".join(scopes),
         "access_type": "offline",
         "prompt": "consent",
     }
@@ -2416,6 +2589,7 @@ def api_auth_google_login() -> RedirectResponse:
 def api_auth_google_callback(
     code: Optional[str] = None,
     error: Optional[str] = None,
+    request: Request = None,
 ) -> RedirectResponse:
     import json
     import urllib.error
@@ -2430,7 +2604,7 @@ def api_auth_google_callback(
 
     client_id = os.getenv("GOOGLE_CLIENT_ID", "").strip()
     client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
-    redirect_uri = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/api/auth/google/callback").strip()
+    redirect_uri = _get_google_redirect_uri(request)
 
     try:
         token_data = urllib.parse.urlencode({
@@ -2504,6 +2678,105 @@ def api_email_send(req: EmailSendRequest) -> Dict[str, Any]:
     return email_send(req.to, req.subject, req.body, req.draft_id)
 
 
+@server_app.get("/api/email/intelligence/stats")
+def api_email_intelligence_stats() -> Dict[str, Any]:
+    """Retrieve aggregate counts across all 6 core categories and review_required."""
+    return email_get_intelligence_stats()
+
+
+@server_app.post("/api/email/classify")
+def api_email_classify(req: EmailClassifyRequest) -> Dict[str, Any]:
+    """Trigger AI classification for a single email or batch-classify the whole inbox."""
+    if req.message_id:
+        return email_classify_message(message_id=req.message_id, force=req.force)
+    return email_classify_all(force=req.force)
+
+
+@server_app.post("/api/email/category/update")
+def api_email_category_update(req: EmailCategoryUpdateRequest) -> Dict[str, Any]:
+    """Manually correct or change an email's intelligence category."""
+    return email_update_category(message_id=req.message_id, category=req.category)
+
+
+@server_app.post("/api/email/sender/reputation")
+def api_email_sender_reputation(req: EmailSenderReputationRequest) -> Dict[str, Any]:
+    """Mark a sender as trusted, blocked, or neutral."""
+    return email_update_sender_reputation(
+        sender_email=req.sender_email,
+        reputation=req.reputation,
+        display_name=req.display_name or "",
+    )
+
+
+@server_app.get("/api/email/senders")
+def api_email_senders() -> Dict[str, Any]:
+    """List senders and their reputation settings."""
+    return {"success": True, "senders": email_list_senders()}
+
+
+@server_app.get("/api/email/cleanup/candidates")
+def api_email_cleanup_candidates() -> Dict[str, Any]:
+    """List emails eligible for bulk cleanup (unnecessary, promotions)."""
+    return email_get_cleanup_candidates()
+
+
+@server_app.post("/api/email/cleanup/execute")
+def api_email_cleanup_execute(req: EmailBulkCleanupRequest) -> Dict[str, Any]:
+    """Execute safe bulk cleanup moving selected messages to Trash with audit logging."""
+    return email_bulk_cleanup(message_ids=req.message_ids, confirm=req.confirm)
+
+
+@server_app.get("/api/email/context")
+def api_email_context(id: str) -> Dict[str, Any]:
+    """Retrieve complete thread history, sender interaction context, and commitments."""
+    return email_retrieve_context(id)
+
+
+@server_app.post("/api/email/context_reply")
+def api_email_context_reply(req: EmailContextReplyRequest) -> Dict[str, Any]:
+    """Draft context-aware AI reply across 6 specialized modes without auto-sending."""
+    return email_generate_context_aware_reply(
+        message_id=req.message_id,
+        reply_type=req.reply_type or "professional",
+        user_guidance=req.user_guidance or "",
+    )
+
+
+@server_app.get("/api/email/privacy_settings")
+def api_email_get_privacy_settings() -> Dict[str, Any]:
+    """Retrieve current cloud LLM processing consent and active provider status."""
+    return email_get_privacy_settings()
+
+
+@server_app.post("/api/email/privacy_settings")
+def api_email_set_privacy_settings(req: EmailPrivacySettingsRequest) -> Dict[str, Any]:
+    """Update cloud LLM processing consent (Groq vs Ollama local)."""
+    return email_set_privacy_settings(req.allow_cloud_processing)
+
+
+@server_app.get("/api/email/memory")
+def api_email_get_memory(sender_email: Optional[str] = None, message_id: Optional[str] = None) -> Dict[str, Any]:
+    """Retrieve active commitments, deadlines, decisions, and tasks stored in persistent memory."""
+    memories = email_get_memories(sender_email=sender_email, message_id=message_id)
+    return {"success": True, "memories": memories, "count": len(memories)}
+
+
+@server_app.post("/api/email/memory/status")
+def api_email_update_memory_status(req: EmailMemoryUpdateRequest) -> Dict[str, Any]:
+    """Mark an extracted commitment as completed or expired."""
+    return email_update_memory_status(
+        memory_id=req.memory_id,
+        is_completed=req.is_completed,
+        is_expired=req.is_expired,
+    )
+
+
+@server_app.post("/api/email/star")
+def api_email_star(req: EmailToggleStarRequest) -> Dict[str, Any]:
+    """Toggle starred status for an email to protect it from bulk cleanup."""
+    return email_toggle_star(message_id=req.message_id, is_starred=req.is_starred)
+
+
 @server_app.get("/api/calendar/events")
 def api_calendar_events() -> Dict[str, Any]:
     return calendar_list_events()
@@ -2544,6 +2817,681 @@ def api_github_issues(
     repo: str = "TejasRK007/local-system-cli", state: str = "open"
 ) -> Dict[str, Any]:
     return github_list_issues(repo, state=state)
+
+
+# -----------------------------------------------------------------------------
+# GitHub OAuth & Repository Management Endpoints (Milestone 9)
+# -----------------------------------------------------------------------------
+_GITHUB_OAUTH_STATES: set = set()
+
+
+def _get_github_redirect_uri(request: Optional[Request] = None) -> str:
+    env_uri = os.getenv("GITHUB_REDIRECT_URI", "").strip()
+    if env_uri:
+        return env_uri
+    if request:
+        base = str(request.base_url).rstrip("/")
+        return f"{base}/api/github/auth/callback"
+    return "http://localhost:8000/api/github/auth/callback"
+
+
+@server_app.get("/api/github/auth/status")
+def api_github_auth_status() -> Dict[str, Any]:
+    """Return GitHub account connection status, stats, and recently accessed repos."""
+    return github_connection_status()
+
+
+@server_app.get("/api/github/auth/login")
+def api_github_auth_login(request: Request) -> RedirectResponse:
+    """Redirect to GitHub OAuth authorization screen."""
+    import urllib.parse
+    client_id = os.getenv("GITHUB_CLIENT_ID", "").strip()
+    redirect_uri = _get_github_redirect_uri(request)
+
+    if not client_id:
+        raise HTTPException(
+            status_code=400,
+            detail="GITHUB_CLIENT_ID is not configured in .env. Please set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET.",
+        )
+
+    state = secrets.token_urlsafe(16)
+    _GITHUB_OAUTH_STATES.add(state)
+
+    params = {
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "scope": "read:user,repo",
+        "state": state,
+    }
+    auth_url = "https://github.com/login/oauth/authorize?" + urllib.parse.urlencode(params)
+    return RedirectResponse(url=auth_url, status_code=302)
+
+
+@server_app.get("/api/github/auth/callback")
+def api_github_auth_callback(
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+    error: Optional[str] = None,
+    error_description: Optional[str] = None,
+    request: Request = None,
+) -> RedirectResponse:
+    """Handle OAuth redirect callback from GitHub."""
+    import json
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+
+    if error:
+        err_msg = error_description or error
+        return RedirectResponse(
+            url=f"/?github_error={urllib.parse.quote(err_msg)}#tab-github", status_code=302
+        )
+
+    if not code:
+        return RedirectResponse(url="/?github_error=missing_code#tab-github", status_code=302)
+
+    if state and state not in _GITHUB_OAUTH_STATES:
+        return RedirectResponse(url="/?github_error=invalid_state#tab-github", status_code=302)
+    if state in _GITHUB_OAUTH_STATES:
+        _GITHUB_OAUTH_STATES.discard(state)
+
+    client_id = os.getenv("GITHUB_CLIENT_ID", "").strip()
+    client_secret = os.getenv("GITHUB_CLIENT_SECRET", "").strip()
+    redirect_uri = _get_github_redirect_uri(request)
+
+    try:
+        token_payload = json.dumps({
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "code": code,
+            "redirect_uri": redirect_uri,
+        }).encode("utf-8")
+
+        token_req = urllib.request.Request(
+            "https://github.com/login/oauth/access_token",
+            data=token_payload,
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "User-Agent": "LocalAgenticAutomation/1.0",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(token_req, timeout=15) as resp:
+            token_json = json.loads(resp.read().decode("utf-8"))
+
+        access_token = token_json.get("access_token")
+        if not access_token:
+            err_desc = token_json.get("error_description", token_json.get("error", "token_exchange_failed"))
+            return RedirectResponse(
+                url=f"/?github_error={urllib.parse.quote(err_desc)}#tab-github", status_code=302
+            )
+
+        scope = token_json.get("scope", "")
+
+        user_req = urllib.request.Request(
+            "https://api.github.com/user",
+            headers={
+                "Authorization": f"token {access_token}",
+                "Accept": "application/vnd.github.v3+json",
+                "User-Agent": "LocalAgenticAutomation/1.0",
+            },
+        )
+        with urllib.request.urlopen(user_req, timeout=15) as u_resp:
+            user_data = json.loads(u_resp.read().decode("utf-8"))
+
+        github_store_account(
+            login=user_data.get("login", ""),
+            name=user_data.get("name") or user_data.get("login", ""),
+            email=user_data.get("email") or "",
+            avatar_url=user_data.get("avatar_url") or "",
+            public_repos=int(user_data.get("public_repos", 0)),
+            total_private_repos=int(user_data.get("total_private_repos", 0)),
+            access_token=access_token,
+            scope=scope,
+        )
+
+        return RedirectResponse(
+            url=f"/?github_auth=success&login={urllib.parse.quote(user_data.get('login', ''))}#tab-github",
+            status_code=302,
+        )
+    except Exception as exc:
+        err_msg = urllib.parse.quote(str(exc))
+        return RedirectResponse(url=f"/?github_error={err_msg}#tab-github", status_code=302)
+
+
+@server_app.post("/api/github/auth/disconnect")
+def api_github_auth_disconnect() -> Dict[str, Any]:
+    """Disconnect currently authenticated GitHub account."""
+    return github_disconnect_account()
+
+
+@server_app.get("/api/github/repos/user")
+def api_github_repos_user(page: int = 1, per_page: int = 30) -> Dict[str, Any]:
+    """List authenticated user's remote repositories from GitHub."""
+    return github_list_user_repos(page=page, per_page=per_page)
+
+
+@server_app.get("/api/github/repos/connected")
+def api_github_repos_connected(
+    search: str = "", filter: str = "all", sort: str = "updated"
+) -> Dict[str, Any]:
+    """List connected/tracked repositories from local SQLite database."""
+    return github_list_connected_repos(search=search, filter_visibility=filter, sort=sort)
+
+
+@server_app.post("/api/github/repos/add")
+def api_github_repos_add(req: GitHubAddRepoRequest) -> Dict[str, Any]:
+    """Add and track a repository by URL or owner/repo identifier."""
+    return github_add_repository(req.repo)
+
+
+@server_app.delete("/api/github/repos/{repo_id}")
+def api_github_repos_remove(repo_id: int) -> Dict[str, Any]:
+    """Remove a repository from the dashboard (does NOT delete from GitHub)."""
+    return github_remove_repository(repo_id)
+
+
+@server_app.get("/api/github/repos/{full_name:path}/metadata")
+def api_github_repos_metadata(full_name: str) -> Dict[str, Any]:
+    """Fetch live metadata for a repository."""
+    return github_get_repo_metadata(full_name)
+
+
+# -----------------------------------------------------------------------------
+# GitHub AI Repository Intelligence Endpoints (Milestone 9 - Prompt 2)
+# -----------------------------------------------------------------------------
+
+
+def _is_cloud_llm_allowed() -> bool:
+    """Check user consent for cloud LLM processing."""
+    try:
+        from app.tools.email_tools import email_get_privacy_settings
+        settings = email_get_privacy_settings()
+        return bool(settings.get("allow_cloud_processing", False))
+    except Exception:
+        return False
+
+
+@server_app.post("/api/github/repos/{repo_id}/analyze")
+def api_github_repos_analyze(
+    repo_id: int, req: Optional[GitHubAnalyzeRepoRequest] = None
+) -> Dict[str, Any]:
+    """
+    Trigger static evidence-grounded AI analysis of a connected GitHub repository.
+    Strictly zero code execution. Respects cloud LLM privacy consent.
+    """
+    force = req.force_refresh if req else False
+    allow_cloud = _is_cloud_llm_allowed()
+    return github_analyze_connected_repo(
+        repo_id=repo_id, force_refresh=force, allow_cloud=allow_cloud
+    )
+
+
+@server_app.get("/api/github/repos/{repo_id}/analysis")
+def api_github_repos_get_analysis(repo_id: int) -> Dict[str, Any]:
+    """Get the latest analysis report for a connected repository."""
+    analysis = github_get_latest_analysis(repo_id)
+    if not analysis:
+        return {"success": False, "status": "NO_ANALYSIS", "message": "Repository has not been analyzed yet."}
+    return analysis
+
+
+@server_app.post("/api/github/repos/upload-zip")
+async def api_github_repos_upload_zip(
+    request: Request, filename: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Upload and analyze a repository snapshot ZIP archive.
+    Accepts multipart/form-data or application/zip stream.
+    Enforces upload limits, traversal guards, symlink checks, and zero code execution.
+    """
+    content_type = request.headers.get("content-type", "")
+    body = await request.body()
+
+    if not body:
+        raise HTTPException(status_code=400, detail="Empty upload body.")
+
+    resolved_filename = filename or request.headers.get("x-filename", "")
+    contents = body
+
+    if "multipart/form-data" in content_type and "boundary=" in content_type:
+        boundary = content_type.split("boundary=")[-1].strip().split(";")[0].strip('"').encode()
+        parts = body.split(b"--" + boundary)
+        extracted = False
+        for part in parts:
+            if b'filename="' in part:
+                header_end = part.find(b"\r\n\r\n")
+                if header_end != -1:
+                    header = part[:header_end].decode("utf-8", errors="ignore")
+                    m = re.search(r'filename="([^"]+)"', header)
+                    if m:
+                        resolved_filename = m.group(1)
+                    contents = part[header_end + 4:]
+                    if contents.endswith(b"\r\n"):
+                        contents = contents[:-2]
+                    extracted = True
+                    break
+        if not extracted:
+            raise HTTPException(status_code=400, detail="No file entry found in multipart upload.")
+
+    if not resolved_filename:
+        resolved_filename = "archive.zip"
+
+    if not resolved_filename.lower().endswith(".zip"):
+        raise HTTPException(status_code=400, detail="Uploaded file must be a .zip archive.")
+
+    allow_cloud = _is_cloud_llm_allowed()
+    result = github_analyze_zip_upload(
+        zip_bytes=contents,
+        filename=resolved_filename,
+        allow_cloud=allow_cloud,
+    )
+    if not result.get("success"):
+        status_code = 400
+        if result.get("status") in ("SECURITY_VIOLATION", "SUSPICIOUS_ENTRY"):
+            status_code = 403
+        elif result.get("status") == "LIMIT_EXCEEDED":
+            status_code = 413
+        raise HTTPException(status_code=status_code, detail=result.get("error", "ZIP analysis failed."))
+    return result
+
+
+@server_app.get("/api/github/analysis/{analysis_id}")
+def api_github_get_analysis_by_id(analysis_id: int) -> Dict[str, Any]:
+    """Get a stored repository analysis report by analysis ID."""
+    analysis = github_get_analysis_by_id(analysis_id)
+    if not analysis:
+        raise HTTPException(status_code=404, detail=f"Analysis id={analysis_id} not found.")
+    return analysis
+
+
+# -----------------------------------------------------------------------------
+# GitHub AI Repository Chat Endpoints (Milestone 9 - Prompt 3)
+# -----------------------------------------------------------------------------
+
+
+@server_app.get("/api/github/chat/repos")
+def api_github_chat_repos() -> Dict[str, Any]:
+    """List all analyzed and indexed repositories available for chat."""
+    return list_analyzed_repos_for_chat()
+
+
+@server_app.post("/api/github/chat/query")
+def api_github_chat_query(req: GitHubChatQueryRequest) -> Dict[str, Any]:
+    """
+    Execute a grounded repository code question answering query.
+    Retrieves relevant code chunks from SQLite FTS5 index and invokes model.
+    """
+    msg = req.message.strip()
+    if not msg:
+        raise HTTPException(status_code=400, detail="Question message cannot be empty.")
+
+    # Determine commit_sha if not provided
+    commit_sha = req.commit_sha
+    if not commit_sha:
+        from app.tools.github_tools import github_get_latest_analysis
+        latest = github_get_latest_analysis(req.repo_id) if req.repo_id else None
+        if latest:
+            commit_sha = latest.get("commit_sha", "snapshot")
+        else:
+            # Look up from analyses table by repo_name
+            conn = db.get_connection()
+            try:
+                cur = conn.execute(
+                    "SELECT commit_sha FROM github_repo_analyses WHERE repo_name = ? ORDER BY id DESC LIMIT 1",
+                    (req.repo_name,),
+                )
+                r = cur.fetchone()
+                commit_sha = r["commit_sha"] if r else "snapshot"
+            finally:
+                conn.close()
+
+    allow_cloud = _is_cloud_llm_allowed()
+    return execute_repository_chat(
+        repo_name=req.repo_name,
+        commit_sha=commit_sha,
+        question=msg,
+        session_id=req.session_id,
+        repo_id=req.repo_id,
+        allow_cloud=allow_cloud,
+    )
+
+
+@server_app.get("/api/github/chat/history")
+def api_github_chat_history(
+    repo_name: str, session_id: Optional[int] = None
+) -> Dict[str, Any]:
+    """Retrieve chat history messages for a specific repository."""
+    if not repo_name:
+        raise HTTPException(status_code=400, detail="repo_name query parameter is required.")
+    return get_chat_history(repo_name=repo_name, session_id=session_id)
+
+
+@server_app.post("/api/github/chat/clear")
+def api_github_chat_clear(req: GitHubChatClearRequest) -> Dict[str, Any]:
+    """Clear chat history for a specific repository or session."""
+    return clear_chat_history(repo_name=req.repo_name, session_id=req.session_id)
+
+
+@server_app.post("/api/github/chat/new")
+def api_github_chat_new_session(req: GitHubChatNewSessionRequest) -> Dict[str, Any]:
+    """Start a new scoped chat session for a repository."""
+    commit_sha = req.commit_sha or "snapshot"
+    return create_chat_session(
+        repo_name=req.repo_name,
+        commit_sha=commit_sha,
+        title=req.title or "New Chat",
+        repo_id=req.repo_id,
+    )
+
+
+# -----------------------------------------------------------------------------
+# Milestone 9 - Prompt 4: Developer Workbench REST Endpoints
+# -----------------------------------------------------------------------------
+
+@server_app.get("/api/github/workbench/overview")
+def api_github_workbench_overview(repo_name: str) -> Dict[str, Any]:
+    if not repo_name:
+        raise HTTPException(status_code=400, detail="repo_name is required.")
+    try:
+        return github_get_repo_overview(repo_name)
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except GitHubAuthError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except GitHubNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@server_app.get("/api/github/workbench/issues")
+def api_github_workbench_issues(
+    repo_name: str,
+    state: str = "open",
+    labels: Optional[str] = None,
+    assignee: Optional[str] = None,
+    search: Optional[str] = None,
+    page: int = 1,
+    per_page: int = 30,
+) -> Dict[str, Any]:
+    if not repo_name:
+        raise HTTPException(status_code=400, detail="repo_name is required.")
+    try:
+        return github_list_repo_issues(
+            repo_name=repo_name,
+            state=state,
+            labels=labels,
+            assignee=assignee,
+            search=search,
+            page=page,
+            per_page=per_page,
+        )
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except GitHubAuthError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@server_app.get("/api/github/workbench/issues/{issue_number}")
+def api_github_workbench_issue_detail(repo_name: str, issue_number: int) -> Dict[str, Any]:
+    if not repo_name:
+        raise HTTPException(status_code=400, detail="repo_name is required.")
+    try:
+        return github_get_issue_detail(repo_name, issue_number)
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except GitHubNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@server_app.post("/api/github/workbench/issues/{issue_number}/summarize")
+def api_github_workbench_issue_summarize(
+    issue_number: int, req: GitHubIssueSummarizeRequest
+) -> Dict[str, Any]:
+    allow_cloud = _is_cloud_llm_allowed()
+    try:
+        return github_summarize_issue(req.repo_name, issue_number, allow_cloud=allow_cloud)
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@server_app.post("/api/github/workbench/issues/create")
+def api_github_workbench_issue_create(req: GitHubIssueCreateRequest) -> Dict[str, Any]:
+    try:
+        return github_create_issue_safe(
+            repo_name=req.repo_name,
+            title=req.title,
+            body=req.body,
+            labels=req.labels,
+            assignees=req.assignees,
+            approved=req.approved,
+        )
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@server_app.post("/api/github/workbench/issues/{issue_number}/update")
+def api_github_workbench_issue_update(
+    issue_number: int, req: GitHubIssueUpdateRequest
+) -> Dict[str, Any]:
+    try:
+        return github_update_issue_safe(
+            repo_name=req.repo_name,
+            issue_number=issue_number,
+            state=req.state,
+            title=req.title,
+            body=req.body,
+            labels=req.labels,
+            approved=req.approved,
+        )
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@server_app.post("/api/github/workbench/issues/{issue_number}/comment")
+def api_github_workbench_issue_comment(
+    issue_number: int, req: GitHubIssueCommentRequest
+) -> Dict[str, Any]:
+    try:
+        return github_add_issue_comment_safe(
+            repo_name=req.repo_name,
+            issue_number=issue_number,
+            body=req.body,
+            approved=req.approved,
+        )
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@server_app.get("/api/github/workbench/prs")
+def api_github_workbench_prs(
+    repo_name: str, state: str = "open", page: int = 1, per_page: int = 30
+) -> Dict[str, Any]:
+    if not repo_name:
+        raise HTTPException(status_code=400, detail="repo_name is required.")
+    try:
+        return github_list_repo_prs(repo_name=repo_name, state=state, page=page, per_page=per_page)
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@server_app.get("/api/github/workbench/prs/{pr_number}")
+def api_github_workbench_pr_detail(repo_name: str, pr_number: int) -> Dict[str, Any]:
+    if not repo_name:
+        raise HTTPException(status_code=400, detail="repo_name is required.")
+    try:
+        return github_get_pr_detail(repo_name, pr_number)
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except GitHubNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@server_app.get("/api/github/workbench/prs/{pr_number}/diff")
+def api_github_workbench_pr_diff(repo_name: str, pr_number: int) -> Dict[str, Any]:
+    if not repo_name:
+        raise HTTPException(status_code=400, detail="repo_name is required.")
+    try:
+        return github_get_pr_diff(repo_name, pr_number)
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@server_app.post("/api/github/workbench/prs/{pr_number}/review")
+def api_github_workbench_pr_review(
+    pr_number: int, req: GitHubPRReviewRequest
+) -> Dict[str, Any]:
+    allow_cloud = _is_cloud_llm_allowed()
+    try:
+        return github_review_pr(req.repo_name, pr_number, allow_cloud=allow_cloud)
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@server_app.post("/api/github/workbench/prs/{pr_number}/comment")
+def api_github_workbench_pr_comment(
+    pr_number: int, req: GitHubPRCommentRequest
+) -> Dict[str, Any]:
+    try:
+        return github_create_pr_comment_safe(
+            repo_name=req.repo_name,
+            pr_number=pr_number,
+            body=req.body,
+            approved=req.approved,
+        )
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@server_app.get("/api/github/workbench/commits")
+def api_github_workbench_commits(
+    repo_name: str, branch: Optional[str] = None, page: int = 1, per_page: int = 30
+) -> Dict[str, Any]:
+    if not repo_name:
+        raise HTTPException(status_code=400, detail="repo_name is required.")
+    try:
+        return github_list_repo_commits(repo_name=repo_name, branch=branch, page=page, per_page=per_page)
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@server_app.get("/api/github/workbench/compare")
+def api_github_workbench_compare(
+    repo_name: str, base: str, head: str
+) -> Dict[str, Any]:
+    if not repo_name or not base or not head:
+        raise HTTPException(status_code=400, detail="repo_name, base, and head are required.")
+    try:
+        return github_compare_commits(repo_name, base, head)
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@server_app.get("/api/github/workbench/branches")
+def api_github_workbench_branches(repo_name: str) -> Dict[str, Any]:
+    if not repo_name:
+        raise HTTPException(status_code=400, detail="repo_name is required.")
+    try:
+        return github_list_repo_branches(repo_name)
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@server_app.get("/api/github/workbench/actions/runs")
+def api_github_workbench_workflow_runs(
+    repo_name: str,
+    status: Optional[str] = None,
+    branch: Optional[str] = None,
+    page: int = 1,
+    per_page: int = 20,
+) -> Dict[str, Any]:
+    if not repo_name:
+        raise HTTPException(status_code=400, detail="repo_name is required.")
+    try:
+        return github_list_workflow_runs(
+            repo_name=repo_name, status=status, branch=branch, page=page, per_page=per_page
+        )
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@server_app.get("/api/github/workbench/actions/runs/{run_id}")
+def api_github_workbench_workflow_run_details(repo_name: str, run_id: int) -> Dict[str, Any]:
+    if not repo_name:
+        raise HTTPException(status_code=400, detail="repo_name is required.")
+    try:
+        return github_get_workflow_run_details(repo_name, run_id)
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except GitHubNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@server_app.post("/api/github/workbench/actions/runs/{run_id}/analyze")
+def api_github_workbench_workflow_analyze(
+    run_id: int, req: GitHubWorkflowAnalyzeRequest
+) -> Dict[str, Any]:
+    allow_cloud = _is_cloud_llm_allowed()
+    try:
+        return github_analyze_workflow_failure(req.repo_name, run_id, allow_cloud=allow_cloud)
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@server_app.post("/api/github/workbench/actions/runs/{run_id}/rerun")
+def api_github_workbench_workflow_rerun(
+    run_id: int, req: GitHubWorkflowRerunRequest
+) -> Dict[str, Any]:
+    try:
+        return github_rerun_workflow_safe(
+            repo_name=req.repo_name, run_id=run_id, approved=req.approved
+        )
+    except GitHubRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @server_app.post("/api/browser/fetch")

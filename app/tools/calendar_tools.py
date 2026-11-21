@@ -38,6 +38,26 @@ def _ensure_calendar_table() -> None:
         conn.close()
 
 
+def _get_active_google_access_token() -> str:
+    """Retrieve active Google OAuth access token if user authenticated via Google OAuth."""
+    try:
+        from app.tools.email_tools import _refresh_google_token_if_needed
+        conn = _get_db_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT * FROM email_accounts WHERE account_type = 'google_oauth' AND is_connected = 1 ORDER BY id DESC LIMIT 1"
+            )
+            row = cur.fetchone()
+            if row:
+                return _refresh_google_token_if_needed(dict(row))
+        finally:
+            conn.close()
+    except Exception:
+        pass
+    return ""
+
+
 def calendar_list_events(
     start_date: Optional[str] = None, end_date: Optional[str] = None
 ) -> dict[str, Any]:
@@ -318,7 +338,7 @@ def calendar_sync_google(
         }
 
     resolved_api_key = api_key or os.getenv("GOOGLE_CALENDAR_API_KEY")
-    resolved_token = access_token or os.getenv("GOOGLE_ACCESS_TOKEN")
+    resolved_token = access_token or os.getenv("GOOGLE_ACCESS_TOKEN") or _get_active_google_access_token()
 
     parsed_events: list[dict[str, str]] = []
 
@@ -474,7 +494,7 @@ def calendar_create_google_event(
     import urllib.parse
     import urllib.request
 
-    resolved_token = access_token or os.getenv("GOOGLE_ACCESS_TOKEN")
+    resolved_token = access_token or os.getenv("GOOGLE_ACCESS_TOKEN") or _get_active_google_access_token()
     google_event_id = None
     api_synced = False
 
