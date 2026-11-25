@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/index.css?v=25">
+  <link rel="stylesheet" href="/static/index.css?v=31">
 </head>
 <body>
   <div class="layout-container">
@@ -134,6 +134,12 @@
               </svg>
               <span>Documents</span>
             </button>
+            <button class="nav-item" data-tab="tab-github" id="nav-btn-github">
+              <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
+              </svg>
+              <span>GitHub</span>
+            </button>
             <button class="nav-item" data-tab="tab-browser" id="nav-btn-browser">
               <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="12" cy="12" r="10"></circle>
@@ -190,11 +196,21 @@
       </div>
 
       <!-- User Profile Card -->
-      <div class="sidebar-user">
-        <img class="user-avatar" src="/static/assets/admin_avatar.jpg" alt="David avatar">
+      <div class="sidebar-user" id="sidebar-user-card">
+        <div class="user-avatar-wrap">
+          <img class="user-avatar" id="sidebar-user-avatar" src="/static/assets/admin_avatar.jpg" alt="David avatar">
+          <span class="user-avatar-google hidden" id="sidebar-user-google-avatar" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24">
+              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+            </svg>
+          </span>
+        </div>
         <div class="user-info">
-          <span class="user-name">David</span>
-          <span class="user-role">Admin</span>
+          <span class="user-name" id="sidebar-user-name" title="David">David</span>
+          <span class="user-role" id="sidebar-user-role" title="Admin">Admin</span>
         </div>
         <div class="user-switch-icon">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -231,20 +247,26 @@
               <circle cx="11" cy="11" r="8"></circle>
               <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
             </svg>
-            <input type="text" id="email-search-input" placeholder="Search mail, sender, or keywords... (Press / to search)">
+            <input type="text" id="email-search-input" placeholder="Search mail, sender, or keyword...">
             <button class="search-clear-btn hidden" id="btn-clear-email-search">&times;</button>
           </div>
         </div>
 
         <div class="top-right-actions">
-          <!-- Top Row LLM Engine Toggle Switch -->
-          <div class="header-llm-toggle-wrap" id="header-llm-toggle-wrap" title="Toggle local LLM inference on or off. When OFF, the assistant runs in instant 100% offline rule mode.">
+          <!-- Top Row LLM Engine Toggle Switch & Setup Modal Trigger -->
+          <div class="header-llm-toggle-wrap" id="header-llm-toggle-wrap" title="Configure LLM provider or toggle inference">
             <span class="llm-toggle-status-dot offline" id="llm-toggle-dot"></span>
             <span class="llm-toggle-text" id="llm-toggle-text">LLM Off</span>
-            <label class="llm-switch" for="llm-toggle-checkbox">
+            <label class="llm-switch" for="llm-toggle-checkbox" title="Toggle LLM on/off">
               <input type="checkbox" id="llm-toggle-checkbox">
               <span class="llm-switch-slider"></span>
             </label>
+            <button type="button" class="btn-llm-gear" id="btn-open-llm-modal" title="Configure Model & Groq API Key" style="background:none; border:none; color:#64748b; cursor:pointer; padding:2px 4px; display:flex; align-items:center;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
+            </button>
           </div>
 
           <!-- Chat / Default Tools -->
@@ -271,28 +293,6 @@
             </button>
           </div>
 
-          <!-- Inbox Dedicated Header Tools -->
-          <div class="header-inbox-tools hidden" id="header-inbox-tools">
-            <button class="account-status-pill" id="inbox-account-pill" title="Email account connection status">
-              <span class="status-indicator-dot"></span>
-              <span id="account-status-text">Not Connected</span>
-            </button>
-            <button class="pill-btn pill-btn-outline" id="btn-sync-emails" title="Sync incoming emails">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="23 4 23 10 17 10"></polyline>
-                <polyline points="1 20 1 14 7 14"></polyline>
-                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-              </svg>
-              <span>Sync Mail</span>
-            </button>
-            <button class="pill-btn pill-btn-dark" id="btn-new-email-draft" title="Compose new message">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <line x1="5" y1="12" x2="19" y2="12"></line>
-              </svg>
-              <span>Compose</span>
-            </button>
-          </div>
 
           <div class="notifications-wrapper" id="notifications-wrapper">
             <button class="icon-action-btn" id="btn-notifications" title="Notifications" aria-label="Notifications" aria-haspopup="true" aria-expanded="false">
@@ -331,8 +331,44 @@
               </div>
             </div>
           </div>
-          <div class="top-user-pill">
-            <img src="/static/assets/admin_avatar.jpg" alt="Profile" class="top-avatar-mini">
+          <div class="top-user-pill" id="top-user-pill-wrap" style="position: relative;">
+            <button class="top-google-account-btn" id="btn-top-google-account" title="Google Account" style="background: var(--bg-surface, #ffffff); border: 1px solid var(--border-subtle, #e2e8f0); border-radius: 20px; padding: 4px 10px; display: inline-flex; align-items: center; gap: 7px; cursor: pointer; height: 32px; font-size: 12px; color: var(--text-main, #1e293b); font-weight: 500; font-family: inherit; transition: background 0.15s, border-color 0.15s;">
+              <svg width="15" height="15" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+              </svg>
+              <span id="top-google-label" style="max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Google</span>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity: 0.6;">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+            <!-- Google Account Dropdown Popover -->
+            <div class="google-account-popover hidden" id="google-account-popover" style="position: absolute; right: 0; top: 38px; background: #ffffff; border: 1px solid var(--border-subtle, #e2e8f0); border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.12); width: 250px; padding: 14px; z-index: 10000; font-size: 13px;">
+              <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border-subtle, #e2e8f0);">
+                <div style="width: 32px; height: 32px; border-radius: 50%; background: #eff6ff; display: flex; align-items: center; justify-content: center; font-weight: 700; color: #2563eb; font-size: 13px;" id="top-user-avatar-initials">G</div>
+                <div style="overflow: hidden; flex: 1;">
+                  <div style="font-weight: 600; color: var(--text-main, #0f172a); font-size: 12.5px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;" id="top-popover-email">user@example.com</div>
+                  <div style="font-size: 11px; color: #64748b;" id="top-popover-status">Google OAuth Connected</div>
+                </div>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 6px;">
+                <button type="button" id="btn-top-manage-account" style="width: 100%; border: 1px solid var(--border-subtle, #e2e8f0); background: #f8fafc; color: var(--text-main, #1e293b); border-radius: 8px; padding: 7px 12px; font-size: 12px; font-weight: 500; cursor: pointer; text-align: left; display: flex; align-items: center; gap: 8px; font-family: inherit;">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                  </svg>
+                  <span>Manage Mail Accounts</span>
+                </button>
+                <a href="/api/auth/google/login" id="btn-top-google-login" style="display: none; align-items: center; justify-content: center; gap: 8px; background: #2563eb; color: #ffffff; border-radius: 8px; padding: 8px 12px; font-size: 12px; font-weight: 600; text-decoration: none; text-align: center;">
+                  Sign in with Google
+                </a>
+                <button type="button" id="btn-top-google-logout" style="display: block; width: 100%; border: 1px solid #fee2e2; background: #fef2f2; color: #dc2626; border-radius: 8px; padding: 8px 12px; font-size: 12px; font-weight: 600; cursor: pointer; text-align: center; font-family: inherit;">
+                  Log Out from Google
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </header>
@@ -397,6 +433,10 @@
               </div>
 
               <div class="prompt-right-tools">
+                <div class="chat-model-badge" id="chat-model-badge" title="Active Model: Click to configure model">
+                  <span class="chat-model-badge-dot offline" id="chat-model-badge-dot"></span>
+                  <span class="chat-model-badge-name" id="chat-model-badge-name">Loading...</span>
+                </div>
                 <button class="btn-icon-soft" id="btn-voice-input" title="Voice / Tone">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
@@ -474,14 +514,6 @@
                 </svg>
                 <span id="btn-export-attendance-label">Export CSV</span>
               </button>
-              <button class="pill-btn pill-btn-outline" id="btn-simulate-scan" disabled title="Simulate a live student scan">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                  <circle cx="8.5" cy="7" r="4"></circle>
-                  <polyline points="17 11 19 13 23 9"></polyline>
-                </svg>
-                <span>Simulate Scan</span>
-              </button>
               <button class="pill-btn pill-btn-outline" id="btn-projector-mode" disabled title="Open large classroom projector view">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
@@ -557,8 +589,8 @@
                   <path d="M1.42 9a16 16 0 0 1 21.16 0"></path>
                   <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
                   <circle cx="12" cy="20" r="1"></circle>
-                </svg>
-                <span>Mobile Access: Connect your phone to Wi-Fi to scan or visit <strong id="att-lan-ip-display">192.168.1.5:8000</strong></span>
+                <span id="att-mobile-access-text">Mobile Access: Connect your phone to Wi-Fi to scan or visit <strong id="att-lan-ip-display">192.168.1.5:8000</strong></span>
+                <span id="att-tunnel-chip" style="display: none; margin-left: auto; background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 600; white-space: nowrap;">🌐 Cloudflare Active</span>
               </div>
 
               <!-- Student Mobile Scanner Portal Link -->
@@ -602,7 +634,7 @@
                       <th style="width: 40px;">#</th>
                       <th>Student ID</th>
                       <th>Student Name</th>
-                      <th>Time</th>
+                      <th>Time (IST)</th>
                       <th>Status</th>
                     </tr>
                   </thead>
@@ -633,42 +665,70 @@
                   <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
                 </svg>
               </button>
-              <!-- Category Tabs -->
+              <!-- Email Intelligence Category Tabs -->
               <div class="inbox-category-tabs">
-                <button class="inbox-cat-tab active" data-category="all">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-                    <polyline points="22,6 12,13 2,6"></polyline>
-                  </svg>
-                  <span>Primary</span>
+                <button class="inbox-cat-tab active" data-category="all" title="All active emails">
+                  <span>All</span>
                   <span class="tab-badge" id="tab-badge-all">0</span>
                 </button>
-                <button class="inbox-cat-tab" data-category="unread">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"></circle>
-                  </svg>
-                  <span>Unread</span>
-                  <span class="tab-badge badge-unread" id="tab-badge-unread">0</span>
+                <button class="inbox-cat-tab" data-category="work" title="Important / Work emails">
+                  <span class="cat-dot cat-dot-work"></span>
+                  <span>Work</span>
+                  <span class="tab-badge badge-work" id="tab-badge-work">0</span>
                 </button>
-                <button class="inbox-cat-tab" data-category="urgent">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <line x1="12" y1="8" x2="12" y2="12"></line>
-                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                  </svg>
-                  <span>Urgent</span>
-                  <span class="tab-badge badge-urgent" id="tab-badge-urgent">0</span>
+                <button class="inbox-cat-tab" data-category="college" title="College / Education announcements & academics">
+                  <span class="cat-dot cat-dot-college"></span>
+                  <span>College</span>
+                  <span class="tab-badge badge-college" id="tab-badge-college">0</span>
                 </button>
-                <button class="inbox-cat-tab" data-category="action">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
-                  </svg>
-                  <span>Action Needed</span>
+                <button class="inbox-cat-tab" data-category="personal" title="Personal conversations and family">
+                  <span class="cat-dot cat-dot-personal"></span>
+                  <span>Personal</span>
+                  <span class="tab-badge badge-personal" id="tab-badge-personal">0</span>
+                </button>
+                <button class="inbox-cat-tab" data-category="promotions" title="Promotions and advertisements">
+                  <span class="cat-dot cat-dot-promotions"></span>
+                  <span>Promotions</span>
+                  <span class="tab-badge badge-promotions" id="tab-badge-promotions">0</span>
+                </button>
+                <button class="inbox-cat-tab" data-category="spam" title="Spam, suspicious links & scams">
+                  <span class="cat-dot cat-dot-spam"></span>
+                  <span>Spam / Suspicious</span>
+                  <span class="tab-badge badge-spam" id="tab-badge-spam">0</span>
+                </button>
+                <button class="inbox-cat-tab" data-category="unnecessary" title="Unwanted automated newsletters & notifications">
+                  <span class="cat-dot cat-dot-unnecessary"></span>
+                  <span>Unnecessary</span>
+                  <span class="tab-badge badge-unnecessary" id="tab-badge-unnecessary">0</span>
+                </button>
+                <button class="inbox-cat-tab" data-category="review_required" title="Low-confidence emails requiring human review">
+                  <span class="cat-dot cat-dot-review"></span>
+                  <span>Review Required</span>
+                  <span class="tab-badge badge-review" id="tab-badge-review">0</span>
                 </button>
               </div>
             </div>
 
             <div class="table-toolbar-right">
+              <button class="pill-btn pill-btn-outline btn-sm" id="btn-email-privacy-toggle" title="Cloud LLM Privacy & Consent Settings (Groq vs Ollama)">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                </svg>
+                <span id="email-privacy-label">Privacy: Local Ollama</span>
+              </button>
+              <button class="pill-btn pill-btn-outline btn-sm" id="btn-classify-inbox" title="Re-run AI classification on incoming emails">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z"></path>
+                </svg>
+                <span>Classify Inbox</span>
+              </button>
+              <button class="pill-btn pill-btn-danger btn-sm" id="btn-open-bulk-cleanup" title="Safely clean unnecessary and promotional emails">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+                <span>Clean Unnecessary Emails</span>
+              </button>
               <span class="pagination-info" id="email-pagination-info">Messages</span>
               <button class="thread-toggle-pill" id="btn-toggle-threaded" title="Toggle grouped threads">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -737,6 +797,52 @@
                     <span class="detail-timestamp" id="detail-timestamp">Date / Time</span>
                   </div>
                 </div>
+              </div>
+
+              <!-- Email Intelligence Classification & Sender Reputation Bar -->
+              <div class="detail-intel-bar" id="detail-intel-bar">
+                <div class="intel-bar-left">
+                  <span class="intel-bar-label">Category:</span>
+                  <select id="detail-category-select" class="detail-cat-select" title="Manually reclassify email category">
+                    <option value="work">Important / Work</option>
+                    <option value="college">College / Education</option>
+                    <option value="personal">Personal</option>
+                    <option value="promotions">Promotions / Advertisements</option>
+                    <option value="spam">Spam / Suspicious</option>
+                    <option value="unnecessary">Unnecessary / Irrelevant</option>
+                    <option value="review_required">Review Required</option>
+                  </select>
+                  <span id="detail-confidence-pill" class="confidence-pill" title="AI Classification Confidence">--% Conf</span>
+                  <span id="detail-review-flag" class="review-flag-badge hidden">⚠️ Review Required</span>
+                </div>
+                <div class="intel-bar-right">
+                  <span id="detail-sender-rep-label" class="sender-rep-label">Sender: Neutral</span>
+                  <button type="button" class="pill-btn pill-btn-outline btn-xs" id="btn-sender-trust" title="Mark sender as trusted">
+                    <span>✓ Trust Sender</span>
+                  </button>
+                  <button type="button" class="pill-btn pill-btn-outline btn-xs" id="btn-sender-block" title="Block sender and auto-classify to spam">
+                    <span>🚫 Block Sender</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Relevant Conversation Context Used by AI (Collapsible Card) -->
+            <div class="email-context-card" id="email-context-card">
+              <div class="email-context-header">
+                <div class="email-context-title">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                  </svg>
+                  <h4>Conversation Context Retrieved for AI</h4>
+                  <span class="context-thread-badge" id="context-thread-badge">Thread History</span>
+                </div>
+                <div class="email-context-actions">
+                  <button type="button" class="pill-btn pill-btn-ghost btn-xs" id="btn-toggle-context-card">Collapse</button>
+                </div>
+              </div>
+              <div class="email-context-body" id="email-context-content">
+                <div class="context-loading">Analyzing thread history and past interactions with sender...</div>
               </div>
             </div>
 
@@ -819,14 +925,14 @@
               </div>
             </div>
 
-            <!-- Smart Reply Drafter Card -->
+            <!-- Smart Reply Drafter Card with 5 Context-Aware Modes -->
             <div class="ai-reply-card" id="ai-reply-card">
               <div class="ai-reply-header">
                 <div class="ai-reply-title-group">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2">
                     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
                   </svg>
-                  <h3>AI Smart Reply Drafter</h3>
+                  <h3>Context-Aware AI Reply Drafter</h3>
                 </div>
                 <div class="tone-selector" id="tone-selector-container">
                   <button class="tone-pill active" data-tone="professional">Professional</button>
@@ -836,24 +942,33 @@
                 </div>
               </div>
 
-              <!-- One-click reply intent chips -->
-              <div class="quick-intents-row">
-                <span class="quick-intents-label">Quick Intent:</span>
-                <button class="intent-chip" data-intent="Acknowledge receipt and thank the sender for the update.">Acknowledge</button>
-                <button class="intent-chip" data-intent="Confirm and approve the request.">Confirm & Approve</button>
-                <button class="intent-chip" data-intent="Politely decline due to current schedule commitments.">Decline</button>
-                <button class="intent-chip" data-intent="Request additional information and next steps.">Ask for Details</button>
-                <button class="pill-btn pill-btn-primary btn-sm" id="btn-quick-send-now" title="Send pre-filled reply immediately with 5s undo window">Instant Send</button>
+              <!-- 6 Context-Aware Reply Action Modes -->
+              <div class="context-reply-actions-bar">
+                <div class="context-reply-actions-label">Choose Reply Mode:</div>
+                <div class="context-reply-buttons-grid">
+                  <button type="button" class="pill-btn pill-btn-primary btn-context-reply" data-reply-type="professional" id="btn-reply-prof" title="Polished, formal professional executive response">
+                    <span>1. Professional Reply</span>
+                  </button>
+                  <button type="button" class="pill-btn pill-btn-outline btn-context-reply" data-reply-type="concise" id="btn-reply-concise" title="Crisp, direct acknowledgment and status (2-3 sentences)">
+                    <span>2. Concise Reply</span>
+                  </button>
+                  <button type="button" class="pill-btn pill-btn-outline btn-context-reply" data-reply-type="friendly" id="btn-reply-friendly" title="Warm, positive, maintaining rapport">
+                    <span>3. Friendly Reply</span>
+                  </button>
+                  <button type="button" class="pill-btn pill-btn-outline btn-context-reply" data-reply-type="detailed" id="btn-reply-detailed" title="Thorough, point-by-point breakdown addressing all questions">
+                    <span>4. Detailed Reply</span>
+                  </button>
+                  <button type="button" class="pill-btn pill-btn-outline btn-context-reply" data-reply-type="decline" id="btn-reply-decline" title="Polite, respectful decline with reasoning">
+                    <span>5. Decline Reply</span>
+                  </button>
+                  <button type="button" class="pill-btn pill-btn-outline btn-context-reply" data-reply-type="custom" id="btn-reply-custom" title="Custom instructions from guidance input">
+                    <span>6. Custom Instructions</span>
+                  </button>
+                </div>
               </div>
 
               <div class="reply-guidance-row">
-                <input type="text" id="reply-guidance-input" placeholder="Custom instructions for AI (e.g. Schedule meeting for 3 PM tomorrow)...">
-                <button class="pill-btn pill-btn-dark" id="btn-generate-ai-reply">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z"></path>
-                  </svg>
-                  <span>Draft Reply</span>
-                </button>
+                <input type="text" id="reply-guidance-input" placeholder="Custom instructions for AI (e.g. Confirm 2 PM meeting, request updated deck)...">
               </div>
 
               <div class="reply-compose-box">
@@ -868,23 +983,42 @@
                   </div>
                 </div>
                 <div class="form-group-compact">
-                  <label>Reply Body</label>
-                  <textarea id="reply-body" rows="6" placeholder="Your reply will be generated here, or type directly..."></textarea>
+                  <label>Reply Body (Editable before sending)</label>
+                  <textarea id="reply-body" rows="6" placeholder="Your context-aware AI reply will be generated here. You can review and edit it before sending..."></textarea>
                 </div>
                 <div class="reply-actions-row">
-                  <button class="pill-btn pill-btn-outline" id="btn-stage-reply-draft">Stage Draft (Medium Risk)</button>
-                  <button class="pill-btn pill-btn-dark" id="btn-send-reply">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <line x1="22" y1="2" x2="11" y2="13"></line>
-                      <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                  <span class="reply-safety-callout">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <line x1="12" y1="16" x2="12" y2="12"></line>
+                      <line x1="12" y1="8" x2="12.01" y2="8"></line>
                     </svg>
-                    <span>Send Reply</span>
-                  </button>
+                    <span>Explicit approval required. AI never sends emails automatically.</span>
+                  </span>
+                  <div style="display: flex; gap: 8px;">
+                    <button class="pill-btn pill-btn-outline" id="btn-stage-reply-draft">Stage Draft (Medium Risk)</button>
+                    <button class="pill-btn pill-btn-dark" id="btn-send-reply">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                      </svg>
+                      <span>Send Reply</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
+
+        <!-- Floating Action Button: Compose Email (Bottom-Right) -->
+        <button class="inbox-compose-fab" id="btn-new-email-draft" title="Compose new message">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          <span>Compose</span>
+        </button>
       </section>
 
       <!-- TAB 4: TASKS -->
@@ -917,6 +1051,15 @@
             <span class="cal-total-badge" id="cal-total-count">0 Events</span>
           </div>
           <div class="cal-view-header-actions">
+            <button class="pill-btn pill-btn-outline" id="btn-open-gcal-sync" title="Sync Google Calendar">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                <path d="M3 3v5h5"></path>
+                <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path>
+                <path d="M16 16h5v5"></path>
+              </svg>
+              <span>Sync Google Calendar</span>
+            </button>
             <button class="pill-btn pill-btn-outline" id="btn-refresh-calendar" title="Refresh Schedule">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M23 4v6h-6"></path><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
@@ -1073,8 +1216,12 @@
       <!-- TAB 9: WORKSPACES -->
       <section class="view-pane" id="tab-workspaces">
         <div class="view-header-bar">
-          <h1 class="view-title">Authorized Workspaces</h1>
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <h1 class="view-title">File Access & Workspaces</h1>
+            <span class="risk-badge risk-low" id="badge-file-access-mode">ALL FILES ACCESS: ACTIVE</span>
+          </div>
           <div class="view-header-actions">
+            <button class="pill-btn pill-btn-outline" id="btn-toggle-access-mode" title="Switch between All Files and Sandboxed Workspaces">Mode: All Files</button>
             <button class="pill-btn pill-btn-dark" id="btn-open-add-ws-modal">+ Add Workspace</button>
           </div>
         </div>
@@ -1117,10 +1264,1046 @@
           </ul>
         </div>
       </section>
+
+      <!-- TAB: GITHUB (Milestone 9 - Prompts 1, 2, 3, 4) -->
+      <section class="view-pane" id="tab-github">
+        <div class="view-header-bar">
+          <div style="display:flex; align-items:center; gap:12px;">
+            <h1 class="view-title">GitHub Integration & Developer Workbench</h1>
+            <span class="risk-badge risk-low" id="github-connection-badge">Not Connected</span>
+          </div>
+          <div class="view-header-actions">
+            <button class="pill-btn pill-btn-outline" id="btn-github-refresh" title="Refresh repositories">↻ Refresh</button>
+            <button class="pill-btn pill-btn-primary" id="btn-github-upload-zip-trigger" title="Upload and analyze repository ZIP archive">⬆ Upload ZIP</button>
+            <input type="file" id="github-zip-file-input" accept=".zip" style="display:none;">
+            <button class="pill-btn pill-btn-dark" id="btn-github-connect" style="display:none;">Connect GitHub</button>
+            <button class="pill-btn pill-btn-outline" id="btn-github-disconnect" style="display:none;">Disconnect</button>
+          </div>
+        </div>
+
+        <!-- Global Active Repository Selector Toolbar -->
+        <div class="github-active-repo-bar">
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; width:100%;">
+            <label for="github-global-repo-select" style="font-size:12px; font-weight:600; color:#475569;">Active Repository:</label>
+            <select id="github-global-repo-select" class="github-select" style="max-width:320px;">
+              <option value="">Select a repository...</option>
+            </select>
+            <span class="github-badge" id="github-global-repo-badge" style="display:none;"></span>
+            <div style="margin-left:auto; display:flex; gap:8px;">
+              <button class="pill-btn pill-btn-outline" id="btn-global-repo-analyze" style="font-size:11px; padding:3px 8px; display:none;">⚡ Analyze</button>
+              <button class="pill-btn pill-btn-outline" id="btn-global-repo-chat" style="font-size:11px; padding:3px 8px; display:none;">💬 Code Chat</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- GitHub Subnav Switcher (8 Workbench Tabs) -->
+        <div class="github-subnav-bar">
+          <button class="github-subnav-btn active" id="btn-github-subnav-overview" title="Repository Overview">
+            <span>📊 Overview</span>
+          </button>
+          <button class="github-subnav-btn" id="btn-github-subnav-repos" title="Connected Repositories">
+            <span>📦 Repositories</span>
+          </button>
+          <button class="github-subnav-btn" id="btn-github-subnav-analysis" title="Static AI Intelligence">
+            <span>⚡ Analysis</span>
+          </button>
+          <button class="github-subnav-btn" id="btn-github-subnav-chat" title="Grounded Code Chat">
+            <span>💬 Code Chat</span>
+          </button>
+          <button class="github-subnav-btn" id="btn-github-subnav-issues" title="Issues Workbench">
+            <span>🐛 Issues</span>
+          </button>
+          <button class="github-subnav-btn" id="btn-github-subnav-prs" title="Pull Requests & Reviews">
+            <span>🔀 Pull Requests</span>
+          </button>
+          <button class="github-subnav-btn" id="btn-github-subnav-commits" title="Commits & Branches">
+            <span>🌿 Commits & Branches</span>
+          </button>
+          <button class="github-subnav-btn" id="btn-github-subnav-actions" title="GitHub Actions CI/CD">
+            <span>⚙️ Actions</span>
+          </button>
+        </div>
+
+        <!-- 1. TAB PANEL: OVERVIEW -->
+        <div id="github-workbench-overview-view">
+          <div id="github-overview-empty" class="github-chat-state-box">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5" style="margin-bottom:12px;">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+            </svg>
+            <h3>Select a Repository</h3>
+            <p>Select a connected repository above to view overview metrics, issues, pull requests, commits, and GitHub Actions.</p>
+          </div>
+          <div id="github-overview-content" style="display:none;">
+            <div class="github-overview-header-card">
+              <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
+                <div>
+                  <h2 id="overview-repo-name" style="margin:0 0 6px; font-size:20px; font-weight:700;">owner/repo</h2>
+                  <p id="overview-repo-desc" style="margin:0; font-size:13px; color:#64748b; max-width:600px;">Repository description...</p>
+                </div>
+                <div style="display:flex; gap:8px; align-items:center;">
+                  <span class="github-badge" id="overview-branch-badge">Default: main</span>
+                  <span class="github-badge" id="overview-visibility-badge">Public</span>
+                  <a id="overview-github-link" href="#" target="_blank" class="pill-btn pill-btn-outline" style="font-size:11px; padding:4px 10px;">Open on GitHub ↗</a>
+                </div>
+              </div>
+            </div>
+
+            <!-- 4 Stats Cards -->
+            <div class="github-stats-row" style="margin: 16px 0;">
+              <div class="github-stat-card">
+                <div class="github-stat-value" id="overview-stat-issues">0</div>
+                <div class="github-stat-label">Open Issues</div>
+              </div>
+              <div class="github-stat-card">
+                <div class="github-stat-value" id="overview-stat-prs">0</div>
+                <div class="github-stat-label">Open Pull Requests</div>
+              </div>
+              <div class="github-stat-card">
+                <div class="github-stat-value" id="overview-stat-branches">0</div>
+                <div class="github-stat-label">Branches</div>
+              </div>
+              <div class="github-stat-card">
+                <div class="github-stat-value" id="overview-stat-failures" style="color:#ef4444;">0</div>
+                <div class="github-stat-label">Recent Workflow Failures</div>
+              </div>
+            </div>
+
+            <!-- Split 2-Column Feed -->
+            <div class="github-report-grid-2">
+              <div class="github-report-section">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                  <h3 style="margin:0;">Recent Commits</h3>
+                  <button class="pill-btn pill-btn-outline" id="btn-overview-view-all-commits" style="font-size:11px; padding:3px 8px;">View All &rarr;</button>
+                </div>
+                <div id="overview-recent-commits-list" class="github-items-list"></div>
+              </div>
+
+              <div class="github-report-section">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                  <h3 style="margin:0;">Recent GitHub Actions</h3>
+                  <button class="pill-btn pill-btn-outline" id="btn-overview-view-all-actions" style="font-size:11px; padding:3px 8px;">View All &rarr;</button>
+                </div>
+                <div id="overview-recent-actions-list" class="github-items-list"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. TAB PANEL: REPOSITORIES -->
+        <div id="github-repos-main-view" style="display:none;">
+          <!-- GitHub Stats Overview -->
+          <div class="github-stats-row" id="github-stats-row">
+            <div class="github-stat-card">
+              <div class="github-stat-value" id="github-stat-account-val">—</div>
+              <div class="github-stat-label">Connected Account</div>
+            </div>
+            <div class="github-stat-card">
+              <div class="github-stat-value" id="github-stat-total-val">0</div>
+              <div class="github-stat-label">Total Repos</div>
+            </div>
+            <div class="github-stat-card">
+              <div class="github-stat-value" id="github-stat-public-val">0</div>
+              <div class="github-stat-label">Public Repos</div>
+            </div>
+            <div class="github-stat-card">
+              <div class="github-stat-value" id="github-stat-private-val">0</div>
+              <div class="github-stat-label">Private Repos</div>
+            </div>
+          </div>
+
+          <!-- Connect Card (shown when not connected) -->
+          <div class="github-connect-card" id="github-connect-card">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5" style="margin:0 auto 4px;">
+              <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
+            </svg>
+            <h2>Connect Your GitHub Account</h2>
+            <p>Securely connect via OAuth to manage and browse your repositories right from this dashboard.</p>
+            <button class="btn-github-oauth" id="btn-github-oauth-main">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
+              </svg>
+              Connect with GitHub
+            </button>
+            <div class="github-privacy-note">🔒 Only repository metadata is accessed. Source code is never sent to any cloud AI.</div>
+          </div>
+
+          <!-- Add Repository Panel (shown only when connected) -->
+          <div id="github-repo-add-panel" style="display:none;">
+            <h3>Add Repository</h3>
+            <div class="github-add-row">
+              <input id="github-repo-url-input" placeholder="https://github.com/owner/repository" type="text">
+              <button class="pill-btn pill-btn-dark" id="btn-github-add-repo-url">Add Repository</button>
+            </div>
+            <div class="github-add-divider">— or select from your repos —</div>
+            <div class="github-add-row">
+              <select id="github-user-repos-select">
+                <option value="">Select from your repositories...</option>
+              </select>
+              <button class="pill-btn pill-btn-outline" id="btn-github-add-selected">Add Selected</button>
+            </div>
+            <div id="github-add-repo-status"></div>
+          </div>
+
+          <!-- Connected Repositories Panel (shown only when connected) -->
+          <div id="github-repos-panel" style="display:none;">
+            <div class="github-repos-toolbar">
+              <input class="github-search-input" id="github-repos-search" placeholder="Search repositories..." type="text">
+              <select id="github-repos-filter">
+                <option value="all">All</option>
+                <option value="public">Public</option>
+                <option value="private">Private</option>
+              </select>
+              <select id="github-repos-sort">
+                <option value="updated">Recently Updated</option>
+                <option value="name">Name</option>
+                <option value="stars">Stars</option>
+              </select>
+            </div>
+            <div class="github-repos-grid" id="github-repos-grid">
+              <div class="empty-state" id="github-repos-empty">No repositories connected. Add one above.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. TAB PANEL: REPOSITORY ANALYSIS -->
+        <div id="github-analysis-container" style="display:none;">
+          <div class="github-analysis-header">
+            <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+              <button class="pill-btn pill-btn-outline" id="btn-github-analysis-back">← Back to Repositories</button>
+              <h2 id="github-analysis-title" style="margin:0; font-size:18px; font-weight:700;">Repository Intelligence</h2>
+              <span class="github-badge" id="github-analysis-commit-badge">Commit: —</span>
+              <span class="github-badge" id="github-analysis-date-badge">Analyzed: —</span>
+              <span class="github-badge" id="github-analysis-provider-badge">Ollama (Local)</span>
+            </div>
+            <div style="display:flex; gap:10px;">
+              <button class="pill-btn pill-btn-primary" id="btn-github-analysis-rerun">↻ Re-analyze</button>
+              <button class="pill-btn pill-btn-outline" id="btn-github-analysis-chat">💬 Chat with Code</button>
+            </div>
+          </div>
+
+          <!-- Loading State -->
+          <div id="github-analysis-loading" class="github-analysis-state" style="display:none;">
+            <div class="github-spinner"></div>
+            <h3 id="github-analysis-loading-title">Analyzing Repository...</h3>
+            <p id="github-analysis-loading-desc">Extracting snapshot, inspecting manifests, redacting secrets, and synthesizing architectural report.</p>
+          </div>
+
+          <!-- Error State -->
+          <div id="github-analysis-error" class="github-analysis-error-banner" style="display:none;"></div>
+
+          <!-- Analysis Content -->
+          <div id="github-analysis-content" style="display:none;">
+            <!-- 4 Summary Cards -->
+            <div class="github-summary-cards">
+              <div class="github-summary-card">
+                <div class="github-summary-card-label">Primary Languages</div>
+                <div class="github-summary-card-value" id="analysis-card-languages">—</div>
+                <div id="analysis-card-lang-bar" class="github-lang-progress-bar"></div>
+              </div>
+              <div class="github-summary-card">
+                <div class="github-summary-card-label">Frameworks & Libraries</div>
+                <div class="github-summary-card-value" id="analysis-card-frameworks">—</div>
+                <div id="analysis-card-framework-tags" class="github-tags-row"></div>
+              </div>
+              <div class="github-summary-card">
+                <div class="github-summary-card-label">Dependencies</div>
+                <div class="github-summary-card-value" id="analysis-card-dependencies">0</div>
+                <div class="github-summary-card-sub" id="analysis-card-manifests">Manifests detected</div>
+              </div>
+              <div class="github-summary-card">
+                <div class="github-summary-card-label">Codebase Coverage</div>
+                <div class="github-summary-card-value" id="analysis-card-files">0 / 0</div>
+                <div class="github-summary-card-sub" id="analysis-card-coverage-sub">Inspected vs skipped files</div>
+              </div>
+            </div>
+
+            <!-- Analysis Navigation Tabs -->
+            <div class="github-analysis-tabs">
+              <button class="github-tab-btn active" data-analysis-panel="panel-analysis-overview">Overview</button>
+              <button class="github-tab-btn" data-analysis-panel="panel-analysis-architecture">Architecture & Flow</button>
+              <button class="github-tab-btn" data-analysis-panel="panel-analysis-folders">Folder Structure & Explorer</button>
+              <button class="github-tab-btn" data-analysis-panel="panel-analysis-dependencies">Dependencies</button>
+              <button class="github-tab-btn" data-analysis-panel="panel-analysis-instructions">Run & Test Instructions</button>
+              <button class="github-tab-btn" data-analysis-panel="panel-analysis-findings">Findings & Observations</button>
+            </div>
+
+            <!-- Panels -->
+            <div class="github-analysis-panel" id="panel-analysis-overview">
+              <div class="github-report-section">
+                <h3>Repository Purpose & Overview</h3>
+                <div class="github-report-box" id="analysis-overview-summary"></div>
+              </div>
+              <div class="github-report-grid-2">
+                <div class="github-report-section">
+                  <h3>Entry Points & Main Files</h3>
+                  <div id="analysis-overview-entry-points" class="github-items-list"></div>
+                </div>
+                <div class="github-report-section">
+                  <h3>Language Distribution</h3>
+                  <div id="analysis-overview-languages" class="github-items-list"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="github-analysis-panel" id="panel-analysis-architecture" style="display:none;">
+              <div class="github-report-section">
+                <h3>Main Components & Responsibilities</h3>
+                <div id="analysis-arch-components" class="github-components-grid"></div>
+              </div>
+              <div class="github-report-section">
+                <h3>Internal Dependencies & Data / Control Flow</h3>
+                <div class="github-report-box" id="analysis-arch-flow"></div>
+                <div class="github-grounding-note" id="analysis-arch-grounding"></div>
+              </div>
+            </div>
+
+            <div class="github-analysis-panel" id="panel-analysis-folders" style="display:none;">
+              <div class="github-explorer-split">
+                <div class="github-tree-column">
+                  <div class="github-column-header">
+                    <h4>Repository File Explorer</h4>
+                    <span id="analysis-tree-stats" style="font-size:11.5px; color:#64748b;">0 files</span>
+                  </div>
+                  <div class="github-file-tree" id="analysis-file-tree"></div>
+                </div>
+                <div class="github-modules-column">
+                  <div class="github-column-header">
+                    <h4>Folder-by-Folder & Module Explanations</h4>
+                  </div>
+                  <div id="analysis-folder-modules" class="github-items-list"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="github-analysis-panel" id="panel-analysis-dependencies" style="display:none;">
+              <div class="github-report-section">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                  <h3 style="margin:0;">Discovered Packages & Dependencies</h3>
+                  <div style="font-size:12.5px; color:#64748b;" id="analysis-deps-counter">0 total</div>
+                </div>
+                <div class="github-table-wrapper">
+                  <table class="github-data-table">
+                    <thead>
+                      <tr>
+                        <th>Package</th>
+                        <th>Version Constraint</th>
+                        <th>Type</th>
+                        <th>Source Manifest</th>
+                      </tr>
+                    </thead>
+                    <tbody id="analysis-deps-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div class="github-analysis-panel" id="panel-analysis-instructions" style="display:none;">
+              <div class="github-report-grid-2">
+                <div class="github-report-section">
+                  <h3>Build & Run Instructions</h3>
+                  <div id="analysis-run-instructions" class="github-instructions-box"></div>
+                </div>
+                <div class="github-report-section">
+                  <h3>Test Organization & Execution</h3>
+                  <div id="analysis-test-instructions" class="github-instructions-box"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="github-analysis-panel" id="panel-analysis-findings" style="display:none;">
+              <div class="github-report-section">
+                <div class="github-alert-notice">
+                  ℹ️ <strong>Transparency Note:</strong> All findings below are automated architectural and maintainability observations derived from static repository heuristics, not verified vulnerabilities.
+                </div>
+                <div id="analysis-observations-list" class="github-observations-list"></div>
+              </div>
+              <div class="github-report-section">
+                <h3>Unknowns & Files Not Inspected</h3>
+                <div class="github-report-box" id="analysis-unknowns-box"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. TAB PANEL: REPOSITORY CHAT -->
+        <div id="github-chat-container" style="display:none;">
+          <div class="github-chat-header-bar">
+            <div class="github-chat-header-left">
+              <label for="github-chat-repo-select" style="font-size:12px; font-weight:600; color:#475569;">Repository:</label>
+              <select id="github-chat-repo-select" class="github-select" style="max-width:320px;">
+                <option value="">Select analyzed repository...</option>
+              </select>
+              <span class="github-badge" id="github-chat-commit-badge" style="display:none;">Commit: —</span>
+              <span class="github-badge" id="github-chat-indexed-badge" style="display:none; background:#ecfdf5; color:#047857; border-color:#a7f3d0;">Indexed</span>
+            </div>
+            <div class="github-chat-header-right">
+              <button class="pill-btn pill-btn-outline" id="btn-github-chat-new" title="Start a fresh chat session">＋ New Chat</button>
+              <button class="pill-btn pill-btn-outline" id="btn-github-chat-clear" title="Clear chat history for this repository">🗑 Clear History</button>
+              <button class="pill-btn pill-btn-outline" id="btn-github-chat-open-analysis" title="View static intelligence report" style="display:none;">📊 View Analysis</button>
+            </div>
+          </div>
+
+          <!-- Stale Commit Warning Banner -->
+          <div id="github-chat-stale-banner" class="github-stale-banner" style="display:none;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:16px;">⚠️</span>
+              <div>
+                <strong>Repository Out of Date:</strong>
+                <span id="github-chat-stale-text">The remote repository has newer commits since indexing. Answers are grounded in the previously indexed commit.</span>
+              </div>
+            </div>
+            <button class="pill-btn pill-btn-primary" id="btn-github-chat-reanalyze" style="padding:4px 12px; font-size:11.5px;">⚡ Re-analyze Now</button>
+          </div>
+
+          <!-- Empty State -->
+          <div id="github-chat-empty-state" class="github-chat-state-box">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5" style="margin-bottom:12px;">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+            </svg>
+            <h3>Select a Repository to Start Chatting</h3>
+            <p>Choose an analyzed repository above or analyze a new repository to ask questions grounded directly in its source code.</p>
+          </div>
+
+          <!-- No-Index State -->
+          <div id="github-chat-noindex-state" class="github-chat-state-box" style="display:none;">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="1.5" style="margin-bottom:12px;">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+            <h3>Code Index Not Available</h3>
+            <p>This repository has not been indexed yet. Run analysis to extract and index text files for grounded code Q&A.</p>
+            <button class="pill-btn pill-btn-primary" id="btn-github-chat-trigger-analyze" style="margin-top:10px;">⚡ Analyze Repository Now</button>
+          </div>
+
+          <!-- Active Chat Container -->
+          <div id="github-chat-active-area" style="display:none; flex-direction:column; flex:1; height:620px;">
+            <div class="github-chat-chips-bar" id="github-chat-chips">
+              <span class="github-chip-label">Quick Prompts:</span>
+              <button class="github-prompt-chip" data-query="Explain the overall architecture and main components.">Explain architecture</button>
+              <button class="github-prompt-chip" data-query="Where is authentication or credential handling implemented?">Where is authentication?</button>
+              <button class="github-prompt-chip" data-query="How does the application connect to the database or storage?">How does DB connect?</button>
+              <button class="github-prompt-chip" data-query="Where are unit or integration tests located and how are they organized?">Where are tests?</button>
+              <button class="github-prompt-chip" data-query="How do I install dependencies and run this project?">How do I run this?</button>
+            </div>
+
+            <div class="github-chat-messages" id="github-chat-messages"></div>
+
+            <div id="github-chat-loading" class="github-chat-inline-loader" style="display:none;">
+              <div class="github-spinner-sm"></div>
+              <span>Searching code chunks and synthesizing grounded answer...</span>
+            </div>
+
+            <div class="github-chat-input-bar">
+              <textarea id="github-chat-input" rows="2" placeholder="Ask anything about the codebase (e.g. 'Where is endpoint /api/tasks defined?')..."></textarea>
+              <button class="pill-btn pill-btn-primary" id="btn-github-chat-send" title="Send message (Enter)">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+                Send
+              </button>
+            </div>
+            <div class="github-chat-footer-note">
+              🔒 Code retrieval is repository-isolated. Source snippets remain strictly local when cloud LLM is disabled.
+            </div>
+          </div>
+        </div>
+
+        <!-- 5. TAB PANEL: ISSUES WORKBENCH -->
+        <div id="github-workbench-issues-view" style="display:none;">
+          <div id="github-issues-empty-prompt" class="github-chat-state-box">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5" style="margin-bottom:12px;">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+            <h3>Select a Repository</h3>
+            <p>Select an active repository above to search, inspect, summarize, and draft issues.</p>
+          </div>
+          <div id="github-issues-active-content" style="display:none;">
+            <div class="github-toolbar-row">
+              <div style="display:flex; gap:10px; align-items:center; flex:1; flex-wrap:wrap;">
+                <input type="text" id="github-issues-search-input" class="github-search-input" placeholder="Search issues by title or description..." style="max-width:320px;">
+                <select id="github-issues-state-select" class="github-select" style="max-width:130px;">
+                  <option value="open">Open</option>
+                  <option value="closed">Closed</option>
+                  <option value="all">All</option>
+                </select>
+                <button class="pill-btn pill-btn-outline" id="btn-github-issues-refresh" title="Refresh Issues">↻</button>
+              </div>
+              <div>
+                <button class="pill-btn pill-btn-primary" id="btn-github-issues-new">＋ New Issue</button>
+              </div>
+            </div>
+
+            <div class="github-workbench-split">
+              <!-- Left: Issues List -->
+              <div class="github-workbench-list-pane">
+                <div id="github-issues-loading" class="github-chat-inline-loader" style="display:none;">
+                  <div class="github-spinner-sm"></div><span>Loading issues...</span>
+                </div>
+                <div id="github-issues-list-container" class="github-workbench-items-list"></div>
+              </div>
+
+              <!-- Right: Issue Detail & AI Investigation Pane -->
+              <div class="github-workbench-detail-pane" id="github-issue-detail-pane">
+                <div class="github-detail-placeholder" id="github-issue-placeholder">
+                  <p>Select an issue from the list to view discussion and AI investigation steps.</p>
+                </div>
+                <div id="github-issue-selected-content" style="display:none;">
+                  <div class="github-detail-header">
+                    <div>
+                      <span class="github-badge" id="issue-detail-state-badge">Open</span>
+                      <h3 id="issue-detail-title" style="margin:8px 0 4px; font-size:17px; font-weight:700;">Issue Title</h3>
+                      <div class="github-meta-sub" id="issue-detail-meta">Opened by user • Date</div>
+                    </div>
+                    <div style="display:flex; gap:8px;">
+                      <button class="pill-btn pill-btn-outline" id="btn-issue-toggle-state">Close Issue</button>
+                      <button class="pill-btn pill-btn-primary" id="btn-issue-ai-investigate">✨ AI Investigation</button>
+                    </div>
+                  </div>
+
+                  <!-- AI Investigation Summary Box -->
+                  <div id="issue-ai-box" class="github-ai-box" style="display:none;">
+                    <div class="github-ai-box-title">
+                      <span>✨ AI Issue Summary & Investigation Steps</span>
+                      <span id="issue-ai-provider-chip" style="font-size:10px; color:#64748b;">Grounded Analysis</span>
+                    </div>
+                    <div id="issue-ai-summary" class="github-ai-box-body"></div>
+                    <div id="issue-ai-steps" style="margin-top:10px;"></div>
+                    <div id="issue-ai-duplicates" style="margin-top:10px;"></div>
+                  </div>
+
+                  <!-- Issue Body -->
+                  <div class="github-detail-body-box" id="issue-detail-body"></div>
+
+                  <!-- Comments Feed -->
+                  <h4 style="margin:20px 0 10px; font-size:14px;">Comments (<span id="issue-comments-counter">0</span>)</h4>
+                  <div id="issue-comments-feed" class="github-comments-feed"></div>
+
+                  <!-- Add Comment Box -->
+                  <div class="github-comment-input-wrap">
+                    <textarea id="issue-comment-textarea" rows="3" placeholder="Write a comment... (Requires explicit confirmation before posting)"></textarea>
+                    <div style="display:flex; justify-content:flex-end; margin-top:8px;">
+                      <button class="pill-btn pill-btn-primary" id="btn-issue-submit-comment">Post Comment</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 6. TAB PANEL: PULL REQUESTS & REVIEWS -->
+        <div id="github-workbench-prs-view" style="display:none;">
+          <div id="github-prs-empty-prompt" class="github-chat-state-box">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5" style="margin-bottom:12px;">
+              <circle cx="18" cy="18" r="3"></circle>
+              <circle cx="6" cy="6" r="3"></circle>
+              <path d="M13 6h3a2 2 0 0 1 2 2v7"></path>
+              <line x1="6" y1="9" x2="6" y2="21"></line>
+            </svg>
+            <h3>Select a Repository</h3>
+            <p>Select an active repository above to inspect pull requests, view diffs, and run AI code reviews.</p>
+          </div>
+          <div id="github-prs-active-content" style="display:none;">
+            <div class="github-toolbar-row">
+              <div style="display:flex; gap:10px; align-items:center;">
+                <select id="github-prs-state-select" class="github-select" style="max-width:130px;">
+                  <option value="open">Open PRs</option>
+                  <option value="closed">Closed PRs</option>
+                  <option value="all">All PRs</option>
+                </select>
+                <button class="pill-btn pill-btn-outline" id="btn-github-prs-refresh">↻</button>
+              </div>
+            </div>
+
+            <div class="github-workbench-split">
+              <!-- Left: PRs List -->
+              <div class="github-workbench-list-pane">
+                <div id="github-prs-loading" class="github-chat-inline-loader" style="display:none;">
+                  <div class="github-spinner-sm"></div><span>Loading pull requests...</span>
+                </div>
+                <div id="github-prs-list-container" class="github-workbench-items-list"></div>
+              </div>
+
+              <!-- Right: PR Detail, Review & Diffs -->
+              <div class="github-workbench-detail-pane" id="github-pr-detail-pane">
+                <div class="github-detail-placeholder" id="github-pr-placeholder">
+                  <p>Select a pull request from the list to view changes, diffs, and AI code review.</p>
+                </div>
+                <div id="github-pr-selected-content" style="display:none;">
+                  <div class="github-detail-header">
+                    <div>
+                      <div style="display:flex; align-items:center; gap:8px;">
+                        <span class="github-badge" id="pr-detail-state-badge">Open</span>
+                        <span id="pr-detail-branches" style="font-size:12px; font-family:monospace; color:#475569;">feature &rarr; main</span>
+                      </div>
+                      <h3 id="pr-detail-title" style="margin:8px 0 4px; font-size:17px; font-weight:700;">PR Title</h3>
+                      <div class="github-meta-sub" id="pr-detail-meta">By user • Commits • Additions / Deletions</div>
+                    </div>
+                    <div style="display:flex; gap:8px;">
+                      <button class="pill-btn pill-btn-primary" id="btn-pr-ai-review">✨ AI Review</button>
+                    </div>
+                  </div>
+
+                  <!-- AI Review Box -->
+                  <div id="pr-ai-box" class="github-ai-box" style="display:none;">
+                    <div class="github-ai-box-title">
+                      <span>✨ AI Code Review & Security Check</span>
+                      <span style="font-size:10px; color:#047857;">Read-only analysis</span>
+                    </div>
+                    <div id="pr-ai-summary" class="github-ai-box-body"></div>
+                    <div id="pr-ai-observations" class="github-observations-list" style="margin-top:10px;"></div>
+                    <div class="github-safety-notice-sm">
+                      🛡 <strong>Safety Guardrail:</strong> Automated merges and automated approvals are permanently disabled.
+                    </div>
+                  </div>
+
+                  <!-- Changed Files & Diffs View -->
+                  <h4 style="margin:20px 0 10px; font-size:14px;">Changed Files & Unified Diff (<span id="pr-files-counter">0</span> files)</h4>
+                  <div id="pr-files-list" class="github-items-list" style="margin-bottom:12px;"></div>
+                  <div id="pr-diff-viewer" class="github-diff-block"></div>
+
+                  <!-- PR Comment Box -->
+                  <div class="github-comment-input-wrap">
+                    <textarea id="pr-comment-textarea" rows="3" placeholder="Write a review comment on this PR... (Requires confirmation)"></textarea>
+                    <div style="display:flex; justify-content:flex-end; margin-top:8px;">
+                      <button class="pill-btn pill-btn-primary" id="btn-pr-submit-comment">Post PR Comment</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 7. TAB PANEL: COMMITS & BRANCHES -->
+        <div id="github-workbench-commits-view" style="display:none;">
+          <div id="github-commits-empty-prompt" class="github-chat-state-box">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5" style="margin-bottom:12px;">
+              <circle cx="12" cy="18" r="3"></circle>
+              <circle cx="6" cy="6" r="3"></circle>
+              <circle cx="18" cy="6" r="3"></circle>
+              <path d="M18 9v2a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9"></path>
+              <line x1="12" y1="12" x2="12" y2="15"></line>
+            </svg>
+            <h3>Select a Repository</h3>
+            <p>Select an active repository above to inspect commit history, compare branches, and review changes.</p>
+          </div>
+          <div id="github-commits-active-content" style="display:none;">
+            <div class="github-tabs-pills" style="margin-bottom:16px;">
+              <button class="github-pill-tab active" id="btn-commits-tab-history">Commit History</button>
+              <button class="github-pill-tab" id="btn-commits-tab-compare">Compare Branches / Commits</button>
+              <button class="github-pill-tab" id="btn-commits-tab-branches">Branch List</button>
+            </div>
+
+            <!-- 1. Commit History Tab -->
+            <div id="panel-commits-history">
+              <div id="github-commits-list" class="github-items-list"></div>
+            </div>
+
+            <!-- 2. Compare Tab -->
+            <div id="panel-commits-compare" style="display:none;">
+              <div class="github-compare-bar">
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <input type="text" id="github-compare-base-input" class="github-search-input" placeholder="Base (e.g. main)" style="max-width:180px;">
+                  <span>...</span>
+                  <input type="text" id="github-compare-head-input" class="github-search-input" placeholder="Head (e.g. feature)" style="max-width:180px;">
+                  <button class="pill-btn pill-btn-primary" id="btn-github-run-compare">Compare</button>
+                </div>
+              </div>
+              <div id="github-compare-results" style="margin-top:14px; display:none;">
+                <div id="github-compare-badge-row" style="margin-bottom:10px;"></div>
+                <div id="github-compare-files-list" class="github-items-list"></div>
+              </div>
+            </div>
+
+            <!-- 3. Branch List Tab -->
+            <div id="panel-commits-branches" style="display:none;">
+              <div class="github-alert-notice" style="margin-bottom:12px;">
+                🔒 <strong>Branch Protection:</strong> All branch operations are strictly read-only. Force-pushes and deletion of default/protected branches are blocked.
+              </div>
+              <div id="github-branches-list" class="github-items-list"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 8. TAB PANEL: GITHUB ACTIONS -->
+        <div id="github-workbench-actions-view" style="display:none;">
+          <div id="github-actions-empty-prompt" class="github-chat-state-box">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5" style="margin-bottom:12px;">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+            </svg>
+            <h3>Select a Repository</h3>
+            <p>Select an active repository above to inspect GitHub Actions workflow runs and AI failure diagnostics.</p>
+          </div>
+          <div id="github-actions-active-content" style="display:none;">
+            <div class="github-toolbar-row">
+              <div style="display:flex; gap:10px; align-items:center;">
+                <select id="github-actions-status-select" class="github-select" style="max-width:140px;">
+                  <option value="">All Statuses</option>
+                  <option value="success">Success</option>
+                  <option value="failure">Failure</option>
+                  <option value="in_progress">In Progress</option>
+                </select>
+                <button class="pill-btn pill-btn-outline" id="btn-github-actions-refresh">↻</button>
+              </div>
+            </div>
+
+            <div class="github-workbench-split">
+              <!-- Left: Workflow Runs List -->
+              <div class="github-workbench-list-pane">
+                <div id="github-actions-loading" class="github-chat-inline-loader" style="display:none;">
+                  <div class="github-spinner-sm"></div><span>Loading workflow runs...</span>
+                </div>
+                <div id="github-actions-runs-container" class="github-workbench-items-list"></div>
+              </div>
+
+              <!-- Right: Run Details & Failure Diagnostics -->
+              <div class="github-workbench-detail-pane" id="github-action-detail-pane">
+                <div class="github-detail-placeholder" id="github-action-placeholder">
+                  <p>Select a workflow run from the list to view jobs, steps, and failure analysis.</p>
+                </div>
+                <div id="github-action-selected-content" style="display:none;">
+                  <div class="github-detail-header">
+                    <div>
+                      <div style="display:flex; align-items:center; gap:8px;">
+                        <span class="github-badge" id="action-detail-conclusion-badge">Success</span>
+                        <span id="action-detail-branch" style="font-size:12px; font-family:monospace; color:#475569;">main</span>
+                      </div>
+                      <h3 id="action-detail-name" style="margin:8px 0 4px; font-size:17px; font-weight:700;">Workflow Name</h3>
+                      <div class="github-meta-sub" id="action-detail-meta">Triggered by user • Commit</div>
+                    </div>
+                    <div style="display:flex; gap:8px;">
+                      <button class="pill-btn pill-btn-primary" id="btn-action-ai-analyze" style="display:none;">✨ Analyze Failure</button>
+                      <button class="pill-btn pill-btn-outline" id="btn-action-safe-rerun">↻ Rerun</button>
+                    </div>
+                  </div>
+
+                  <!-- AI Failure Diagnostics Box -->
+                  <div id="action-ai-box" class="github-ai-box" style="display:none;">
+                    <div class="github-ai-box-title">
+                      <span>✨ AI Workflow Failure Diagnostics</span>
+                      <span style="font-size:10px; color:#ef4444;">Evidence-grounded</span>
+                    </div>
+                    <div id="action-ai-body" class="github-ai-box-body"></div>
+                    <div id="action-ai-suggestions" style="margin-top:10px;"></div>
+                  </div>
+
+                  <!-- Jobs & Steps Breakdown -->
+                  <h4 style="margin:20px 0 10px; font-size:14px;">Jobs & Execution Steps</h4>
+                  <div id="action-jobs-container" class="github-items-list"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section> <!-- closes tab-github -->
     </main>
   </div>
 
-  <!-- HUMAN APPROVAL MODAL -->
+  <!-- GITHUB SAFETY APPROVAL MODAL -->
+  <div class="modal-backdrop hidden" id="github-approval-modal">
+    <div class="modern-modal-card" style="max-width: 520px;">
+      <div class="modal-badge-row">
+        <span class="risk-badge risk-medium" id="github-modal-risk-badge">MEDIUM RISK</span>
+        <span style="font-size:11px; color:#64748b; margin-left:auto;">CONFIRMATION REQUIRED</span>
+      </div>
+      <h3 class="modal-title" id="github-modal-title">Approve GitHub Action</h3>
+      <p class="modal-desc" id="github-modal-desc">Review the action preview below before executing this write operation.</p>
+
+      <div class="github-approval-preview-card" id="github-modal-preview"></div>
+
+      <div class="modal-btn-row" style="margin-top:18px;">
+        <button class="pill-btn pill-btn-outline" id="btn-github-modal-cancel">Cancel</button>
+        <button class="pill-btn pill-btn-primary" id="btn-github-modal-confirm">Approve & Execute</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- GITHUB CREATE ISSUE MODAL -->
+  <div class="modal-backdrop hidden" id="github-create-issue-modal">
+    <div class="modern-modal-card" style="max-width: 560px;">
+      <div class="modal-badge-row">
+        <span class="risk-badge risk-low">DRAFT ISSUE</span>
+        <span style="font-size:11px; color:#64748b; margin-left:auto;">PREVIEW BEFORE POSTING</span>
+      </div>
+      <h3 class="modal-title">Draft New Issue</h3>
+      <p class="modal-desc">Create a new issue on the active repository. Requires confirmation before posting.</p>
+
+      <div style="display:flex; flex-direction:column; gap:12px; margin-top:14px;">
+        <div>
+          <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:#475569;">Title</label>
+          <input type="text" id="modal-issue-title-input" class="github-search-input" placeholder="Issue title..." style="width:100%;">
+        </div>
+        <div>
+          <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:#475569;">Description (Markdown)</label>
+          <textarea id="modal-issue-body-textarea" rows="5" class="github-search-input" placeholder="Detailed description of the issue..." style="width:100%; resize:vertical; font-family:inherit;"></textarea>
+        </div>
+        <div>
+          <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:#475569;">Labels (comma-separated)</label>
+          <input type="text" id="modal-issue-labels-input" class="github-search-input" placeholder="bug, enhancement..." style="width:100%;">
+        </div>
+      </div>
+
+      <div class="modal-btn-row" style="margin-top:20px;">
+        <button class="pill-btn pill-btn-outline" id="btn-create-issue-modal-cancel">Cancel</button>
+        <button class="pill-btn pill-btn-primary" id="btn-create-issue-modal-submit">Review & Post</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADD WORKSPACE MODAL -->
+  <div class="modal-backdrop hidden" id="add-workspace-modal">
+    <div class="modern-modal-card" style="max-width: 540px;">
+      <div class="modal-badge-row">
+        <span class="risk-badge risk-low">WORKSPACE AUTHORIZATION</span>
+      </div>
+      <h3 class="modal-title">Authorize Directory Workspace</h3>
+      <p class="modal-desc">Authorize a safe local directory for the assistant to inspect, read, and manage files.</p>
+
+      <!-- Quick Presets -->
+      <div style="margin-bottom: 16px;">
+        <label style="display:block; font-size:11.5px; font-weight:600; text-transform:uppercase; color:#64748b; margin-bottom:8px; letter-spacing:0.5px;">Quick Presets</label>
+        <div style="display:flex; flex-wrap:wrap; gap:8px;" id="ws-presets-container">
+          <button type="button" class="pill-btn pill-btn-outline" style="font-size:12px; padding:6px 12px;" data-preset="downloads">Downloads</button>
+          <button type="button" class="pill-btn pill-btn-outline" style="font-size:12px; padding:6px 12px;" data-preset="documents">Documents</button>
+          <button type="button" class="pill-btn pill-btn-outline" style="font-size:12px; padding:6px 12px;" data-preset="desktop">Desktop</button>
+          <button type="button" class="pill-btn pill-btn-outline" style="font-size:12px; padding:6px 12px;" data-preset="project">Project Root</button>
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-bottom: 12px;">
+        <label for="ws-input-name" style="font-size: 12px; font-weight: 600; color: #334155;">Workspace Name</label>
+        <input type="text" id="ws-input-name" placeholder="e.g. Downloads" style="width:100%; padding:10px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13px;">
+      </div>
+
+      <div class="form-group" style="margin-bottom: 14px;">
+        <label for="ws-input-path" style="font-size: 12px; font-weight: 600; color: #334155;">Directory Path</label>
+        <input type="text" id="ws-input-path" placeholder="e.g. C:\Users\Admin\Downloads" style="width:100%; padding:10px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13px; font-family:var(--font-mono);">
+        <span id="ws-path-status-hint" style="display:block; font-size:11.5px; color:#64748b; margin-top:4px;">Enter an absolute directory path on this machine.</span>
+      </div>
+
+      <div class="form-group" style="margin-bottom: 20px;">
+        <label style="font-size: 12px; font-weight: 600; color: #334155; margin-bottom: 6px; display:block;">Permissions</label>
+        <div style="display:flex; gap:16px; font-size:12.5px; color:#334155;">
+          <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+            <input type="checkbox" id="ws-perm-read" checked disabled> READ (Search & Read)
+          </label>
+          <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+            <input type="checkbox" id="ws-perm-write" checked> WRITE (Move & Organize)
+          </label>
+          <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+            <input type="checkbox" id="ws-perm-delete"> DELETE (Remove Files)
+          </label>
+        </div>
+      </div>
+
+      <div class="modal-actions-row">
+        <button class="pill-btn pill-btn-outline" id="btn-cancel-add-ws">Cancel</button>
+        <button class="pill-btn pill-btn-dark" id="btn-submit-add-ws">Authorize Workspace</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- GOOGLE CALENDAR SYNC MODAL -->
+  <div class="modal-backdrop hidden" id="gcal-sync-modal">
+    <div class="modern-modal-card" style="max-width: 540px;">
+      <div class="modal-badge-row">
+        <span class="risk-badge risk-low">CALENDAR INTEGRATION</span>
+      </div>
+      <h3 class="modal-title">Sync Google Calendar</h3>
+      <p class="modal-desc">Synchronize appointments between your Google Calendar and local private schedule.</p>
+
+      <!-- Protocol Selection Chips -->
+      <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+        <button type="button" class="pill-btn pill-btn-dark btn-sm" id="gcal-mode-ical" style="font-size: 12px;">Secret iCal Feed (Recommended)</button>
+        <button type="button" class="pill-btn pill-btn-outline btn-sm" id="gcal-mode-rest" style="font-size: 12px;">Google REST API v3</button>
+      </div>
+
+      <!-- iCal Mode Section -->
+      <div id="gcal-section-ical">
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label for="gcal-input-source" style="font-size: 12px; font-weight: 600; color: #334155;">Google Calendar Secret iCal Address</label>
+          <input type="text" id="gcal-input-source" placeholder="https://calendar.google.com/calendar/ical/.../basic.ics" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:12.5px; font-family:var(--font-mono);">
+          <span style="display:block; font-size:11px; color:#64748b; margin-top:5px; line-height: 1.4;">
+            Obtain from: <strong>Google Calendar &rarr; Settings &rarr; Integrate calendar &rarr; Secret address in iCal format</strong>. No API key or cloud console setup required.
+          </span>
+        </div>
+      </div>
+
+      <!-- REST API v3 Section -->
+      <div id="gcal-section-rest" style="display: none;">
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label for="gcal-input-calid" style="font-size: 12px; font-weight: 600; color: #334155;">Calendar ID</label>
+          <input type="text" id="gcal-input-calid" value="primary" placeholder="primary or your-email@gmail.com" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:12.5px; font-family:var(--font-mono);">
+        </div>
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label for="gcal-input-apikey" style="font-size: 12px; font-weight: 600; color: #334155;">Google Cloud API Key (Read-only)</label>
+          <input type="password" id="gcal-input-apikey" placeholder="AIzaSy..." style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:12.5px; font-family:var(--font-mono);">
+        </div>
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label for="gcal-input-token" style="font-size: 12px; font-weight: 600; color: #334155;">OAuth Access Token (Optional for Read/Write)</label>
+          <input type="password" id="gcal-input-token" placeholder="Bearer ya29..." style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:12.5px; font-family:var(--font-mono);">
+        </div>
+      </div>
+
+      <div class="checkbox-row" style="margin-top: 10px; margin-bottom: 14px; display: flex; align-items: center; gap: 8px;">
+        <input type="checkbox" id="gcal-remember-settings" checked style="accent-color: #2563eb; width: 15px; height: 15px; cursor: pointer;">
+        <label for="gcal-remember-settings" style="font-size: 12px; color: #475569; cursor: pointer;">Save source configuration locally for future syncs</label>
+      </div>
+
+      <div id="gcal-sync-feedback" style="display:none; font-size:12px; padding:10px; border-radius:8px; margin-bottom:14px;"></div>
+
+      <div class="modal-actions-row">
+        <button class="pill-btn pill-btn-outline" id="btn-cancel-gcal-sync">Cancel</button>
+        <button class="pill-btn pill-btn-dark" id="btn-submit-gcal-sync">Sync Schedule</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LLM CONFIGURATION & GROQ API KEY MODAL -->
+  <div class="modal-backdrop hidden" id="llm-config-modal">
+    <div class="modern-modal-card" style="max-width: 530px; max-height: calc(100vh - 40px); overflow-y: auto; padding: 22px;">
+      <div style="display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 10px;">
+        <div>
+          <div class="modal-badge-row" style="margin-bottom: 6px;">
+            <span class="risk-badge risk-low">AI INFERENCE SETTINGS</span>
+          </div>
+          <h3 class="modal-title" style="margin-bottom: 3px; font-size: 18px;">LLM Configuration &amp; Providers</h3>
+          <p class="modal-desc" style="margin-bottom: 0; font-size: 12px;">Connect cloud Groq API for instant fast responses, or run 100% private local Ollama.</p>
+        </div>
+        <button class="modal-close-icon-btn" id="btn-close-llm-modal-x" title="Close modal" style="background: transparent; border: 1px solid var(--border-subtle); border-radius: 8px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-muted); flex-shrink: 0; margin-left: 12px;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Live Diagnostics Status Card -->
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; font-size: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <span style="color: #64748b; font-weight: 600;">Active Provider:</span>
+          <span id="llm-cfg-active-prov" style="font-weight: 700; color: #0f172a; text-transform: uppercase;">Ollama</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <span style="color: #64748b;">Local Ollama Daemon:</span>
+          <span id="llm-cfg-ollama-status" class="risk-badge risk-high" style="font-size: 10.5px;">OFFLINE</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="color: #64748b;">Cloud Groq API:</span>
+          <span id="llm-cfg-groq-status" class="risk-badge risk-med" style="font-size: 10.5px;">NOT CONFIGURED</span>
+        </div>
+      </div>
+
+      <!-- Provider Tabs -->
+      <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+        <button type="button" class="pill-btn pill-btn-dark btn-sm" id="llm-tab-btn-groq" style="font-size: 12px;">Cloud Groq API (Fast)</button>
+        <button type="button" class="pill-btn pill-btn-outline btn-sm" id="llm-tab-btn-ollama" style="font-size: 12px;">Local Ollama (Private)</button>
+      </div>
+
+      <!-- SECTION: Groq Cloud -->
+      <div id="llm-section-groq">
+        <div class="form-group" style="margin-bottom: 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <label for="cfg-groq-key" style="font-size: 12px; font-weight: 600; color: #334155; margin-bottom: 0;">Groq API Key</label>
+            <button type="button" id="btn-fetch-groq-models" class="pill-btn pill-btn-outline btn-sm" style="font-size: 11px; padding: 2px 8px;">Fetch Account Models</button>
+          </div>
+          <input type="password" id="cfg-groq-key" placeholder="gsk_..." style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:12.5px; font-family:var(--font-mono);">
+          <span style="display:block; font-size:11px; color:#64748b; margin-top:5px; line-height: 1.4;">
+            Get a free API key at <strong>console.groq.com</strong>. Provides ultra-fast cloud inference with zero local RAM usage.
+          </span>
+        </div>
+        <div class="form-group" style="margin-bottom: 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <label for="cfg-groq-model" style="font-size: 12px; font-weight: 600; color: #334155; margin-bottom: 0;">Groq Model</label>
+            <span id="cfg-groq-models-count" style="font-size: 11px; color: #64748b;"></span>
+          </div>
+          <select id="cfg-groq-model" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:12.5px; font-family:var(--font-mono); background:#fff;">
+            <option value="llama-3.3-70b-versatile" selected>llama-3.3-70b-versatile (Recommended - High Quality)</option>
+            <option value="llama-3.1-8b-instant">llama-3.1-8b-instant (Fast - Low Latency)</option>
+            <option value="deepseek-r1-distill-llama-70b">deepseek-r1-distill-llama-70b (Reasoning)</option>
+            <option value="qwen/qwen3.8-27b">qwen/qwen3.8-27b (Multimodal)</option>
+            <option value="mixtral-8x7b-32768">mixtral-8x7b-32768</option>
+            <option value="__custom__">Custom Model (Enter below)...</option>
+          </select>
+          <input type="text" id="cfg-groq-model-custom" placeholder="e.g. meta-llama/llama-4-scout-17b-16e-instruct" style="display:none; width:100%; margin-top:8px; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:12px; font-family:var(--font-mono);">
+        </div>
+        <div style="display: flex; justify-content: flex-end; margin-top: 14px;">
+          <button type="button" class="pill-btn pill-btn-dark" id="btn-save-groq-cfg">Connect & Activate Groq</button>
+        </div>
+      </div>
+
+      <!-- SECTION: Local Ollama -->
+      <div id="llm-section-ollama" style="display: none;">
+        <div style="background: #f1f5f9; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; font-size: 11.5px; color: #334155; line-height: 1.4;">
+          <strong style="color: #0f172a; display: block; margin-bottom: 6px;">How to install &amp; run local models:</strong>
+          <ol style="margin: 0; padding-left: 18px;">
+            <li>Download &amp; install from <strong>ollama.com</strong></li>
+            <li>Open a terminal and run: <code style="background: #e2e8f0; padding: 2px 5px; border-radius: 4px;">ollama serve</code></li>
+            <li>Pull a model: <code style="background: #e2e8f0; padding: 2px 5px; border-radius: 4px;">ollama pull qwen2.5:3b</code></li>
+          </ol>
+        </div>
+
+        <!-- Inline GPU status row (updates dynamically, matches diagnostics card style) -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 12px;">
+          <span style="color: #64748b;">Compute Hardware:</span>
+          <span id="ollama-gpu-badge" class="risk-badge risk-med" style="font-size: 10.5px;">DETECTING...</span>
+        </div>
+
+        <!-- Compute Mode: plain segmented select, no emoji, no custom card UI -->
+        <div class="form-group" style="margin-bottom: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <label style="font-size: 12px; font-weight: 600; color: #334155;">Compute Mode</label>
+            <span id="ollama-gpu-detect-sub" style="font-size: 11px; color: #64748b;"></span>
+          </div>
+          <select id="ollama-compute-select" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:12.5px; background:#fff; color:#334155;">
+            <option value="cpu">CPU — Works on any hardware (slower)</option>
+            <option value="gpu">GPU — Requires NVIDIA / AMD / Apple Silicon</option>
+          </select>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <label for="cfg-ollama-model" style="font-size: 12px; font-weight: 600; color: #334155; margin-bottom: 0;">Ollama Model</label>
+            <span id="cfg-ollama-models-count" style="font-size: 11px; color: #64748b;"></span>
+          </div>
+          <select id="cfg-ollama-model" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:12.5px; font-family:var(--font-mono); background:#fff; color:#334155;">
+            <option value="qwen2.5:3b" selected>qwen2.5:3b</option>
+          </select>
+          <span style="display:block; font-size:11px; color:#64748b; margin-top:5px; line-height:1.4;">
+            Press <strong>Ollama List</strong> to start Ollama and detect every model installed on this machine.
+          </span>
+        </div>
+
+        <div style="display: flex; gap: 8px; justify-content: space-between; align-items: center; flex-wrap: wrap; margin-top: 12px;">
+          <button type="button" class="pill-btn pill-btn-outline" id="btn-start-local-ollama">Start Ollama</button>
+          <button type="button" class="pill-btn pill-btn-outline" id="btn-list-ollama-models" title="Start Ollama and scan every installed model">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="8" y1="6" x2="21" y2="6"></line>
+              <line x1="8" y1="12" x2="21" y2="12"></line>
+              <line x1="8" y1="18" x2="21" y2="18"></line>
+              <circle cx="3.5" cy="6" r="1"></circle>
+              <circle cx="3.5" cy="12" r="1"></circle>
+              <circle cx="3.5" cy="18" r="1"></circle>
+            </svg>
+            <span>Ollama List</span>
+          </button>
+          <button type="button" class="pill-btn pill-btn-dark" id="btn-save-ollama-cfg">Use Local Ollama</button>
+        </div>
+      </div>
+
+      <div id="llm-cfg-feedback" style="display:none; font-size:12px; padding:10px; border-radius:8px; margin-top:14px;"></div>
+
+      <div class="modal-actions-row" style="margin-top: 12px; border-top: 1px solid #f1f5f9; padding-top: 10px;">
+        <button class="pill-btn pill-btn-outline" id="btn-close-llm-modal">Close</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-backdrop hidden" id="approval-modal">
     <div class="modern-modal-card">
       <div class="modal-badge-row">
@@ -1220,21 +2403,101 @@
         </button>
       </div>
 
-      <div class="link-account-tabs" style="margin-top: 14px;">
-        <button class="tab-chip active" id="tab-account-demo">Executive Sandbox</button>
+      <div class="link-account-tabs" style="margin-top: 14px; display: flex; gap: 6px;">
+        <button class="tab-chip active" id="tab-account-google" style="display: flex; align-items: center; gap: 6px;">
+          <svg width="13" height="13" viewBox="0 0 24 24">
+            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+          </svg>
+          Google Sign-In
+        </button>
+        <button class="tab-chip" id="tab-account-demo">Executive Sandbox</button>
         <button class="tab-chip" id="tab-account-imap">Custom IMAP / SMTP</button>
       </div>
 
-      <div class="account-tab-pane" id="pane-account-demo">
-        <p class="account-tab-desc">Connects to the pre-loaded sandbox workspace featuring realistic incident alerts, budget requests, and engineering communications.</p>
+      <!-- Google OAuth Tab Pane -->
+      <div class="account-tab-pane" id="pane-account-google">
+        <div id="google-pane-connected-view" style="display: none; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 8px; padding: 14px; margin-top: 10px; margin-bottom: 14px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="width: 9px; height: 9px; border-radius: 50%; background: #10b981; display: inline-block; flex-shrink: 0;"></span>
+              <div>
+                <div style="font-size: 13px; font-weight: 600; color: #065f46;" id="modal-google-connected-email">Connected to Google</div>
+                <div style="font-size: 11.5px; color: #047857; margin-top: 2px;">Live Gmail API sync active &bull; Cloud OAuth 2.0</div>
+              </div>
+            </div>
+            <button type="button" id="btn-google-modal-disconnect" class="pill-btn pill-btn-ghost danger" style="color: #dc2626; border: 1px solid #fee2e2; background: #fff5f5; font-size: 12px; padding: 5px 12px; cursor: pointer; border-radius: 6px; font-weight: 600; white-space: nowrap;">
+              Disconnect
+            </button>
+          </div>
+        </div>
+
+        <div id="google-pane-login-view" style="text-align: center; padding: 20px 10px 15px;">
+          <div style="background: rgba(66, 133, 244, 0.08); border: 1px solid rgba(66, 133, 244, 0.25); border-radius: 8px; padding: 12px 14px; margin-bottom: 16px; text-align: left;">
+            <div style="font-size: 13px; font-weight: 600; color: #1e40af; display: flex; align-items: center; gap: 8px;">
+              <svg width="15" height="15" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+              </svg>
+              Google Cloud OAuth 2.0 Authentication
+            </div>
+            <div style="font-size: 12px; color: #2563eb; margin-top: 3px; line-height: 1.5;">
+              Authenticate your Google Account securely with OAuth 2.0. Reads and sends emails directly through Google's Gmail API.
+            </div>
+          </div>
+
+          <a href="/api/auth/google/login" id="btn-google-oauth-login" style="display: inline-flex; align-items: center; justify-content: center; gap: 10px; background: #ffffff; color: #1e293b; border: 1px solid #cbd5e1; border-radius: 8px; padding: 11px 24px; font-weight: 600; font-size: 14px; text-decoration: none; box-shadow: 0 1px 3px rgba(0,0,0,0.08); transition: all 0.2s; cursor: pointer;">
+            <svg width="18" height="18" viewBox="0 0 24 24">
+              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+            </svg>
+            Sign in with Google
+          </a>
+          <p style="font-size: 11.5px; color: #64748b; margin-top: 10px;">
+            One-click authorization with your Google Cloud OAuth Client credentials.
+          </p>
+        </div>
+
         <div class="modal-actions-row" style="margin-top: 16px; display: flex; justify-content: flex-end; gap: 8px;">
-          <button class="pill-btn pill-btn-outline" id="btn-cancel-demo-account">Cancel</button>
-          <button class="pill-btn pill-btn-dark" id="btn-activate-sandbox">Activate Sandbox Mailbox</button>
+          <button class="pill-btn pill-btn-outline" id="btn-cancel-google-account">Close</button>
+        </div>
+      </div>
+
+      <div class="account-tab-pane hidden" id="pane-account-demo">
+        <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 8px; padding: 12px 14px; margin-top: 10px; margin-bottom: 14px; display: flex; align-items: flex-start; gap: 10px;">
+          <span style="width: 8px; height: 8px; border-radius: 50%; background: #10b981; flex-shrink: 0; margin-top: 5px;"></span>
+          <div>
+            <div style="font-size: 13px; font-weight: 600; color: #065f46;">Offline Executive Sandbox Active</div>
+            <div style="font-size: 12px; color: #047857; margin-top: 2px;">Running on an isolated offline demo account (<code>demo.executive@local.ai</code>). Not connected to Google or any live mail server.</div>
+          </div>
+        </div>
+        <p class="account-tab-desc" style="color: var(--text-muted); font-size: 12.5px; line-height: 1.5; margin-bottom: 16px;">
+          This sandbox provides pre-loaded mock communications (SLA incidents, cloud GPU budget requests, latency benchmarks) for testing AI features safely. To link your real Gmail or Outlook account, click the <strong>Custom IMAP / SMTP</strong> tab above.
+        </p>
+        <div class="modal-actions-row" style="margin-top: 16px; display: flex; justify-content: flex-end; gap: 8px;">
+          <button class="pill-btn pill-btn-outline" id="btn-cancel-demo-account">Close</button>
+          <button class="pill-btn pill-btn-dark" id="btn-activate-sandbox">Reset Sandbox Mailbox</button>
         </div>
       </div>
 
       <div class="account-tab-pane hidden" id="pane-account-imap">
-        <div style="background: rgba(37,99,235,0.08); border: 1px solid rgba(37,99,235,0.25); border-radius: 8px; padding: 10px 12px; margin-top: 12px; font-size: 12px; line-height: 1.4; color: var(--text-secondary);">
+        <!-- Email Provider Selector Chips -->
+        <div style="margin-top: 10px; margin-bottom: 8px;">
+          <label style="display:block; font-size:11px; font-weight:600; text-transform:uppercase; color:#64748b; margin-bottom:6px; letter-spacing:0.5px;">Select Provider</label>
+          <div style="display:flex; gap:6px;" id="email-provider-chips">
+            <button type="button" class="tab-chip active" id="btn-provider-google" style="font-size:11.5px; padding:4px 10px;">Google / Gmail</button>
+            <button type="button" class="tab-chip" id="btn-provider-outlook" style="font-size:11.5px; padding:4px 10px;">Outlook / Office 365</button>
+            <button type="button" class="tab-chip" id="btn-provider-custom" style="font-size:11.5px; padding:4px 10px;">Custom IMAP</button>
+          </div>
+        </div>
+
+        <div id="email-provider-notice" style="background: rgba(37,99,235,0.08); border: 1px solid rgba(37,99,235,0.25); border-radius: 8px; padding: 10px 12px; margin-top: 10px; font-size: 12px; line-height: 1.4; color: var(--text-secondary);">
           <strong style="color: #2563eb;">Gmail Configuration:</strong> Google requires a <strong>16-character App Password</strong> (not your standard password). Generate one at <a href="https://myaccount.google.com/apppasswords" target="_blank" style="color: #2563eb; text-decoration: underline;">myaccount.google.com/apppasswords</a> with 2-Step Verification turned on.
         </div>
         <div class="form-group-compact" style="margin-top: 12px;">
@@ -1278,47 +2541,80 @@
 
   <!-- Modal: Start Live Class Attendance Session -->
   <div class="modal-backdrop hidden" id="modal-start-attendance">
-    <div class="modal-card" style="max-width: 480px;">
-      <div class="modal-header">
+    <div class="modern-modal-card" style="max-width: 500px; width: 92%; background: #ffffff; border-radius: 16px; padding: 24px; box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.25); border: 1px solid var(--border-subtle, #e2e8f0); box-sizing: border-box;">
+      <div style="display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 16px; border-bottom: 1px solid #f1f5f9; padding-bottom: 14px;">
         <div>
-          <h2 class="modal-title">Start Live Class Attendance</h2>
-          <p class="modal-desc" style="font-size: 12px; color: #64748b; margin-top: 2px;">Display a dynamic rotating QR code for in-person students</p>
+          <div style="display: inline-flex; align-items: center; gap: 6px; background: #eff6ff; color: #2563eb; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 6px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px;">
+            <span style="width: 6px; height: 6px; border-radius: 50%; background: #2563eb;"></span>
+            Classroom Mode
+          </div>
+          <h2 class="modal-title" style="margin: 0; font-size: 18px; font-weight: 700; color: #0f172a;">Start Live Class Attendance</h2>
+          <p class="modal-desc" style="font-size: 12.5px; color: #64748b; margin: 3px 0 0 0;">Display a dynamic rotating QR code for in-person students</p>
         </div>
-        <button class="modal-close-btn" id="btn-close-modal-attendance">&times;</button>
+        <button class="modal-close-icon-btn" id="btn-close-modal-attendance" title="Close" style="background: transparent; border: 1px solid var(--border-subtle, #e2e8f0); border-radius: 8px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #64748b; transition: all 0.15s; flex-shrink: 0; margin-left: 12px;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
       </div>
 
-      <div class="modal-body" style="padding: 16px 0;">
+      <div class="modal-body" style="padding: 0;">
         <div class="form-group" style="margin-bottom: 14px;">
-          <label style="display: block; font-size: 12px; font-weight: 600; color: #334155; margin-bottom: 6px;">Course Name</label>
-          <input type="text" id="modal-att-course" class="form-input" value="CS401: Distributed Systems" placeholder="e.g. CS101: Introduction to CS" style="width: 100%; height: 40px; padding: 0 12px; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 13.5px;">
+          <label style="display: block; font-size: 12.5px; font-weight: 600; color: #334155; margin-bottom: 6px;">Course Name</label>
+          <input type="text" id="modal-att-course" class="form-input" value="CS401: Distributed Systems" placeholder="e.g. CS101: Introduction to CS" style="width: 100%; height: 40px; padding: 0 12px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 13.5px; background: #ffffff; color: #0f172a; box-sizing: border-box;">
         </div>
 
         <div class="form-group" style="margin-bottom: 14px;">
-          <label style="display: block; font-size: 12px; font-weight: 600; color: #334155; margin-bottom: 6px;">Class Section / Batch</label>
-          <input type="text" id="modal-att-section" class="form-input" value="Section A (Morning)" placeholder="e.g. Section A" style="width: 100%; height: 40px; padding: 0 12px; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 13.5px;">
+          <label style="display: block; font-size: 12.5px; font-weight: 600; color: #334155; margin-bottom: 6px;">Class Section / Batch</label>
+          <input type="text" id="modal-att-section" class="form-input" value="Section A (Morning)" placeholder="e.g. Section A" style="width: 100%; height: 40px; padding: 0 12px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 13.5px; background: #ffffff; color: #0f172a; box-sizing: border-box;">
         </div>
 
-        <div class="form-group" style="margin-bottom: 14px;">
-          <label style="display: block; font-size: 12px; font-weight: 600; color: #334155; margin-bottom: 6px;">QR Code Rotation Interval</label>
-          <select id="modal-att-interval" style="width: 100%; height: 40px; padding: 0 12px; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 13.5px; background: #ffffff;">
-            <option value="10">10 Seconds (Maximum Anti-Proxy Security)</option>
-            <option value="15" selected>15 Seconds (Recommended Balanced)</option>
-            <option value="25">25 Seconds (High Classroom Capacity)</option>
-            <option value="45">45 Seconds (Relaxed)</option>
-          </select>
-          <span style="font-size: 11.5px; color: #64748b; margin-top: 4px; display: block;">The QR code will automatically regenerate a new token every cycle. Screenshots sent to absent friends expire immediately.</span>
+        <!-- QR Code Rotation Interval (Manual Seconds + Quick Presets) -->
+        <div class="form-group" style="margin-bottom: 16px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+            <label style="font-size: 12.5px; font-weight: 600; color: #334155;">QR Code Rotation Interval</label>
+            <span style="font-size: 11.5px; color: #2563eb; font-weight: 600;">Manual Seconds (min 1)</span>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+            <input type="number" id="modal-att-interval" min="1" step="1" value="1" placeholder="Enter seconds (min 1)..." style="flex: 1; height: 40px; padding: 0 12px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 14px; font-weight: 600; color: #0f172a; background: #ffffff; box-sizing: border-box;">
+            <span style="font-size: 13px; font-weight: 600; color: #64748b; white-space: nowrap;">Seconds</span>
+          </div>
+
+          <!-- Quick Preset Chips -->
+          <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;" id="att-interval-chips">
+            <button type="button" class="att-interval-preset-chip active" data-sec="1" style="background: #2563eb; color: #ffffff; border: 1px solid #2563eb; border-radius: 6px; padding: 3px 9px; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.15s;">1s (Default)</button>
+            <button type="button" class="att-interval-preset-chip" data-sec="5" style="background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 6px; padding: 3px 9px; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.15s;">5s</button>
+            <button type="button" class="att-interval-preset-chip" data-sec="10" style="background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 6px; padding: 3px 9px; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.15s;">10s</button>
+            <button type="button" class="att-interval-preset-chip" data-sec="15" style="background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 6px; padding: 3px 9px; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.15s;">15s</button>
+            <button type="button" class="att-interval-preset-chip" data-sec="25" style="background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 6px; padding: 3px 9px; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.15s;">25s</button>
+            <button type="button" class="att-interval-preset-chip" data-sec="45" style="background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 6px; padding: 3px 9px; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.15s;">45s</button>
+          </div>
+
+          <span style="font-size: 11.5px; color: #64748b; margin-top: 6px; display: block; line-height: 1.4;">
+            Dynamic token rotates automatically to prevent screenshot sharing. You can enter any custom number of seconds (1 or higher).
+          </span>
         </div>
 
-        <div class="checkbox-row" style="margin-top: 12px; display: flex; align-items: center; gap: 8px;">
-          <input type="checkbox" id="modal-att-auto-export" checked style="accent-color: #2563eb; width: 16px; height: 16px; cursor: pointer;">
-          <label for="modal-att-auto-export" style="font-size: 12.5px; color: #334155; font-weight: 500; cursor: pointer;">Automatically download CSV roster when session is ended</label>
+        <div class="checkbox-row" style="margin-top: 14px; display: flex; align-items: center; gap: 8px; background: #f8fafc; padding: 10px 12px; border-radius: 8px; border: 1px solid #f1f5f9;">
+          <input type="checkbox" id="modal-att-auto-export" checked style="accent-color: #2563eb; width: 16px; height: 16px; cursor: pointer; margin: 0;">
+          <label for="modal-att-auto-export" style="font-size: 12.5px; color: #334155; font-weight: 500; cursor: pointer; margin: 0;">Automatically download CSV roster when session is ended</label>
+        </div>
+
+        <div class="checkbox-row" style="margin-top: 8px; display: flex; align-items: center; gap: 8px; background: #eff6ff; padding: 10px 12px; border-radius: 8px; border: 1px solid #dbeafe;">
+          <input type="checkbox" id="modal-att-use-tunnel" checked style="accent-color: #2563eb; width: 16px; height: 16px; cursor: pointer; margin: 0;">
+          <label for="modal-att-use-tunnel" style="font-size: 12.5px; color: #1e40af; font-weight: 500; cursor: pointer; margin: 0;">
+            <strong>Cloudflare Tunnel:</strong> Auto-generate public HTTPS QR for mobile access outside Wi-Fi
+          </label>
         </div>
       </div>
 
-      <div class="modal-actions-row" style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px;">
-        <button class="pill-btn pill-btn-outline" id="btn-cancel-modal-attendance">Cancel</button>
-        <button class="pill-btn pill-btn-dark" id="btn-confirm-start-attendance">Launch Live Session</button>
+      <div class="modal-actions-row" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; border-top: 1px solid #f1f5f9; padding-top: 16px;">
+        <button class="pill-btn pill-btn-outline" id="btn-cancel-modal-attendance" style="padding: 8px 18px; font-size: 13px; font-weight: 600;">Cancel</button>
+        <button class="pill-btn pill-btn-dark" id="btn-confirm-start-attendance" style="padding: 8px 20px; font-size: 13px; font-weight: 600; background: #0f172a; color: #ffffff;">Launch Live Session</button>
       </div>
+    </div>
   </div>
 
   <!-- Modal: Fullscreen Classroom Projector Mode -->
@@ -1334,8 +2630,12 @@
           <p class="projector-course-sub" id="proj-course-sub">Section A &bull; Rotating QR Code</p>
         </div>
         <div class="projector-actions">
-          <span class="projector-present-count" id="proj-present-count">0 Present</span>
-          <button class="modal-close-btn" id="btn-close-projector" title="Exit Projector View">&times;</button>
+          <button class="modal-close-icon-btn" id="btn-close-projector" title="Exit Projector View" style="background: transparent; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; color: #ffffff;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
         </div>
       </div>
 
@@ -1365,6 +2665,63 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=31"></script>
+  <!-- Modal: Bulk Cleanup Unnecessary Emails -->
+  <div class="modal-backdrop hidden" id="modal-bulk-cleanup">
+    <div class="modal-card bulk-cleanup-modal-card">
+      <div class="modal-header">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+          <h2 class="modal-title">Bulk Cleanup: Unnecessary & Promotional Emails</h2>
+        </div>
+        <button class="modal-close-icon-btn" id="btn-close-cleanup-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="cleanup-safety-alert">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2" style="flex-shrink:0;">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+          </svg>
+          <div>
+            <strong>Strict Protection Policy:</strong> Work, College, Personal, and Review-Required emails are strictly excluded from deletion. Only items categorized as <em>Unnecessary / Irrelevant</em> or <em>Promotions</em> are listed below. Selected items are moved safely to Trash.
+          </div>
+        </div>
+        <div class="cleanup-toolbar-row">
+          <label class="cleanup-select-all-label">
+            <input type="checkbox" id="cleanup-select-all-check">
+            <span>Select All Candidates</span>
+          </label>
+          <span class="cleanup-selection-count" id="cleanup-count-display">Selected: 0 emails</span>
+        </div>
+        <div class="cleanup-table-wrapper">
+          <table class="cleanup-table">
+            <thead>
+              <tr>
+                <th style="width: 38px;"></th>
+                <th>Sender</th>
+                <th>Subject</th>
+                <th>Category</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody id="cleanup-table-body">
+              <tr><td colspan="5" style="text-align:center; padding:18px; color:#64748b;">Loading cleanup candidates...</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="cleanup-status-message hidden" id="cleanup-status-message"></div>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center; padding-top: 14px; border-top: 1px solid #f1f5f9;">
+        <span style="font-size: 12px; color: #64748b;">All actions logged with audit trails. Reversible in email Trash.</span>
+        <div style="display:flex; gap:10px;">
+          <button class="pill-btn pill-btn-outline" id="btn-cancel-cleanup">Cancel</button>
+          <button class="pill-btn pill-btn-danger" id="btn-confirm-cleanup" disabled>Move Selected to Trash</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js?v=51"></script>
 </body>
 </html>

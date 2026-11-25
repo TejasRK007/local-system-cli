@@ -6,7 +6,7 @@
   <title>Live Class Attendance Check-in</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
       --bg-page: #f8fafc;
@@ -15,6 +15,7 @@
       --text-main: #0f172a;
       --text-muted: #64748b;
       --brand-blue: #2563eb;
+      --brand-hover: #1d4ed8;
       --success-green: #059669;
       --success-bg: #ecfdf5;
       --error-red: #dc2626;
@@ -31,22 +32,22 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      padding: 20px 16px;
+      justify-content: flex-start;
+      padding: 18px 14px;
       -webkit-font-smoothing: antialiased;
     }
     .checkin-card {
       background: var(--card-bg);
       border: 1px solid var(--border-subtle);
       border-radius: 20px;
-      padding: 32px 24px;
+      padding: 26px 20px;
       width: 100%;
       max-width: 440px;
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
     }
     .checkin-header {
       text-align: center;
-      margin-bottom: 24px;
+      margin-bottom: 20px;
     }
     .checkin-badge {
       display: inline-flex;
@@ -54,17 +55,17 @@
       gap: 6px;
       background: #eff6ff;
       color: var(--brand-blue);
-      font-size: 12px;
+      font-size: 11.5px;
       font-weight: 700;
       padding: 4px 12px;
       border-radius: 9999px;
-      margin-bottom: 12px;
+      margin-bottom: 8px;
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
     .live-dot {
-      width: 8px;
-      height: 8px;
+      width: 7px;
+      height: 7px;
       border-radius: 50%;
       background: var(--brand-blue);
       animation: pulse 1.5s infinite;
@@ -76,24 +77,46 @@
     }
     .checkin-title {
       font-family: var(--font-heading);
-      font-size: 22px;
+      font-size: 21px;
       font-weight: 800;
       color: var(--text-main);
-      margin-bottom: 6px;
+      margin-bottom: 4px;
     }
     .checkin-subtitle {
       font-size: 13px;
       color: var(--text-muted);
     }
+    .section-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .section-title {
+      font-size: 13.5px;
+      font-weight: 700;
+      color: #334155;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .section-action {
+      background: none;
+      border: none;
+      color: var(--brand-blue);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
     .form-group {
-      margin-bottom: 18px;
+      margin-bottom: 14px;
     }
     .form-label {
       display: block;
-      font-size: 12.5px;
+      font-size: 12px;
       font-weight: 600;
       color: #334155;
-      margin-bottom: 6px;
+      margin-bottom: 5px;
     }
     .form-input {
       width: 100%;
@@ -112,49 +135,157 @@
       border-color: var(--brand-blue);
       box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
     }
-    .token-badge-row {
+    .saved-profile-box {
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 10px 14px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      background: #f1f5f9;
-      padding: 8px 12px;
-      border-radius: 8px;
-      font-size: 11.5px;
-      color: #475569;
-      margin-bottom: 20px;
+      margin-bottom: 16px;
     }
-    .token-code {
-      font-family: monospace;
+    .saved-profile-name {
+      font-size: 13.5px;
       font-weight: 700;
-      color: #0f172a;
+      color: var(--text-main);
     }
-    .btn-submit {
+    .saved-profile-id {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 1px;
+    }
+
+    /* Primary and Secondary Buttons */
+    .btn-main-scan {
       width: 100%;
-      height: 48px;
-      background: #090d16;
+      height: 50px;
+      background: var(--brand-blue);
       color: #ffffff;
       border: none;
       border-radius: 12px;
-      font-size: 14px;
+      font-size: 14.5px;
       font-weight: 700;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 8px;
-      transition: all 0.2s;
+      gap: 10px;
+      box-shadow: 0 4px 14px rgba(37, 99, 235, 0.28);
+      transition: all 0.2s ease;
+      margin-bottom: 10px;
     }
-    .btn-submit:hover {
-      background: #1e293b;
+    .btn-main-scan:hover {
+      background: var(--brand-hover);
       transform: translateY(-1px);
     }
-    .btn-submit:disabled {
-      opacity: 0.6;
+    .btn-main-scan:disabled {
+      background: #94a3b8;
+      box-shadow: none;
       cursor: not-allowed;
+      transform: none;
     }
+    .btn-main-scan.pulse {
+      animation: alertPulse 1.2s infinite;
+    }
+    @keyframes alertPulse {
+      0% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.7); }
+      70% { box-shadow: 0 0 0 10px rgba(37, 99, 235, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
+    }
+
+    .btn-secondary {
+      width: 100%;
+      height: 42px;
+      background: #ffffff;
+      color: #334155;
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.15s ease;
+    }
+    .btn-secondary:hover {
+      background: #f8fafc;
+      border-color: #cbd5e1;
+    }
+
+    /* In-Browser Viewfinder Scanner */
+    .scanner-panel {
+      display: none;
+      margin-top: 14px;
+      background: #090d16;
+      border-radius: 14px;
+      padding: 12px;
+      text-align: center;
+    }
+    .viewfinder-wrap {
+      position: relative;
+      width: 100%;
+      height: 250px;
+      border-radius: 10px;
+      overflow: hidden;
+      background: #000000;
+    }
+    #scanner-video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .target-overlay {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+    .target-box {
+      width: 180px;
+      height: 180px;
+      border: 2px solid rgba(255, 255, 255, 0.8);
+      border-radius: 14px;
+      position: relative;
+      box-shadow: 0 0 0 4000px rgba(0, 0, 0, 0.45);
+    }
+    .laser-line {
+      position: absolute;
+      left: 0; right: 0; height: 2px;
+      background: #38bdf8;
+      box-shadow: 0 0 8px #38bdf8;
+      animation: scanLaser 2s infinite ease-in-out;
+    }
+    @keyframes scanLaser {
+      0% { top: 6px; }
+      50% { top: 172px; }
+      100% { top: 6px; }
+    }
+    .scanner-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .btn-scanner-ctrl {
+      flex: 1;
+      height: 36px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(255, 255, 255, 0.1);
+      color: #ffffff;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    /* Results */
     .result-box {
-      margin-top: 20px;
-      padding: 16px;
+      margin-top: 16px;
+      padding: 14px;
       border-radius: 12px;
       text-align: center;
       display: none;
@@ -173,18 +304,19 @@
     }
     .result-title {
       font-weight: 800;
-      font-size: 16px;
+      font-size: 15px;
       margin-bottom: 4px;
     }
     .result-desc {
-      font-size: 13px;
-      line-height: 1.4;
+      font-size: 12.5px;
+      line-height: 1.45;
     }
+
     .footer-note {
       text-align: center;
       font-size: 11.5px;
       color: #94a3b8;
-      margin-top: 24px;
+      margin-top: 20px;
     }
   </style>
 </head>
@@ -193,129 +325,460 @@
     <div class="checkin-header">
       <div class="checkin-badge">
         <span class="live-dot"></span>
-        <span>Dynamic Attendance Verification</span>
+        <span>Dynamic Live Attendance</span>
       </div>
-      <h1 class="checkin-title" id="course-title-display">Live Class Check-in</h1>
-      <p class="checkin-subtitle">Verify your in-person classroom presence</p>
+      <h1 class="checkin-title">Classroom Verification</h1>
+      <p class="checkin-subtitle">Verify your presence with the rotating classroom QR</p>
     </div>
 
-    <form id="checkin-form">
+    <!-- Step 1: Student Identity -->
+    <div class="section-title-row">
+      <span class="section-title">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+          <circle cx="12" cy="7" r="4"></circle>
+        </svg>
+        Step 1: Your Student Identity
+      </span>
+      <button type="button" class="section-action" id="btn-edit-profile" style="display: none;">Edit</button>
+    </div>
+
+    <!-- Saved Profile Preview -->
+    <div class="saved-profile-box" id="saved-profile-view" style="display: none;">
+      <div>
+        <div class="saved-profile-name" id="display-profile-name">Alex Morgan</div>
+        <div class="saved-profile-id" id="display-profile-id">ID: 21CS042</div>
+      </div>
+      <span style="font-size: 11px; color: #059669; font-weight: 700; background: #ecfdf5; padding: 2px 7px; border-radius: 6px;">Saved</span>
+    </div>
+
+    <!-- Identity Input Form -->
+    <div id="profile-inputs-wrap">
       <div class="form-group">
-        <label class="form-label" for="student-name">Student Full Name</label>
+        <label class="form-label" for="student-name">Full Name</label>
         <input type="text" id="student-name" class="form-input" placeholder="e.g. Alex Morgan" required autocomplete="name">
       </div>
-
       <div class="form-group">
         <label class="form-label" for="student-id">Student ID / Roll Number</label>
         <input type="text" id="student-id" class="form-input" placeholder="e.g. 21CS042" required autocomplete="off">
       </div>
+    </div>
 
-      <div class="token-badge-row">
-        <span>Dynamic Security Nonce:</span>
-        <span class="token-code" id="token-display">...</span>
-      </div>
+    <hr style="border: none; border-top: 1px solid var(--border-subtle); margin: 18px 0;">
 
-      <button type="submit" class="btn-submit" id="btn-verify">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-          <polyline points="20 6 9 17 4 12"></polyline>
+    <!-- Step 2: Live Verification -->
+    <div class="section-title-row">
+      <span class="section-title">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+          <circle cx="12" cy="13" r="4"></circle>
         </svg>
-        <span>Confirm My Presence</span>
-      </button>
+        Step 2: Scan Live QR Code on Screen
+      </span>
+    </div>
 
-      <div class="result-box" id="result-box">
-        <div class="result-title" id="result-title"></div>
-        <div class="result-desc" id="result-desc"></div>
+    <!-- Primary Action: Live In-Page Camera Scanner -->
+    <button type="button" class="btn-main-scan" id="btn-start-camera-scan">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+        <circle cx="12" cy="13" r="4"></circle>
+      </svg>
+      <span>Scan Live QR on Screen</span>
+    </button>
+
+    <!-- Native Camera / Photo Fallback -->
+    <label for="file-camera-input" class="btn-secondary" style="cursor: pointer; margin-bottom: 8px;">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+        <polyline points="17 8 12 3 7 8"></polyline>
+        <line x1="12" y1="3" x2="12" y2="15"></line>
+      </svg>
+      <span>Take Photo of Screen (Native Camera)</span>
+    </label>
+    <input type="file" id="file-camera-input" accept="image/*" capture="environment" style="display: none;">
+
+    <!-- Optional Quick Fallback: Try with link token -->
+    <button type="button" class="btn-secondary" id="btn-submit-link-token" style="display: none;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+      </svg>
+      <span>Try Submitting with Initial Scanned Link</span>
+    </button>
+
+    <!-- In-Browser Live Viewfinder Panel -->
+    <div class="scanner-panel" id="scanner-panel">
+      <div class="viewfinder-wrap">
+        <video id="scanner-video" playsinline muted></video>
+        <canvas id="scanner-canvas" style="display: none;"></canvas>
+        <div class="target-overlay">
+          <div class="target-box">
+            <div class="laser-line"></div>
+          </div>
+        </div>
       </div>
-    </form>
+      <div class="scanner-actions">
+        <button type="button" class="btn-scanner-ctrl" id="btn-flip-camera">Flip Camera</button>
+        <button type="button" class="btn-scanner-ctrl" id="btn-cancel-camera" style="color: #f87171; border-color: rgba(248,113,113,0.3);">Cancel</button>
+      </div>
+      <p style="color: #94a3b8; font-size: 11.5px; margin-top: 8px;">Point camera at the live rotating QR on the classroom display</p>
+    </div>
+
+    <!-- Status Result Box -->
+    <div class="result-box" id="result-box">
+      <div class="result-title" id="result-title"></div>
+      <div class="result-desc" id="result-desc"></div>
+    </div>
   </div>
 
   <p class="footer-note">100% Private Local System &bull; Rotating anti-proxy security enabled</p>
 
+  <!-- Local Offline QR Decoder Engine -->
+  <script src="/static/jsqr.min.js"></script>
+
   <script>
+    const STORAGE_KEY = 'attendance_student_profile';
     const urlParams = new URLSearchParams(window.location.search);
-    const sessionId = urlParams.get('session_id') || '';
-    const token = urlParams.get('token') || '';
+    let currentSessionId = urlParams.get('session_id') || '';
+    let currentToken = urlParams.get('token') || '';
 
-    const tokenDisplay = document.getElementById('token-display');
-    if (token) {
-      tokenDisplay.textContent = token.substring(0, 10) + '...';
-    } else {
-      tokenDisplay.textContent = 'Missing Token';
-    }
+    // Elements
+    const profileInputsWrap = document.getElementById('profile-inputs-wrap');
+    const savedProfileView = document.getElementById('saved-profile-view');
+    const displayProfileName = document.getElementById('display-profile-name');
+    const displayProfileId = document.getElementById('display-profile-id');
+    const btnEditProfile = document.getElementById('btn-edit-profile');
+    const inputName = document.getElementById('student-name');
+    const inputId = document.getElementById('student-id');
 
-    try {
-      const savedProfile = localStorage.getItem('attendance_student_profile');
-      if (savedProfile) {
-        const p = JSON.parse(savedProfile);
-        if (p.name) document.getElementById('student-name').value = p.name;
-        if (p.id) document.getElementById('student-id').value = p.id;
-      }
-    } catch(e) {}
+    const btnStartCamera = document.getElementById('btn-start-camera-scan');
+    const btnSubmitLinkToken = document.getElementById('btn-submit-link-token');
+    const fileCameraInput = document.getElementById('file-camera-input');
+    const scannerPanel = document.getElementById('scanner-panel');
+    const scannerVideo = document.getElementById('scanner-video');
+    const scannerCanvas = document.getElementById('scanner-canvas');
+    const btnFlipCamera = document.getElementById('btn-flip-camera');
+    const btnCancelCamera = document.getElementById('btn-cancel-camera');
 
-    const form = document.getElementById('checkin-form');
     const resultBox = document.getElementById('result-box');
     const resultTitle = document.getElementById('result-title');
     const resultDesc = document.getElementById('result-desc');
-    const btnVerify = document.getElementById('btn-verify');
 
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const sName = document.getElementById('student-name').value.trim();
-      const sId = document.getElementById('student-id').value.trim();
+    let activeStream = null;
+    let scanAnimationId = null;
+    let currentFacingMode = 'environment';
 
-      if (!sessionId || !token) {
-        showError('Invalid QR Code', 'This check-in link is missing session parameters. Please scan the current live QR code on the display.');
+    // Show link token button if initial token was passed
+    if (currentToken) {
+      btnSubmitLinkToken.style.display = 'flex';
+    }
+
+    // Load saved profile
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const p = JSON.parse(saved);
+        if (p.name && p.id) {
+          inputName.value = p.name;
+          inputId.value = p.id;
+          displayProfileName.textContent = p.name;
+          displayProfileId.textContent = 'ID: ' + p.id;
+          profileInputsWrap.style.display = 'none';
+          savedProfileView.style.display = 'flex';
+          btnEditProfile.style.display = 'block';
+        }
+      }
+    } catch (e) {}
+
+    btnEditProfile.addEventListener('click', () => {
+      profileInputsWrap.style.display = 'block';
+      savedProfileView.style.display = 'none';
+      btnEditProfile.style.display = 'none';
+    });
+
+    function getStudentProfile() {
+      const sName = inputName.value.trim();
+      const sId = inputId.value.trim();
+      if (!sName || !sId) {
+        alert('Please enter both your Student Full Name and Student ID.');
+        if (profileInputsWrap.style.display === 'none') {
+          profileInputsWrap.style.display = 'block';
+          savedProfileView.style.display = 'none';
+          btnEditProfile.style.display = 'none';
+        }
+        return null;
+      }
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ name: sName, id: sId }));
+      } catch (e) {}
+      return { name: sName, id: sId };
+    }
+
+    // Camera Live Scanner
+    async function startCamera() {
+      const profile = getStudentProfile();
+      if (!profile) return;
+
+      scannerPanel.style.display = 'block';
+      btnStartCamera.style.display = 'none';
+      resultBox.style.display = 'none';
+
+      const constraints = {
+        video: {
+          facingMode: { ideal: currentFacingMode },
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+        audio: false
+      };
+
+      try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error('Camera access is unavailable in this browser context. Please use the "Take Photo of Screen" option below.');
+        }
+        activeStream = await navigator.mediaDevices.getUserMedia(constraints);
+        scannerVideo.srcObject = activeStream;
+        await scannerVideo.play();
+        scanAnimationId = requestAnimationFrame(scanTick);
+      } catch (err) {
+        stopCamera();
+        alert(err.message || 'Could not start camera. Please use the photo option.');
+      }
+    }
+
+    function stopCamera() {
+      if (scanAnimationId) {
+        cancelAnimationFrame(scanAnimationId);
+        scanAnimationId = null;
+      }
+      if (activeStream) {
+        activeStream.getTracks().forEach(t => t.stop());
+        activeStream = null;
+      }
+      scannerVideo.srcObject = null;
+      scannerPanel.style.display = 'none';
+      btnStartCamera.style.display = 'flex';
+    }
+
+    btnStartCamera.addEventListener('click', startCamera);
+    btnCancelCamera.addEventListener('click', stopCamera);
+    btnFlipCamera.addEventListener('click', async () => {
+      currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+      stopCamera();
+      await startCamera();
+    });
+
+    // Continuous Frame Scanning
+    async function scanTick() {
+      if (!scannerVideo.readyState || scannerVideo.readyState < 2) {
+        scanAnimationId = requestAnimationFrame(scanTick);
         return;
       }
 
-      btnVerify.disabled = true;
-      btnVerify.querySelector('span').textContent = 'Verifying...';
+      const w = scannerVideo.videoWidth;
+      const h = scannerVideo.videoHeight;
+      if (w === 0 || h === 0) {
+        scanAnimationId = requestAnimationFrame(scanTick);
+        return;
+      }
+
+      // Check native BarcodeDetector first
+      if ('BarcodeDetector' in window) {
+        try {
+          const detector = new BarcodeDetector({ formats: ['qr_code'] });
+          const barcodes = await detector.detect(scannerVideo);
+          if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+            stopCamera();
+            handleScannedQrString(barcodes[0].rawValue);
+            return;
+          }
+        } catch (e) {}
+      }
+
+      // Fallback to jsQR
+      scannerCanvas.width = w;
+      scannerCanvas.height = h;
+      const ctx = scannerCanvas.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(scannerVideo, 0, 0, w, h);
+      const imgData = ctx.getImageData(0, 0, w, h);
+      try {
+        if (typeof jsQR !== 'undefined') {
+          const code = jsQR(imgData.data, w, h);
+          if (code && code.data) {
+            stopCamera();
+            handleScannedQrString(code.data);
+            return;
+          }
+        }
+      } catch (e) {}
+
+      scanAnimationId = requestAnimationFrame(scanTick);
+    }
+
+    // Parse Scanned QR content
+    function handleScannedQrString(qrStr) {
+      try {
+        let sessId = currentSessionId;
+        let tok = '';
+
+        if (qrStr.includes('session_id=') && qrStr.includes('token=')) {
+          const u = new URL(qrStr.startsWith('http') ? qrStr : 'http://dummy.com/' + qrStr);
+          sessId = u.searchParams.get('session_id') || sessId;
+          tok = u.searchParams.get('token') || '';
+        } else {
+          tok = qrStr.trim();
+        }
+
+        if (!tok) {
+          showError('Invalid QR Code', 'The scanned QR code does not contain a valid attendance token. Please point at the classroom projector screen.');
+          return;
+        }
+
+        performCheckin(sessId, tok);
+      } catch (e) {
+        showError('Invalid QR Code', 'Could not read attendance parameters from this QR code.');
+      }
+    }
+
+    // Photo file fallback
+    fileCameraInput.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+
+      const profile = getStudentProfile();
+      if (!profile) return;
+
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const img = new Image();
+        img.onload = async () => {
+          try {
+            let qrFound = null;
+            if ('BarcodeDetector' in window) {
+              try {
+                const detector = new BarcodeDetector({ formats: ['qr_code'] });
+                const barcodes = await detector.detect(img);
+                if (barcodes && barcodes.length > 0) qrFound = barcodes[0].rawValue;
+              } catch (err) {}
+            }
+            if (!qrFound && typeof jsQR !== 'undefined') {
+              const canvas = document.createElement('canvas');
+              canvas.width = img.width;
+              canvas.height = img.height;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0);
+              const data = ctx.getImageData(0, 0, img.width, img.height);
+              const code = jsQR(data.data, img.width, img.height);
+              if (code && code.data) qrFound = code.data;
+            }
+            if (qrFound) {
+              handleScannedQrString(qrFound);
+            } else {
+              showError('No QR Code Found', 'Could not detect a clear QR code in the photo. Please point your camera closer to the screen and try again.');
+            }
+          } catch (err) {
+            showError('Image Decode Error', err.message);
+          } finally {
+            fileCameraInput.value = '';
+          }
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    function getOrCreateDeviceId() {
+      const KEY = 'attendance_device_uuid';
+      let devId = localStorage.getItem(KEY);
+      if (!devId) {
+        devId = (typeof crypto !== 'undefined' && crypto.randomUUID) 
+          ? crypto.randomUUID() 
+          : 'dev-' + Date.now() + '-' + Math.random().toString(36).substring(2, 10);
+        try {
+          localStorage.setItem(KEY, devId);
+          document.cookie = `device_id=${devId}; path=/; max-age=31536000; SameSite=Lax`;
+        } catch(e) {}
+      }
+      return devId;
+    }
+
+    // Check-in API Call
+    async function performCheckin(sessId, tok) {
+      const profile = getStudentProfile();
+      if (!profile) return;
+
+      const deviceId = getOrCreateDeviceId();
+      showInfo('Verifying Attendance...', 'Submitting rotating dynamic token to server...');
 
       try {
         const res = await fetch('/api/attendance/checkin', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'X-Device-Id': deviceId
+          },
           body: JSON.stringify({
-            session_id: sessionId,
-            token: token,
-            student_id: sId,
-            student_name: sName,
-            device_info: navigator.userAgent.substring(0, 80)
+            session_id: sessId || currentSessionId,
+            token: tok,
+            student_id: profile.id,
+            student_name: profile.name,
+            device_info: navigator.userAgent.substring(0, 80),
+            device_id: deviceId
           })
         });
 
         const data = await res.json();
         if (data.success) {
-          try {
-            localStorage.setItem('attendance_student_profile', JSON.stringify({ name: sName, id: sId }));
-          } catch(err) {}
-          showSuccess('Verified Present', `Attendance confirmed for ${data.student_name} (${data.student_id}) at ${data.timestamp}. You are marked present.`);
-          form.querySelector('.form-group').style.display = 'none';
-          document.getElementById('student-id').parentElement.style.display = 'none';
-          document.querySelector('.token-badge-row').style.display = 'none';
-          btnVerify.style.display = 'none';
+          showSuccess(
+            'Verified Present',
+            `Attendance confirmed for <strong>${data.student_name}</strong> (${data.student_id}) at ${data.timestamp}. You are marked present on the instructor roster.`
+          );
+          btnStartCamera.style.display = 'none';
+          btnSubmitLinkToken.style.display = 'none';
+          document.querySelector('label[for="file-camera-input"]').style.display = 'none';
+          btnStartCamera.classList.remove('pulse');
+        } else if (data.device_already_used) {
+          showError('Proxy Blocked: Device Already Registered', data.error);
+          btnStartCamera.classList.remove('pulse');
         } else {
-          showError('Verification Failed', data.error || 'Could not verify attendance.');
-          btnVerify.disabled = false;
-          btnVerify.querySelector('span').textContent = 'Confirm My Presence';
+          showError(
+            'Verification Failed',
+            (data.error || 'The QR code rotated before submission.') +
+            '<br><br>👉 <strong>Tap "Scan Live QR on Screen" above to verify with the active screen code.</strong>'
+          );
+          btnStartCamera.classList.add('pulse');
         }
       } catch (err) {
-        showError('Network Error', 'Could not reach attendance server. Ensure you are connected to the classroom network.');
-        btnVerify.disabled = false;
-        btnVerify.querySelector('span').textContent = 'Confirm My Presence';
+        showError('Network Error', 'Could not reach attendance server. Please ensure your device is connected to the internet.');
       }
+    }
+
+    // Submit with initial link token
+    btnSubmitLinkToken.addEventListener('click', () => {
+      performCheckin(currentSessionId, currentToken);
     });
 
     function showSuccess(title, desc) {
       resultBox.className = 'result-box success';
       resultTitle.textContent = title;
-      resultDesc.textContent = desc;
+      resultDesc.innerHTML = desc;
+      resultBox.style.display = 'block';
     }
 
     function showError(title, desc) {
       resultBox.className = 'result-box error';
       resultTitle.textContent = title;
-      resultDesc.textContent = desc;
+      resultDesc.innerHTML = desc;
+      resultBox.style.display = 'block';
+    }
+
+    function showInfo(title, desc) {
+      resultBox.className = 'result-box';
+      resultBox.style.background = '#eff6ff';
+      resultBox.style.border = '1px solid #bfdbfe';
+      resultBox.style.color = '#1e40af';
+      resultTitle.textContent = title;
+      resultDesc.innerHTML = desc;
+      resultBox.style.display = 'block';
     }
   </script>
 </body>
