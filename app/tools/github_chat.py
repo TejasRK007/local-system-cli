@@ -476,7 +476,7 @@ def execute_repository_chat(
     # 4. Check for stale index
     is_stale, live_sha = check_repository_stale(repo_id, commit_sha)
     stale_warning = (
-        f"Repository has newer commits on GitHub ({live_sha[:8]}) than this index ({commit_sha[:8]}). "
+        f"Repository has newer commits on GitHub ({(live_sha or '')[:8]}) than this index ({commit_sha[:8]}). "
         f"Consider re-analyzing the repository for the latest code changes."
         if is_stale else None
     )
@@ -523,7 +523,7 @@ User Question:
     llm_provider = "deterministic-fallback"
     ai_answer = ""
 
-    llm_client = None
+    llm_client: Any = None
     if is_ollama_online():
         llm_provider = "ollama"
         llm_client = OllamaChatWrapper(timeout=25.0)

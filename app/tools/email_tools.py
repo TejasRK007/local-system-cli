@@ -2274,7 +2274,6 @@ def classify_email_content(
     if headers and isinstance(headers, dict):
         auth_res = str(headers.get("authentication-results", "")).lower()
         rec_spf = str(headers.get("received-spf", "")).lower()
-        dkim_sig = str(headers.get("dkim-signature", "")).lower()
         unsub_hdr = str(headers.get("list-unsubscribe", "")).lower()
         precedence = str(headers.get("precedence", "")).lower()
 
@@ -3493,7 +3492,7 @@ def email_generate_context_aware_reply(
         bullets_text = "\n".join(bullets) or f"- Active execution on {norm_subject}"
         q_resp = ""
         if pending_questions:
-            q_resp = f"\n\nAddressing your specific questions:\n" + "\n".join([f"- {q}: On schedule as agreed." for q in pending_questions[:2]])
+            q_resp = "\n\nAddressing your specific questions:\n" + "\n".join([f"- {q}: On schedule as agreed." for q in pending_questions[:2]])
 
         body_msg = (
             f"Hi {sender_name},\n\n"

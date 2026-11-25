@@ -668,7 +668,7 @@ def test_reply_acknowledges_earlier_commitment_from_memory():
     # Seed a follow-up incoming email into the inbox
     with sqlite3.connect(db.DB_PATH) as conn:
         conn.execute(
-            """INSERT OR REPLACE INTO email_inbox 
+            """INSERT OR REPLACE INTO email_inbox
                (id, sender, subject, body, thread_id, category, is_read, received_at)
                VALUES (?, ?, ?, ?, ?, ?, 0, datetime('now'))""",
             ("msg-report-later-02", sender, "Any update on the project report?",
@@ -705,7 +705,7 @@ def test_bulk_cleanup_protects_starred_attachments_and_pending_commitments():
     with sqlite3.connect(db.DB_PATH) as conn:
         # Create a promo email that is starred — must be excluded despite being promotions
         conn.execute(
-            """INSERT OR REPLACE INTO email_inbox 
+            """INSERT OR REPLACE INTO email_inbox
                (id, sender, subject, body, classification_category, classification_confidence,
                 is_starred, has_attachments, is_read, is_deleted, is_flagged_review, received_at)
                VALUES ('msg-promo-starred', 'promo@deals.com', '50% off holiday sale', 'Huge discounts',
@@ -713,7 +713,7 @@ def test_bulk_cleanup_protects_starred_attachments_and_pending_commitments():
         )
         # Create a promo email with attachments — must be excluded
         conn.execute(
-            """INSERT OR REPLACE INTO email_inbox 
+            """INSERT OR REPLACE INTO email_inbox
                (id, sender, subject, body, classification_category, classification_confidence,
                 is_starred, has_attachments, is_read, is_deleted, is_flagged_review, received_at)
                VALUES ('msg-promo-attach', 'promo@deals.com', 'Catalog attached', 'See PDF',
@@ -721,14 +721,14 @@ def test_bulk_cleanup_protects_starred_attachments_and_pending_commitments():
         )
         # Create a promo email with a pending commitment in email_memory (correct schema)
         conn.execute(
-            """INSERT OR REPLACE INTO email_inbox 
+            """INSERT OR REPLACE INTO email_inbox
                (id, sender, subject, body, classification_category, classification_confidence,
                 is_starred, has_attachments, is_read, is_deleted, is_flagged_review, received_at)
                VALUES ('msg-promo-commit', 'promo@deals.com', 'Vendor Agreement draft', 'Please review discount',
                        'promotions', 0.91, 0, 0, 1, 0, 0, datetime('now'))"""
         )
         conn.execute(
-            """INSERT INTO email_memory 
+            """INSERT INTO email_memory
                (source_message_id, thread_id, sender, sender_email, memory_type, description, due_date, is_completed, is_expired, confirmed)
                VALUES ('msg-promo-commit', '', 'promo@deals.com', 'promo@deals.com',
                        'commitment', 'Promise to review discount terms by end of week', '', 0, 0, 1)"""

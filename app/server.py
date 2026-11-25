@@ -2589,7 +2589,7 @@ def api_auth_google_login(request: Request) -> RedirectResponse:
 def api_auth_google_callback(
     code: Optional[str] = None,
     error: Optional[str] = None,
-    request: Request = None,
+    request: Request = None,  # type: ignore[assignment]
 ) -> RedirectResponse:
     import json
     import urllib.error
@@ -2873,7 +2873,7 @@ def api_github_auth_callback(
     state: Optional[str] = None,
     error: Optional[str] = None,
     error_description: Optional[str] = None,
-    request: Request = None,
+    request: Request = None,  # type: ignore[assignment]
 ) -> RedirectResponse:
     """Handle OAuth redirect callback from GitHub."""
     import json

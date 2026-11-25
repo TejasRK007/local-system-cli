@@ -1041,7 +1041,7 @@ def synthesize_architecture_report(
     # Attempt LLM processing (Local Ollama first, Groq second if cloud allowed)
     from app.llm import is_ollama_online, OllamaChatWrapper, GroqChatWrapper
 
-    llm_client = None
+    llm_client: Any = None
     if is_ollama_online():
         llm_provider = "ollama"
         llm_client = OllamaChatWrapper(timeout=25.0)

@@ -244,7 +244,7 @@ def get_configured_llm(
     If provider is 'groq' but allow_cloud is False, cloud invocation is blocked
     and the model falls back to local Ollama if online.
     """
-    selected_provider = (provider or os.getenv("LLM_PROVIDER", "ollama")).lower().strip()
+    selected_provider = (provider or os.getenv("LLM_PROVIDER", "ollama") or "").lower().strip()
 
     if selected_provider == "groq":
         groq_key = os.getenv("GROQ_API_KEY", "").strip()

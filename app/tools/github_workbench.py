@@ -443,7 +443,7 @@ def github_summarize_issue(
         logger.debug("Duplicate search failed: %s", e)
 
     # Invoke LLM (Ollama preferred, Groq if consented, or deterministic fallback)
-    llm_client = None
+    llm_client: Any = None
     llm_provider = "deterministic-fallback"
 
     if is_ollama_online():
