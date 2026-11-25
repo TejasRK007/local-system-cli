@@ -16,6 +16,7 @@ import secrets
 import socket
 import sqlite3
 import time
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 import qrcode
@@ -74,7 +75,9 @@ def resolve_checkin_host_url(host_url: Optional[str] = None, port: int = 8000) -
 
 
 def _get_db_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(db.DB_PATH)
+    db_path = Path(db.DB_PATH)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     return conn
 

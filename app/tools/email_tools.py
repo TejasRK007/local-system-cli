@@ -22,13 +22,16 @@ from datetime import datetime, timedelta
 from email.header import decode_header
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from pathlib import Path
 from typing import Any, Optional
 
 import app.database as db
 
 
 def _get_db_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(db.DB_PATH)
+    db_path = Path(db.DB_PATH)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     return conn
 
